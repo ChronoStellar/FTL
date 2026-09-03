@@ -1,0 +1,5 @@
+secrets.plist
+.claude
+.DS_STORE/
+.DS_STORE
+*.xcuserdata
