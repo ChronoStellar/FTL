@@ -1,0 +1,114 @@
+//
+//  Screens.swift
+//  FTL — view
+//
+//  Thin wrappers that OWN their view model in `@State` and carry the screen's
+//  toolbar.
+//
+//  Constructing a view model inside a `navigationDestination` or `sheet` closure
+//  looks fine and is a bug: those closures re-run on every re-render, so the
+//  screen gets a fresh view model — and loses whatever the user was part-way
+//  through — on any unrelated state change. `@State` created once in `init` keeps
+//  one instance for the life of the screen.
+//
+
+import SwiftUI
+
+// MARK: - Bucket
+
+struct BucketScreen: View {
+    @State private var viewModel: BucketDetailViewModel
+    private let name: String
+
+    init(environment: AppEnvironment, categoryID: CategoryID, name: String, interval: DateInterval) {
+        self.name = name
+        _viewModel = State(
+            wrappedValue: environment.makeBucketDetailViewModel(
+                categoryID: categoryID,
+                name: name,
+                interval: interval
+            )
+        )
+    }
+
+    var body: some View {
+        BucketDetailView(viewModel: viewModel)
+            .background(GlowBackground())
+            .navigationTitle(name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
+            .toolbar {
+                // Editing a ceiling is reversible, and the hint under the row
+                // says so. Undo has to actually be here.
+                if viewModel.canUndo {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Undo") { Task { await viewModel.undo() } }
+                            .tint(FTLColor.textSecondary)
+                    }
+                }
+            }
+    }
+}
+
+// MARK: - Goal
+
+struct GoalScreen: View {
+    @State private var viewModel: GoalViewModel
+
+    init(environment: AppEnvironment) {
+        _viewModel = State(wrappedValue: environment.makeGoalViewModel())
+    }
+
+    var body: some View {
+        GoalDetailView(viewModel: viewModel)
+            .background(GlowBackground())
+            .navigationTitle("Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
+            .toolbar {
+                if viewModel.canUndo {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Undo") { Task { await viewModel.undo() } }
+                            .tint(FTLColor.textSecondary)
+                    }
+                }
+            }
+    }
+}
+
+// MARK: - Sheets
+
+struct ApprovalQueueScreen: View {
+    @State private var viewModel: ApprovalQueueViewModel
+    let onDone: () -> Void
+
+    init(environment: AppEnvironment, onDone: @escaping () -> Void) {
+        self.onDone = onDone
+        _viewModel = State(wrappedValue: environment.makeApprovalQueueViewModel())
+    }
+
+    var body: some View {
+        ApprovalQueueSheet(viewModel: viewModel, onDone: onDone)
+    }
+}
+
+struct AddSpendScreen: View {
+    @State private var viewModel: AddSpendViewModel
+    let onCancel: () -> Void
+    let onCommit: () -> Void
+
+    init(
+        environment: AppEnvironment,
+        interval: DateInterval,
+        onCancel: @escaping () -> Void,
+        onCommit: @escaping () -> Void
+    ) {
+        self.onCancel = onCancel
+        self.onCommit = onCommit
+        _viewModel = State(wrappedValue: environment.makeAddSpendViewModel(interval: interval))
+    }
+
+    var body: some View {
+        AddSpendSheet(viewModel: viewModel, onCancel: onCancel, onCommit: onCommit)
+    }
+}

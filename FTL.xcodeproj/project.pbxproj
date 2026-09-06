@@ -6,13 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9B99B9D1304978A700DB5E81 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 9B99B9D0304978A700DB5E81 /* GoogleSignIn */; };
+		9B99B9D3304978A700DB5E81 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9B99B9B0304959FF00DB5E81 /* FTL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FTL.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9B99B9C33049746E00DB5E81 /* Exceptions for "FTL" folder in "FTL" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9B99B9AF304959FF00DB5E81 /* FTL */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9B99B9B2304959FF00DB5E81 /* FTL */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B99B9C33049746E00DB5E81 /* Exceptions for "FTL" folder in "FTL" target */,
+			);
 			path = FTL;
 			sourceTree = "<group>";
 		};
@@ -23,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9B99B9D1304978A700DB5E81 /* GoogleSignIn in Frameworks */,
+				9B99B9D3304978A700DB5E81 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +85,8 @@
 			);
 			name = FTL;
 			packageProductDependencies = (
+				9B99B9D0304978A700DB5E81 /* GoogleSignIn */,
+				9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */,
 			);
 			productName = FTL;
 			productReference = 9B99B9B0304959FF00DB5E81 /* FTL.app */;
@@ -94,6 +116,9 @@
 			);
 			mainGroup = 9B99B9A7304959FF00DB5E81;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9B99B9B1304959FF00DB5E81 /* Products */;
 			projectDirPath = "";
@@ -256,6 +281,7 @@
 				DEVELOPMENT_TEAM = 8K59B5RZ46;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTL/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -288,6 +314,7 @@
 				DEVELOPMENT_TEAM = 8K59B5RZ46;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTL/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -332,6 +359,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9B99B9D0304978A700DB5E81 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9B99B9A8304959FF00DB5E81 /* Project object */;
 }
