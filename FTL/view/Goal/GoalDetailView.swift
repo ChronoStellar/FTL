@@ -36,7 +36,7 @@ struct GoalDetailView: View {
     }
 
     private var hero: some View {
-        GlassCard {
+        Group {
             VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(text: "Save per day to make it")
                 Text(MoneyFormatter.grouped(viewModel.dailyRate))
@@ -51,9 +51,8 @@ struct GoalDetailView: View {
                     fraction: viewModel.fraction,
                     height: FTLMeter.heroHeight,
                     fill: FTLColor.accent,
-                    showsBorder: true
                 )
-                .padding(.top, 18)
+                .padding(.top, FTLSpacing.lg)
                 .padding(.bottom, FTLSpacing.md)
 
                 HStack {

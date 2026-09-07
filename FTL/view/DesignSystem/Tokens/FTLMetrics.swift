@@ -35,19 +35,18 @@ enum FTLSpacing {
 
 enum FTLRadius {
     static let chip: CGFloat = 99
-    static let control: CGFloat = 13
-    static let panel: CGFloat = 16
-    static let card: CGFloat = 18
-    static let hero: CGFloat = 26
-    static let sheet: CGFloat = 28
+    static let control: CGFloat = 10
+    static let panel: CGFloat = 12
+    static let card: CGFloat = 12
+    static let sheet: CGFloat = 20
 }
 
 enum FTLMeter {
     /// The hero meter.
-    static let heroHeight: CGFloat = 14
+    static let heroHeight: CGFloat = 6
     /// The per-bucket meter.
-    static let rowHeight: CGFloat = 6
-    static let monthHeight: CGFloat = 7
+    static let rowHeight: CGFloat = 3
+    static let monthHeight: CGFloat = 3
 }
 
 enum FTLTypography {

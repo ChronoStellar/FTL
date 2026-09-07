@@ -18,9 +18,9 @@ final class AppEnvironment {
 
     // MARK: - Phase 1
     //
-    // ⚠️ Currently the InMemory placeholders from services/Preview. Swapping in
-    // the real stores is a change to `init` and nothing else — that is what the
-    // protocols bought.
+    // Built by `live()` (the user's Google Sheet) or `sample()` (fixtures).
+    // Everything downstream sees protocols, so which one is in use is invisible
+    // outside this file — that is what the protocols bought.
     let ledger: LedgerStore
     let budgets: BudgetStore
     let calc: CalcTool
@@ -41,19 +41,50 @@ final class AppEnvironment {
     /// put unattended writes at 67% correct.
     let trustLevel: TrustLevel = .assist
 
-    init(auth: GoogleAuthManager = .shared) {
+    private init(
+        auth: GoogleAuthManager,
+        ledger: LedgerStore,
+        budgets: BudgetStore,
+        provisional: ProvisionalStore,
+        goals: GoalStore
+    ) {
         self.auth = auth
-
-        let ledger = InMemoryLedgerStore()
-        let budgets = InMemoryBudgetStore()
-        let provisional = InMemoryProvisionalStore()
-
         self.ledger = ledger
         self.budgets = budgets
         self.provisional = provisional
-        self.calc = InMemoryCalcTool(budgets: budgets, store: ledger)
-        self.approvals = InMemoryApprovalService(store: provisional, ledger: ledger)
-        self.goals = InMemoryGoalStore()
+        self.goals = goals
+        self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
+        self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
+    }
+
+    /// The real app: the user's own Google Sheet is the ledger.
+    ///
+    /// The provisional cache is still in memory, so rows awaiting approval do not
+    /// survive a relaunch. That is the next thing to fix (GRDB) and it is a real
+    /// gap, not a stub — approve before you quit.
+    static func live(auth: GoogleAuthManager = .shared) -> AppEnvironment {
+        let ledger = SheetsLedgerStore(auth: auth)
+        return AppEnvironment(
+            auth: auth,
+            ledger: ledger,
+            budgets: SheetsBudgetStore(ledger: ledger),
+            provisional: InMemoryProvisionalStore(),
+            goals: InMemoryGoalStore()
+        )
+    }
+
+    /// Fixtures. Used by the DEBUG skip-sign-in path so the UI can be worked on
+    /// without an account, and by previews.
+    static func sample(auth: GoogleAuthManager = .shared) -> AppEnvironment {
+        let ledger = InMemoryLedgerStore()
+        let budgets = InMemoryBudgetStore()
+        return AppEnvironment(
+            auth: auth,
+            ledger: ledger,
+            budgets: budgets,
+            provisional: InMemoryProvisionalStore(),
+            goals: InMemoryGoalStore()
+        )
     }
 
     // MARK: - View model factories

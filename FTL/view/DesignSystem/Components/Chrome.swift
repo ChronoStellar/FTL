@@ -8,32 +8,11 @@
 
 import SwiftUI
 
-/// The two radial glows behind every screen. Purely decorative, so it is hidden
-/// from accessibility and never intercepts a touch.
+/// The app background. Formerly two radial glows — removed: they were the single
+/// loudest thing on screen and carried no information.
 struct GlowBackground: View {
     var body: some View {
-        ZStack {
-            FTLColor.ground
-            GeometryReader { geometry in
-                let size = min(geometry.size.width * 1.1, 440)
-                RadialGradient(
-                    colors: [FTLColor.glowTop, .clear],
-                    center: .center, startRadius: 0, endRadius: size * 0.34
-                )
-                .frame(width: size, height: size)
-                .offset(x: -100, y: -150)
-
-                RadialGradient(
-                    colors: [FTLColor.glowBottom, .clear],
-                    center: .center, startRadius: 0, endRadius: size * 0.35
-                )
-                .frame(width: size, height: size)
-                .offset(x: geometry.size.width - size + 130, y: geometry.size.height - size + 180)
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        FTLColor.ground.ignoresSafeArea()
     }
 }
 

@@ -57,12 +57,12 @@ struct MonthPickerSheet: View {
             .padding(FTLSpacing.rowPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                isSelected ? FTLColor.glassHigh : FTLColor.glassLow,
+                isSelected ? FTLColor.panelRaised : FTLColor.panel,
                 in: RoundedRectangle(cornerRadius: FTLRadius.panel, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: FTLRadius.panel, style: .continuous)
-                    .strokeBorder(isSelected ? FTLColor.glassBorder : FTLColor.hairline, lineWidth: 0.5)
+                    .strokeBorder(isSelected ? FTLColor.controlBorder : FTLColor.hairline, lineWidth: 0.5)
             }
         }
         .buttonStyle(.plain)

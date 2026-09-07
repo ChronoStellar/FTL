@@ -22,10 +22,6 @@ nonisolated protocol ProvisionalStore: Sendable {
     /// Used to build `RuleContext`, never to conclude a match on its own.
     func candidates(matching fingerprint: Fingerprint) async throws -> [ProvisionalEntry]
 
-    /// Has this rail document already been captured? Keeps re-running a rail cheap
-    /// and idempotent.
-    func hasDocument(externalID: String, source: CaptureSource) async throws -> Bool
-
     func update(_ entry: ProvisionalEntry) async throws
 
     /// Called by ApprovalService only, after the ledger write succeeds. Ordering
@@ -33,6 +29,4 @@ nonisolated protocol ProvisionalStore: Sendable {
     /// write the ledger will dedup by `id` rather than losing the row entirely.
     func markPromoted(_ ids: [ProvisionalEntry.ID]) async throws
 
-    func loadCursor(for source: CaptureSource) async throws -> CaptureCursor?
-    func saveCursor(_ cursor: CaptureCursor) async throws
 }

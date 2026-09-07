@@ -17,17 +17,16 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var auth: GoogleAuthManager
     let environment: AppEnvironment
+    /// DEBUG only: whether `environment` is the fixture one. Owned by FTLApp so
+    /// the flag and the environment can never disagree.
+    var isSampleMode: Bool = false
+    var onUseSampleData: () -> Void = {}
 
     @State private var hasAttemptedRestore = false
 
-    /// DEBUG only: lets the tabs be opened without a Google account, so UI work
-    /// doesn't require a live session. Compiled out of Release along with the
-    /// button that sets it.
-    @State private var bypassAuth = false
-
     private var isUnlocked: Bool {
         #if DEBUG
-        return auth.isSignedIn || bypassAuth
+        return auth.isSignedIn || isSampleMode
         #else
         return auth.isSignedIn
         #endif
@@ -38,9 +37,13 @@ struct RootView: View {
             if !hasAttemptedRestore {
                 launchPlaceholder
             } else if isUnlocked {
+                // Rebuild from scratch when the environment is swapped: the
+                // screens hold their view models in @State and would otherwise
+                // keep the ones built against the old store.
                 ContentView(environment: environment)
+                    .id(ObjectIdentifier(environment))
             } else {
-                SignInView(onDebugBypass: { bypassAuth = true })
+                SignInView(onDebugBypass: onUseSampleData)
             }
         }
         .task {

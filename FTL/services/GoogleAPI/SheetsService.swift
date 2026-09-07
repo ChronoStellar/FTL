@@ -80,19 +80,21 @@ struct SheetsService {
         return response.values ?? []
     }
 
-    /// Overwrites a range. Values are parsed as if typed (numbers, dates, formulas).
-    func write(range: String, values: [[String]]) async throws {
+    /// Overwrites a range. `USER_ENTERED` parses values as if typed (numbers,
+    /// dates, formulas); `RAW` stores them verbatim — use RAW for anything that
+    /// has to read back byte-identical.
+    func write(range: String, values: [[String]], inputOption: String = "USER_ENTERED") async throws {
         var url = base.appending(path: "\(spreadsheetID)/values/\(range)")
-        url.append(queryItems: [.init(name: "valueInputOption", value: "USER_ENTERED")])
+        url.append(queryItems: [.init(name: "valueInputOption", value: inputOption)])
         let body = try JSONEncoder().encode(ValueRange(range: range, values: values))
         try await client.send(url, method: "PUT", body: body)
     }
 
     /// Appends rows after the last row of data in the range's table.
-    func append(range: String, values: [[String]]) async throws {
+    func append(range: String, values: [[String]], inputOption: String = "USER_ENTERED") async throws {
         var url = base.appending(path: "\(spreadsheetID)/values/\(range):append")
         url.append(queryItems: [
-            .init(name: "valueInputOption", value: "USER_ENTERED"),
+            .init(name: "valueInputOption", value: inputOption),
             .init(name: "insertDataOption", value: "INSERT_ROWS"),
         ])
         let body = try JSONEncoder().encode(ValueRange(values: values))

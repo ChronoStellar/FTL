@@ -33,7 +33,7 @@ struct BucketDetailView: View {
     }
 
     private var hero: some View {
-        GlassCard {
+        Group {
             VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(text: "Spent this month")
                 Text(MoneyFormatter.grouped(viewModel.spent))
@@ -48,9 +48,8 @@ struct BucketDetailView: View {
                     fraction: viewModel.fraction,
                     height: FTLMeter.heroHeight,
                     fill: viewModel.isOverCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary,
-                    showsBorder: true
                 )
-                .padding(.top, 18)
+                .padding(.top, FTLSpacing.lg)
                 .padding(.bottom, FTLSpacing.md)
 
                 HStack(alignment: .firstTextBaseline) {

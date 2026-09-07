@@ -11,7 +11,8 @@ import Foundation
 
 nonisolated struct NormalizedTransaction: Sendable, Hashable, Identifiable, Codable {
     let id: UUID
-    let documentID: CapturedDocument.ID
+    /// The capture that produced this row. Opaque until the rails land.
+    let documentID: UUID
     let source: CaptureSource
 
     var date: Date

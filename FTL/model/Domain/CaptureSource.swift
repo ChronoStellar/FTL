@@ -26,11 +26,3 @@ nonisolated enum CaptureSource: String, Sendable, Hashable, Codable, CaseIterabl
     }
 }
 
-/// Why the pipeline discarded a document or transaction. Kept for audit — a drop
-/// is a decision, and an unexplained disappearance is indistinguishable from a bug.
-nonisolated enum DropReason: String, Sendable, Hashable, Codable {
-    case notAPurchase        // marketing, newsletter, shipping notice
-    case duplicateOfExisting
-    case unparseable
-    case outOfScopeCurrency  // v0.6 dropped FX
-}

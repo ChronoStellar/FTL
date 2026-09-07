@@ -10,6 +10,10 @@ import SwiftUI
 // MARK: - Hero
 
 /// Total spend against the month's ceiling. The screen's one large figure.
+///
+/// Not a card. The most important number on the screen doesn't need a container
+/// to say so — the type size already does, and boxing it just adds an edge to
+/// look at. It sits on the ground with a thin rule under it.
 struct SpendHeroCard: View {
     let spent: Money
     let ceiling: Money
@@ -20,47 +24,45 @@ struct SpendHeroCard: View {
     let perDayLabel: String
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "Spent of \(MoneyFormatter.rp(ceiling))")
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Spent of \(MoneyFormatter.rp(ceiling))")
 
-                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Text(MoneyFormatter.grouped(spent))
-                        .font(FTLTypography.display)
-                        .tracking(FTLTypography.displayTracking)
-                        .foregroundStyle(FTLColor.textPrimary)
-                    Text(percentLabel)
-                        .font(FTLTypography.amountSmall)
-                        .foregroundStyle(FTLColor.textQuaternary)
-                }
-                .padding(.top, FTLSpacing.sm)
-
-                MeterBar(
-                    fraction: fraction,
-                    height: FTLMeter.heroHeight,
-                    fill: isOverCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary,
-                    showsBorder: true
-                )
-                .padding(.top, 18)
-                .padding(.bottom, FTLSpacing.md)
-
-                // Both lines are long in IDR. Shrink rather than wrap: a wrapped
-                // "left over N days" pushes the per-day figure out of alignment
-                // with the hero above it.
-                HStack(alignment: .firstTextBaseline) {
-                    Text(remainingLabel)
-                        .font(FTLTypography.caption)
-                        .foregroundStyle(FTLColor.textSecondary)
-                    Spacer(minLength: FTLSpacing.sm)
-                    Text(perDayLabel)
-                        .font(FTLTypography.amountSmall)
-                        .foregroundStyle(FTLColor.textPrimary)
-                        .layoutPriority(1)
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 9) {
+                Text(MoneyFormatter.grouped(spent))
+                    .font(FTLTypography.display)
+                    .tracking(FTLTypography.displayTracking)
+                    .foregroundStyle(FTLColor.textPrimary)
+                Text(percentLabel)
+                    .font(FTLTypography.amountSmall)
+                    .foregroundStyle(FTLColor.textQuaternary)
             }
+            .padding(.top, FTLSpacing.sm)
+
+            MeterBar(
+                fraction: fraction,
+                height: FTLMeter.heroHeight,
+                fill: isOverCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary
+            )
+            .padding(.top, FTLSpacing.lg)
+            .padding(.bottom, FTLSpacing.md)
+
+            // Both lines are long in IDR. Shrink rather than wrap: a wrapped
+            // "left over N days" pushes the per-day figure out of alignment
+            // with the hero above it.
+            HStack(alignment: .firstTextBaseline) {
+                Text(remainingLabel)
+                    .font(FTLTypography.caption)
+                    .foregroundStyle(FTLColor.textSecondary)
+                Spacer(minLength: FTLSpacing.sm)
+                Text(perDayLabel)
+                    .font(FTLTypography.amountSmall)
+                    .foregroundStyle(FTLColor.textPrimary)
+                    .layoutPriority(1)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(MoneyFormatter.rp(spent)) spent of \(MoneyFormatter.rp(ceiling)). \(remainingLabel).")
     }
@@ -81,10 +83,11 @@ struct QueueCard: View {
             HStack(spacing: FTLSpacing.md) {
                 Text("\(count)")
                     .font(FTLTypography.amountSmall)
-                    .foregroundStyle(FTLColor.accentContrast)
+                    .foregroundStyle(FTLColor.textPrimary)
                     .frame(minWidth: 26, minHeight: 26)
                     .padding(.horizontal, 7)
-                    .background(FTLColor.accent, in: Capsule())
+                    .background(FTLColor.controlFill, in: Capsule())
+                    .overlay { Capsule().strokeBorder(FTLColor.controlBorder, lineWidth: 0.5) }
 
                 VStack(alignment: .leading, spacing: FTLSpacing.xxs) {
                     Text(title)
@@ -98,13 +101,13 @@ struct QueueCard: View {
                 Spacer(minLength: FTLSpacing.sm)
                 Chevron()
             }
-            .padding(.horizontal, FTLSpacing.lg)
-            .padding(.vertical, FTLSpacing.rowPadding)
+            .padding(.horizontal, FTLSpacing.rowPadding)
+            .padding(.vertical, FTLSpacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(FTLColor.provisional.opacity(0.18), in: RoundedRectangle(cornerRadius: FTLRadius.card, style: .continuous))
+            .background(FTLColor.panel, in: RoundedRectangle(cornerRadius: FTLRadius.panel, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: FTLRadius.card, style: .continuous)
-                    .strokeBorder(FTLColor.accent.opacity(0.42), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: FTLRadius.panel, style: .continuous)
+                    .strokeBorder(FTLColor.hairline, lineWidth: 0.5)
             }
         }
         .buttonStyle(.plain)
@@ -167,20 +170,22 @@ struct GoalCard: View {
 
     var body: some View {
         Button(action: action) {
-            GlassCard(cornerRadius: FTLRadius.card, padding: FTLSpacing.lg, isElevated: false) {
-                HStack(spacing: FTLSpacing.lg) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(goal.name)
-                            .font(FTLTypography.body)
-                            .foregroundStyle(FTLColor.textPrimary)
-                        Text("\(MoneyFormatter.perDay(goal.dailyRate())) · \(MoneyFormatter.grouped(goal.remaining)) to go")
-                            .font(FTLTypography.captionSmall)
-                            .foregroundStyle(FTLColor.textSecondary)
-                            .padding(.top, 3)
-                        MeterBar(fraction: goal.fraction, fill: FTLColor.accent)
-                            .padding(.top, 10)
+            PanelCard {
+                PanelRow(showsDivider: false) {
+                    HStack(spacing: FTLSpacing.md) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(goal.name)
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Text("\(MoneyFormatter.perDay(goal.dailyRate())) · \(MoneyFormatter.grouped(goal.remaining)) to go")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                                .padding(.top, 3)
+                            MeterBar(fraction: goal.fraction, fill: FTLColor.textTertiary)
+                                .padding(.top, 10)
+                        }
+                        Chevron()
                     }
-                    Chevron()
                 }
             }
         }

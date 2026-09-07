@@ -39,6 +39,13 @@ private struct DebugHarness: View {
     @State private var monthRows: [[String]] = []
     @State private var viewedMonth = Date.now
 
+    // Exporter state
+    @State private var exportProgress: ExportProgress = .idle
+    @State private var exportedJSONURL: URL?
+    @State private var exportedCSVURL: URL?
+    @State private var isExporting = false
+    @State private var exportTargetCount = 1000
+
     var body: some View {
         List {
             Section("Account") {
@@ -77,6 +84,35 @@ private struct DebugHarness: View {
                                 .foregroundStyle(.tertiary)
                         }
                     }
+                }
+            }
+
+            Section("Gmail Exporter") {
+                Text("Fetches the latest \(exportTargetCount) emails (metadata, plain & html body, excluding pdf/images) and exports to JSON & CSV.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button(isExporting ? "Exporting..." : "Export Latest \(exportTargetCount) Emails") {
+                    Task { await runGmailExport() }
+                }
+                .disabled(isExporting)
+
+                if isExporting || exportProgress != .idle {
+                    Text(exportProgress.message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let json = exportedJSONURL, let csv = exportedCSVURL {
+                    HStack(spacing: 12) {
+                        ShareLink(item: json) {
+                            Label("Share JSON", systemImage: "arrow.up.doc")
+                        }
+                        ShareLink(item: csv) {
+                            Label("Share CSV", systemImage: "tablecells")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
 
@@ -173,6 +209,27 @@ private struct DebugHarness: View {
             status = "Loaded \(monthRows.count) entries for \(SheetsService.monthTabName(for: viewedMonth))."
         } catch {
             status = error.localizedDescription
+        }
+    }
+
+    private func runGmailExport() async {
+        isExporting = true
+        let exporter = GmailExporter(auth: auth)
+        do {
+            let (json, csv) = try await exporter.exportLatestEmails(
+                targetCount: exportTargetCount,
+                query: gmailQuery
+            ) { progress in
+                Task { @MainActor in
+                    self.exportProgress = progress
+                }
+            }
+            exportedJSONURL = json
+            exportedCSVURL = csv
+            isExporting = false
+        } catch {
+            exportProgress = .failed(error.localizedDescription)
+            isExporting = false
         }
     }
 }

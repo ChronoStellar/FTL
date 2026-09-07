@@ -29,9 +29,11 @@ struct HomeView: View {
                     loaded
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, FTLSpacing.screenMargin)
             .padding(.bottom, FTLSpacing.xxl)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
         .refreshable { await viewModel.load() }
     }
@@ -90,7 +92,6 @@ struct HomeView: View {
                 ForEach(Array(viewModel.recent.enumerated()), id: \.element.id) { index, transaction in
                     LedgerRow(
                         transaction: transaction,
-                        showsAccent: true,
                         showsDivider: index < viewModel.recent.count - 1
                     )
                 }

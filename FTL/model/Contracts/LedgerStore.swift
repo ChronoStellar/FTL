@@ -15,14 +15,14 @@ nonisolated protocol LedgerStore: Sendable {
     /// twice and never assume the first attempt failed.
     func append(_ transactions: [LedgerTransaction]) async throws
 
+    /// Every row. The calc tool needs the whole ledger to compare months, and a
+    /// per-month fetch against a rate-limited API would be six round trips to
+    /// answer one question.
+    func all() async throws -> [LedgerTransaction]
+
     func transactions(in interval: DateInterval) async throws -> [LedgerTransaction]
 
     func transaction(id: LedgerTransaction.ID) async throws -> LedgerTransaction?
-
-    /// The merchant dictionary, read for RuleContext and grown by use — a lookup
-    /// table, not a model call.
-    func merchants() async throws -> [Merchant]
-    func upsertMerchant(_ merchant: Merchant) async throws
 
     func categories() async throws -> [SpendCategory]
 }

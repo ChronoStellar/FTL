@@ -34,7 +34,7 @@ struct SignInView: View {
                     .multilineTextAlignment(.center)
             }
 
-            GlassCard(cornerRadius: FTLRadius.card, padding: FTLSpacing.lg, isElevated: false) {
+            SurfaceCard(cornerRadius: FTLRadius.card, padding: FTLSpacing.lg) {
                 VStack(alignment: .leading, spacing: FTLSpacing.md) {
                     capability(
                         icon: "envelope",
