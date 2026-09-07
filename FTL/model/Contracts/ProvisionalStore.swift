@@ -5,7 +5,7 @@
 //  The on-device cache. Invariant 7: nothing in here is canonical. This is where
 //  the model is allowed to be wrong, and where the user catches it.
 //
-//  Implementation: services/Persistence/GRDBProvisionalStore
+//  Implementation: services/Persistence/SwiftDataProvisionalStore
 //
 
 import Foundation

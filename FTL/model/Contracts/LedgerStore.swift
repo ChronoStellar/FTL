@@ -26,6 +26,9 @@ nonisolated protocol LedgerStore: Sendable {
 
     func categories() async throws -> [SpendCategory]
 
+    /// Removes a transaction from the canonical store.
+    func delete(_ id: LedgerTransaction.ID) async throws
+
     /// Invalidates any cached ledger state and fetches fresh rows from the source.
     func reload() async throws -> [LedgerTransaction]
 }

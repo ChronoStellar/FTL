@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import SwiftData
 
 @MainActor
 final class AppEnvironment {
@@ -57,20 +58,35 @@ final class AppEnvironment {
         self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
     }
 
-    /// The real app: the user's own Google Sheet is the ledger.
-    ///
-    /// The provisional cache is still in memory, so rows awaiting approval do not
-    /// survive a relaunch. That is the next thing to fix (GRDB) and it is a real
-    /// gap, not a stub — approve before you quit.
+    /// The real app: the user's own Google Sheet is the ledger, and the
+    /// provisional cache now survives a relaunch (SwiftData — Stage 0 #1).
+    /// Approve before you quit is no longer load-bearing; it stays good practice.
     static func live(auth: GoogleAuthManager = .shared) -> AppEnvironment {
         let ledger = SheetsLedgerStore(auth: auth)
         return AppEnvironment(
             auth: auth,
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
-            provisional: InMemoryProvisionalStore(empty: true),
+            provisional: SwiftDataProvisionalStore(modelContainer: Self.makeProvisionalContainer()),
             goals: InMemoryGoalStore(empty: true)
         )
+    }
+
+    /// On-disk if it can be, so the cache survives a relaunch — that is the
+    /// entire point of Stage 0 #1. Falls back to an in-memory container only if
+    /// the on-disk store can't be opened (disk full, an unreadable file left by
+    /// a future breaking schema change): a cache that stops persisting for one
+    /// session is recoverable — the ledger is still the Sheet — a launch-time
+    /// crash on a finance app is not the trade to make for the same guarantee.
+    private static func makeProvisionalContainer() -> ModelContainer {
+        let schema = Schema([ProvisionalEntryRecord.self])
+        if let onDisk = try? ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]) {
+            return onDisk
+        }
+        print("⚠️ SwiftDataProvisionalStore: on-disk container failed to open — falling back to in-memory. The provisional queue will not survive this relaunch.")
+        // swiftlint:disable:next force_try — an in-memory container has no disk
+        // I/O to fail on; if this throws the SwiftData runtime itself is broken.
+        return try! ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
     }
 
     /// Fixtures. Used by the DEBUG skip-sign-in path so the UI can be worked on
@@ -106,7 +122,8 @@ final class AppEnvironment {
             name: name,
             interval: interval,
             calc: calc,
-            budgets: budgets
+            budgets: budgets,
+            ledger: ledger
         )
     }
 
@@ -115,7 +132,13 @@ final class AppEnvironment {
     }
 
     func makeAddSpendViewModel(interval: DateInterval) -> AddSpendViewModel {
-        AddSpendViewModel(provisional: provisional, ledger: ledger, calc: calc, interval: interval)
+        AddSpendViewModel(
+            provisional: provisional,
+            approvals: approvals,
+            ledger: ledger,
+            calc: calc,
+            interval: interval
+        )
     }
 
     func makeGoalViewModel() -> GoalViewModel {

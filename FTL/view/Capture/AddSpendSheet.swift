@@ -24,7 +24,8 @@ struct AddSpendSheet: View {
             VStack(spacing: 0) {
                 amount
                 tags
-                Spacer(minLength: FTLSpacing.lg)
+                descriptionField
+                Spacer(minLength: FTLSpacing.sm)
                 keypad
             }
             .padding(.horizontal, FTLSpacing.screenMargin)
@@ -38,12 +39,16 @@ struct AddSpendSheet: View {
                     Button("Cancel", action: onCancel).tint(FTLColor.textTertiary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") {
-                        Task { if await viewModel.commit() { onCommit() } }
+                    if viewModel.phase.isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Add") {
+                            Task { if await viewModel.commit() { onCommit() } }
+                        }
+                        .font(FTLTypography.navTitle)
+                        .tint(viewModel.canCommit ? FTLColor.textSecondary : FTLColor.textDisabled)
+                        .disabled(!viewModel.canCommit)
                     }
-                    .font(FTLTypography.navTitle)
-                    .tint(viewModel.hasAmount ? FTLColor.textSecondary : FTLColor.textDisabled)
-                    .disabled(!viewModel.hasAmount)
                 }
             }
             .task { await viewModel.load() }
@@ -67,23 +72,53 @@ struct AddSpendSheet: View {
                 .font(FTLTypography.captionSmall)
                 .foregroundStyle(FTLColor.textQuaternary)
                 .padding(.top, 6)
+
+            if let errorMsg = viewModel.phase.errorMessage {
+                Text(errorMsg)
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.destructive)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
     }
 
     private var tags: some View {
-        FlowLayout(spacing: FTLSpacing.sm) {
-            ForEach(viewModel.categories) { category in
-                SelectableChip(
-                    title: category.name,
-                    isSelected: viewModel.selectedCategoryID == category.id
-                ) {
-                    Task { await viewModel.select(category.id) }
+        VStack(alignment: .leading, spacing: FTLSpacing.labelGap) {
+            SectionLabel(text: viewModel.hasCategory ? "Tag" : "Tag · required")
+            FlowLayout(spacing: FTLSpacing.sm) {
+                ForEach(viewModel.categories) { category in
+                    SelectableChip(
+                        title: category.name,
+                        isSelected: viewModel.selectedCategoryID == category.id
+                    ) {
+                        Task { await viewModel.select(category.id) }
+                    }
                 }
             }
         }
-        .padding(.bottom, FTLSpacing.rowPadding)
+        .padding(.bottom, FTLSpacing.xs)
+    }
+
+    private var descriptionField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pencil")
+                .font(.system(size: 13))
+                .foregroundStyle(FTLColor.textTertiary)
+            TextField("Description · optional", text: $viewModel.merchantText)
+                .font(FTLTypography.caption)
+                .foregroundStyle(FTLColor.textPrimary)
+                .autocorrectionDisabled()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(FTLColor.controlFill, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous)
+                .strokeBorder(FTLColor.controlBorder, lineWidth: 0.5)
+        }
+        .padding(.bottom, FTLSpacing.xs)
     }
 
     private var keypad: some View {

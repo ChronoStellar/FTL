@@ -127,7 +127,7 @@ struct ContentView: View {
 
         case .queue:
             ApprovalQueueScreen(environment: environment, onDone: { sheet = nil })
-                .onDisappear { Task { await home.load() } }
+                .onDisappear { Task { await home.load(forceReload: true) } }
 
         case .add:
             AddSpendScreen(
@@ -136,7 +136,7 @@ struct ContentView: View {
                 onCancel: { sheet = nil },
                 onCommit: {
                     sheet = nil
-                    Task { await home.load() }
+                    Task { await home.load(forceReload: true) }
                 }
             )
 

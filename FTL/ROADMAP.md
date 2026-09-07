@@ -36,8 +36,8 @@ mistakes cheap, and that is why it comes first.
 
 Nothing is built on top until these three are done.
 
-### 1. Persist the provisional cache · **M**
-`InMemoryProvisionalStore` → `GRDBProvisionalStore` in `services/Persistence/`.
+### 1. Persist the provisional cache · **M** — ✅ done
+`InMemoryProvisionalStore` → `SwiftDataProvisionalStore` in `services/Persistence/`.
 
 Rows awaiting approval do not survive a relaunch. Captured spending silently
 disappearing is the worst failure this app has, and it lands on the human gate

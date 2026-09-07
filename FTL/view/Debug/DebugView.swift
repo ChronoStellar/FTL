@@ -145,9 +145,25 @@ private struct DebugHarness: View {
                 if monthRows.isEmpty {
                     Text("No entries.").foregroundStyle(.secondary)
                 }
-                ForEach(Array(monthRows.enumerated()), id: \.offset) { _, row in
-                    Text(row.joined(separator: " | "))
-                        .font(.system(.footnote, design: .monospaced))
+                ForEach(Array(monthRows.enumerated()), id: \.offset) { index, row in
+                    HStack {
+                        Text(row.joined(separator: " | "))
+                            .font(.system(.footnote, design: .monospaced))
+                        Spacer()
+                        Button(role: .destructive) {
+                            Task { await deleteExpense(at: index) }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        Task { await deleteExpense(at: index) }
+                    }
                 }
             }
             .task { await loadMonth() }
@@ -176,23 +192,80 @@ private struct DebugHarness: View {
             status = "Enter a valid amount."
             return
         }
+        let minorUnits = Int(amountValue.rounded())
+        let txDate = date
+        let txCategory = category.trimmingCharacters(in: .whitespaces)
+        let txDesc = expenseDescription.trimmingCharacters(in: .whitespaces)
+
+        let tx = LedgerTransaction(
+            id: UUID(),
+            date: txDate,
+            amount: Money(minorUnits: minorUnits, currency: .idr),
+            merchantRaw: txDesc.isEmpty ? "Manual entry" : txDesc,
+            merchant: txDesc.isEmpty ? nil : txDesc,
+            categoryID: txCategory.isEmpty ? nil : CategoryID(rawValue: txCategory.lowercased()),
+            kind: .spend,
+            nonSpendType: nil,
+            source: .manual,
+            sourcesMerged: [],
+            splits: [],
+            lineItems: [],
+            provenance: .manual,
+            flags: [],
+            capturedAt: txDate,
+            approvedAt: .now,
+            notes: "Added via Debug harness"
+        )
+
+        let sheetsLedger = SheetsLedgerStore(auth: auth)
         let service = SheetsService(auth: auth)
         let expense = SheetsService.Expense(
-            date: date,
-            category: category,
-            description: expenseDescription,
+            date: txDate,
+            category: txCategory,
+            description: txDesc,
             amount: amountValue
         )
         do {
+            // 1. Write to canonical transactions tab
+            try await sheetsLedger.append([tx])
+            // 2. Write to month tab
             try await service.addExpense(expense)
-            status = "Added \(category) to \(SheetsService.monthTabName(for: date))."
+            status = "Added to transactions & \(SheetsService.monthTabName(for: txDate))."
             category = ""
             expenseDescription = ""
             amount = ""
-            viewedMonth = date // jump the viewer to the month we just added to
+            viewedMonth = txDate // jump the viewer to the month we just added to
             await loadMonth()
         } catch {
             status = error.localizedDescription
+        }
+    }
+
+    private func deleteExpense(at index: Int) async {
+        guard index < monthRows.count else { return }
+        let row = monthRows[index]
+        let service = SheetsService(auth: auth)
+        let ledgerStore = SheetsLedgerStore(auth: auth)
+        do {
+            // Delete from month tab
+            try await service.deleteMonthRow(at: index, for: viewedMonth)
+
+            // Also delete matching transaction from canonical transactions tab if found
+            let rowDesc = row.count > 2 ? row[2] : ""
+            let rowAmount = row.count > 3 ? (Double(row[3]) ?? 0) : 0
+            let minor = Int(rowAmount.rounded())
+
+            let allTx = try await ledgerStore.all()
+            if let match = allTx.first(where: {
+                $0.merchantRaw == rowDesc && $0.amount.minorUnits == minor
+            }) {
+                try await ledgerStore.delete(match.id)
+            }
+
+            status = "Deleted entry."
+            await loadMonth()
+        } catch {
+            status = "Delete failed: \(error.localizedDescription)"
         }
     }
 

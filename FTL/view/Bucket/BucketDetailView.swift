@@ -67,7 +67,7 @@ struct BucketDetailView: View {
 
     private var ceilingPanel: some View {
         PanelCard {
-            PanelRow(showsDivider: false) {
+            PanelRow(showsDivider: viewModel.isEditingCeiling) {
                 HStack(spacing: FTLSpacing.md) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(viewModel.name) ceiling")
@@ -98,6 +98,26 @@ struct BucketDetailView: View {
                     }
                 }
             }
+
+            if viewModel.isEditingCeiling {
+                PanelRow(showsDivider: false) {
+                    presetsRow
+                }
+            }
+        }
+    }
+
+    private var presetsRow: some View {
+        FlowLayout(spacing: FTLSpacing.sm) {
+            ForEach(BucketDetailViewModel.ceilingPresets, id: \.self) { minorUnits in
+                SelectableChip(
+                    title: MoneyFormatter.compact(Money(minorUnits: minorUnits, currency: viewModel.ceiling.currency)),
+                    isSelected: viewModel.ceiling.minorUnits == minorUnits,
+                    isCompact: true
+                ) {
+                    Task { await viewModel.setCeiling(preset: minorUnits) }
+                }
+            }
         }
     }
 
@@ -113,7 +133,10 @@ struct BucketDetailView: View {
                 ForEach(Array(viewModel.transactions.enumerated()), id: \.element.id) { index, transaction in
                     LedgerRow(
                         transaction: transaction,
-                        showsDivider: index < viewModel.transactions.count - 1
+                        showsDivider: index < viewModel.transactions.count - 1,
+                        onDelete: {
+                            Task { await viewModel.deleteTransaction(transaction) }
+                        }
                     )
                 }
             }

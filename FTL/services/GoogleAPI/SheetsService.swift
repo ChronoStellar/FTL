@@ -88,6 +88,21 @@ struct SheetsService {
         return Array(rows.dropFirst()) // drop the header row
     }
 
+    /// Deletes a specific row by 0-based data index (excluding header) from the month's tab.
+    func deleteMonthRow(at rowIndex: Int, for date: Date = .now) async throws {
+        let tab = Self.monthTabName(for: date)
+        guard try await tabTitles().contains(tab) else { return }
+        var allRows = try await read(range: Self.a1(tab: tab, "A:D"))
+        let targetIndex = rowIndex + 1 // skip header
+        guard targetIndex < allRows.count else { return }
+        allRows.remove(at: targetIndex)
+
+        try await clear(range: Self.a1(tab: tab, "A:D"))
+        if !allRows.isEmpty {
+            try await write(range: Self.a1(tab: tab, "A1"), values: allRows, inputOption: "RAW")
+        }
+    }
+
     /// The tab name for a date, e.g. "September 2026".
     nonisolated static func monthTabName(for date: Date = .now) -> String {
         monthFormatter.string(from: date)
@@ -206,6 +221,12 @@ struct SheetsService {
         ])
         let body = try JSONEncoder().encode(ValueRange(values: values))
         try await client.send(url, method: "POST", body: body)
+    }
+
+    /// Clears all values from a range without deleting the cells themselves.
+    func clear(range: String) async throws {
+        let url = base.appending(path: "\(spreadsheetID)/values/\(range):clear")
+        try await client.send(url, method: "POST", body: Data("{}".utf8))
     }
 
     // MARK: - Spreadsheet structure

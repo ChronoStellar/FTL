@@ -92,7 +92,10 @@ struct HomeView: View {
                 ForEach(Array(viewModel.recent.enumerated()), id: \.element.id) { index, transaction in
                     LedgerRow(
                         transaction: transaction,
-                        showsDivider: index < viewModel.recent.count - 1
+                        showsDivider: index < viewModel.recent.count - 1,
+                        onDelete: {
+                            Task { await viewModel.deleteTransaction(transaction) }
+                        }
                     )
                 }
             }

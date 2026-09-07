@@ -104,6 +104,10 @@ actor InMemoryLedgerStore: LedgerStore {
         rows.first { $0.id == id }
     }
 
+    func delete(_ id: LedgerTransaction.ID) async throws {
+        rows.removeAll { $0.id == id }
+    }
+
     func categories() async throws -> [SpendCategory] { SampleLedger.categories }
 }
 

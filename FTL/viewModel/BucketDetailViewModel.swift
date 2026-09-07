@@ -17,6 +17,7 @@ import Observation
 final class BucketDetailViewModel {
     private let calc: CalcTool
     private let budgets: BudgetStore
+    private let ledger: LedgerStore
     private let interval: DateInterval
     private let calendar: Calendar
 
@@ -35,12 +36,18 @@ final class BucketDetailViewModel {
     /// that landing on a specific figure doesn't take a dozen taps.
     static let ceilingStep = 50_000
 
+    /// Common ceilings, so setting one from scratch is a tap instead of twenty.
+    /// Still a choice among fixed options, not typed — the stepper's reasoning
+    /// applies here too.
+    static let ceilingPresets = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000]
+
     init(
         categoryID: CategoryID,
         name: String,
         interval: DateInterval,
         calc: CalcTool,
         budgets: BudgetStore,
+        ledger: LedgerStore,
         calendar: Calendar = .current
     ) {
         self.categoryID = categoryID
@@ -48,6 +55,7 @@ final class BucketDetailViewModel {
         self.interval = interval
         self.calc = calc
         self.budgets = budgets
+        self.ledger = ledger
         self.calendar = calendar
     }
 
@@ -116,6 +124,14 @@ final class BucketDetailViewModel {
         await apply(next)
     }
 
+    /// Jumps straight to a preset, same Undo semantics as `step(by:)` — the first
+    /// tap in an editing session captures the pre-edit ceiling once.
+    func setCeiling(preset minorUnits: Int) async {
+        guard let current = position?.node.ceiling else { return }
+        if ceilingBeforeEdit == nil { ceilingBeforeEdit = current }
+        await apply(Money(minorUnits: minorUnits, currency: current.currency))
+    }
+
     func undo() async {
         guard let original = ceilingBeforeEdit else { return }
         ceilingBeforeEdit = nil
@@ -126,6 +142,15 @@ final class BucketDetailViewModel {
     private func apply(_ ceiling: Money) async {
         do {
             try await budgets.setCeiling(ceiling, for: categoryID, in: interval)
+            await load()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
+    func deleteTransaction(_ transaction: LedgerTransaction) async {
+        do {
+            try await ledger.delete(transaction.id)
             await load()
         } catch {
             phase = .failed(String(describing: error))

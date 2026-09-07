@@ -122,6 +122,16 @@ final class HomeViewModel {
         }
     }
 
+    func deleteTransaction(_ transaction: LedgerTransaction) async {
+        do {
+            try await ledger.delete(transaction.id)
+            months = try await calc.monthSummaries(limit: 6)
+            try await reloadSelectedMonth()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
     private func reloadSelectedMonth() async throws {
         guard let month else { return }
         buckets = try await calc.budgetPositions(for: month.interval)

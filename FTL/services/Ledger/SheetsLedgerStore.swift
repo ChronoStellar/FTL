@@ -40,11 +40,20 @@ actor SheetsLedgerStore: LedgerStore {
 
     func all() async throws -> [LedgerTransaction] {
         if let cache { return cache }
-        try await bootstrap()
 
-        let rows = try await sheets.read(
-            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
-        )
+        // bootstrap() already has to read the full transactions range once, to
+        // decide whether the tab is empty (legacy import) — reuse that instead
+        // of reading the same range again right after. Only the first call each
+        // cold launch pays for bootstrap() at all; every call after that reads
+        // once, same as before this existed.
+        let rows: [[String]]
+        if let bootstrapped = try await bootstrap() {
+            rows = bootstrapped
+        } else {
+            rows = try await sheets.read(
+                range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+            )
+        }
         // Drop the header, then skip anything unparseable rather than guessing —
         // the sheet is user-editable, so half-typed rows are an expected state.
         let parsed = rows.dropFirst().compactMap(SheetsSchema.transaction(from:))
@@ -89,6 +98,28 @@ actor SheetsLedgerStore: LedgerStore {
         cache = nil
     }
 
+    /// Deletes a transaction by its UUID from the transactions tab.
+    func delete(_ id: LedgerTransaction.ID) async throws {
+        try await bootstrap()
+        let current = try await all()
+        guard current.contains(where: { $0.id == id }) else { return }
+        let remaining = current.filter { $0.id != id }
+
+        // Clear existing transactions range
+        try await sheets.clear(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+        )
+
+        // Write back headers + remaining rows
+        let values = [SheetsSchema.transactionColumns] + remaining.map(SheetsSchema.row(from:))
+        try await sheets.write(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, "A1"),
+            values: values,
+            inputOption: "RAW"
+        )
+        cache = remaining
+    }
+
     // MARK: - Budgets tab
     //
     // Shared with SheetsBudgetStore: categories are derived from the same rows
@@ -115,8 +146,15 @@ actor SheetsLedgerStore: LedgerStore {
     /// Creates the tabs and headers on first use, then auto-imports any data
     /// sitting in the Phase-0 month-named tabs (e.g. "September 2026") so the
     /// dashboard works without a manual migration step.
-    private func bootstrap() async throws {
-        guard !didBootstrap else { return }
+    ///
+    /// Returns the transactions tab's rows when this call did the bootstrap
+    /// work — it already had to read them to check for emptiness, so `all()`
+    /// reuses that instead of reading the same range again right after. Returns
+    /// nil on every call after the first one this session (nothing new to
+    /// report); callers other than `all()` ignore the return value.
+    @discardableResult
+    private func bootstrap() async throws -> [[String]]? {
+        guard !didBootstrap else { return nil }
         let titles = try await sheets.tabTitles()
 
         if !titles.contains(SheetsSchema.Tab.transactions) {
@@ -140,14 +178,21 @@ actor SheetsLedgerStore: LedgerStore {
         // If the transactions tab is empty, pull data from any legacy month-named
         // tabs the debug harness created. Runs once — after this the transactions
         // tab has rows and the guard won't fire again.
-        let txRows = try await sheets.read(
+        var txRows = try await sheets.read(
             range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
         )
         if txRows.dropFirst().isEmpty {
             try await importLegacyMonthTabs(from: titles)
+            // The import appended rows directly via sheets.append (see its doc
+            // comment on why) — re-read only in this branch, so the common case
+            // of an already-populated tab still costs exactly one read.
+            txRows = try await sheets.read(
+                range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+            )
         }
 
         didBootstrap = true
+        return txRows
     }
 
     // MARK: - Legacy import
@@ -220,11 +265,25 @@ actor SheetsLedgerStore: LedgerStore {
 
     /// A new sheet gets bucket names but no ceilings. Names are needed before
     /// anything can be tagged; the numbers are the user's to set, and inventing
-    /// them would be the app deciding what they should spend.
+    /// them would be the app deciding what they should spend (Invariant 8).
+    ///
+    /// The six leaf names are TagStore's canonical "spend" categories, spelled
+    /// exactly — TagStore.CategoryInfo — so a transaction the classifier tags
+    /// "Food & Dining" lands in the same bucket a person sees on the dashboard,
+    /// not a same-idea-different-name bucket that never gets spend attributed to
+    /// it. TagStore's two non-spend categories (transfers, refunds) and its
+    /// notATransaction one aren't here on purpose: Invariant 5 — non-spend rows
+    /// are never counted toward a ceiling, so they don't get one.
     private static var starterBudgets: [[String]] {
         let total = CategoryID(rawValue: "total")
-        let leaves = [("food", "Food"), ("transport", "Transport"),
-                      ("shopping", "Shopping"), ("subscriptions", "Subscriptions")]
+        let leaves = [
+            ("food-dining", "Food & Dining"),
+            ("ride-transport", "Ride & Transport"),
+            ("groceries", "Groceries & Supermarket"),
+            ("shopping", "E-Commerce & Shopping"),
+            ("utilities", "Utilities & Bills"),
+            ("subscriptions", "Subscriptions & Digital"),
+        ]
         return [SheetsSchema.row(categoryID: total, name: "Total", parentID: nil, ceiling: .zero, month: "")]
             + leaves.map { id, name in
                 SheetsSchema.row(

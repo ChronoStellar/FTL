@@ -199,6 +199,9 @@ struct LedgerRow: View {
     let transaction: LedgerTransaction
     var showsAccent: Bool = false
     var showsDivider: Bool = true
+    var onDelete: (() -> Void)? = nil
+
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         PanelRow(showsDivider: showsDivider) {
@@ -222,6 +225,40 @@ struct LedgerRow: View {
                 Text(MoneyFormatter.grouped(transaction.amount))
                     .font(FTLTypography.amount)
                     .foregroundStyle(FTLColor.forKind(transaction.kind))
+
+                if onDelete != nil {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                            .foregroundStyle(FTLColor.textDisabled)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 4)
+                }
+            }
+            .contentShape(Rectangle())
+            .contextMenu {
+                if onDelete != nil {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Transaction", systemImage: "trash")
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Delete Transaction?",
+                isPresented: $showingDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    onDelete?()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove \"\(transaction.merchant ?? transaction.merchantRaw)\" (\(MoneyFormatter.rp(transaction.amount))) from your Google Sheet.")
             }
         }
     }
