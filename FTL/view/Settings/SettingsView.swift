@@ -13,6 +13,10 @@ struct SettingsView: View {
     let trustLevel: TrustLevel
     let onDone: () -> Void
 
+    #if DEBUG
+    @State private var developerTool: DeveloperTool?
+    #endif
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -84,21 +88,41 @@ struct SettingsView: View {
     #if DEBUG
     private var debugPanel: some View {
         PanelCard {
-            NavigationLink {
-                DebugView()
-            } label: {
-                PanelRow(showsDivider: false) {
-                    HStack {
-                        Text("Google API harness")
-                            .font(FTLTypography.rowTitle)
-                            .foregroundStyle(FTLColor.textPrimary)
-                        Spacer()
-                        Chevron()
-                    }
+            debugRow("Google API harness", .harness, showsDivider: true)
+            debugRow("Evaluation", .evaluation, showsDivider: false)
+        }
+        // Presented rather than pushed: a NavigationLink inside this sheet's
+        // stack doesn't push, and a lab bench doesn't need to be in the
+        // navigation hierarchy anyway.
+        .sheet(item: $developerTool) { tool in
+            NavigationStack {
+                switch tool {
+                case .harness: DebugView()
+                case .evaluation: EvaluationView()
                 }
             }
-            .buttonStyle(.plain)
         }
+    }
+
+    private func debugRow(_ title: String, _ tool: DeveloperTool, showsDivider: Bool) -> some View {
+        Button { developerTool = tool } label: {
+            PanelRow(showsDivider: showsDivider) {
+                HStack {
+                    Text(title)
+                        .font(FTLTypography.rowTitle)
+                        .foregroundStyle(FTLColor.textPrimary)
+                    Spacer()
+                    Chevron()
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    enum DeveloperTool: String, Identifiable {
+        case harness, evaluation
+        var id: String { rawValue }
     }
     #endif
 
