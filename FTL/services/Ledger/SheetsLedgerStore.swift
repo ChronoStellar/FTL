@@ -237,7 +237,7 @@ actor SheetsLedgerStore: LedgerStore {
                     amount: Money(minorUnits: minorUnits, currency: .idr),
                     merchantRaw: description.isEmpty ? "Legacy import" : description,
                     merchant: description.isEmpty ? nil : description,
-                    categoryID: category.isEmpty ? nil : CategoryID(rawValue: category.lowercased()),
+                    categoryID: category.isEmpty ? nil : CategoryID(rawValue: category),
                     kind: .spend,
                     nonSpendType: nil,
                     source: .manual,
@@ -267,22 +267,22 @@ actor SheetsLedgerStore: LedgerStore {
     /// anything can be tagged; the numbers are the user's to set, and inventing
     /// them would be the app deciding what they should spend (Invariant 8).
     ///
-    /// The six leaf names are TagStore's canonical "spend" categories, spelled
-    /// exactly — TagStore.CategoryInfo — so a transaction the classifier tags
-    /// "Food & Dining" lands in the same bucket a person sees on the dashboard,
-    /// not a same-idea-different-name bucket that never gets spend attributed to
-    /// it. TagStore's two non-spend categories (transfers, refunds) and its
-    /// notATransaction one aren't here on purpose: Invariant 5 — non-spend rows
-    /// are never counted toward a ceiling, so they don't get one.
+    /// These seven are the actual categories in use — the ones already driving
+    /// the Google Form this ledger was fed from — not a taxonomy the app
+    /// invented. Sheets is canonical: TagStore reconciles its own spend
+    /// categories FROM the live ledger (`AppEnvironment.reconcileTagStore()`),
+    /// so keeping this list in sync with TagStore's is no longer something this
+    /// file needs to worry about — it flows the other way now.
     private static var starterBudgets: [[String]] {
         let total = CategoryID(rawValue: "total")
         let leaves = [
-            ("food-dining", "Food & Dining"),
-            ("ride-transport", "Ride & Transport"),
-            ("groceries", "Groceries & Supermarket"),
-            ("shopping", "E-Commerce & Shopping"),
-            ("utilities", "Utilities & Bills"),
-            ("subscriptions", "Subscriptions & Digital"),
+            ("food", "Food"),
+            ("transport", "Transport"),
+            ("housing", "Housing"),
+            ("utilities", "Utilities"),
+            ("entertainment", "Entertainment"),
+            ("shopping", "Shopping"),
+            ("other", "Other"),
         ]
         return [SheetsSchema.row(categoryID: total, name: "Total", parentID: nil, ceiling: .zero, month: "")]
             + leaves.map { id, name in

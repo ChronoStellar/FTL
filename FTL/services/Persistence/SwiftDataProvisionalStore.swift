@@ -89,7 +89,10 @@ actor SwiftDataProvisionalStore: ProvisionalStore {
     }
 }
 
-private struct BucketKey: Hashable {
+/// `nonisolated` because the target defaults every type to `@MainActor`, and a
+/// main-actor-isolated Hashable conformance can't be used from inside this
+/// actor — a warning today, an error in Swift 6 mode.
+private nonisolated struct BucketKey: Hashable {
     let amount: Int
     let date: Int
 }

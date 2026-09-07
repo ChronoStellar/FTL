@@ -39,6 +39,10 @@ private struct DebugHarness: View {
     @State private var monthRows: [[String]] = []
     @State private var viewedMonth = Date.now
 
+    // Budgets-tab inspector
+    @State private var budgetReport: [String] = []
+    @State private var isInspecting = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -168,6 +172,20 @@ private struct DebugHarness: View {
             }
             .task { await loadMonth() }
 
+            Section("Budgets tab (raw)") {
+                Button(isInspecting ? "Reading…" : "Inspect budgets + categories") {
+                    Task { await inspectBudgets() }
+                }
+                .disabled(isInspecting)
+
+                ForEach(Array(budgetReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             if let status {
                 Section { Text(status).font(.footnote).foregroundStyle(.secondary) }
             }
@@ -175,6 +193,79 @@ private struct DebugHarness: View {
     }
 
     // MARK: Actions
+
+    /// Dumps the budgets tab verbatim and re-runs the app's own resolution over
+    /// it, so a bucket that "should be there" but isn't can be read off the
+    /// screen instead of guessed at. Every fix in this area so far has been a
+    /// hypothesis about data nobody could see; this is how that stops.
+    ///
+    /// Reads both tabs raw rather than going through the stores on purpose —
+    /// the stores are exactly what's under suspicion, so their view of the
+    /// sheet is not evidence.
+    private func inspectBudgets() async {
+        isInspecting = true
+        defer { isInspecting = false }
+
+        let service = SheetsService(auth: auth)
+        var lines: [String] = []
+        do {
+            let raw = try await service.read(
+                range: SheetsService.a1(tab: SheetsSchema.Tab.budgets, SheetsSchema.budgetRange)
+            )
+            let rows = Array(raw.dropFirst())
+            lines.append("budgets tab: \(rows.count) row(s) below the header")
+
+            // Verbatim, with empty vs absent cells distinguished — a blank
+            // parent column and a missing one behave differently.
+            var ids: Set<String> = []
+            for (index, row) in rows.enumerated() {
+                let cell = { (i: Int) -> String in
+                    i < row.count ? (row[i].isEmpty ? "∅" : row[i]) : "—"
+                }
+                lines.append("\(index + 1). id=\(cell(0)) name=\(cell(1)) parent=\(cell(2)) ceiling=\(cell(3)) month=\(cell(4))")
+                if let first = row.first, !first.isEmpty {
+                    ids.insert(CategoryID(rawValue: first).rawValue)
+                }
+            }
+
+            // A root is a row with no parent. No root means no tree.
+            let roots = rows.filter { $0.count > 2 && $0[2].trimmingCharacters(in: .whitespaces).isEmpty }
+            lines.append(roots.isEmpty
+                ? "⚠︎ no root row — nothing has an empty parent column"
+                : "roots: \(roots.compactMap { $0.first }.joined(separator: ", "))")
+
+            // Parents that point at an id no row actually has.
+            for row in rows where row.count > 2 {
+                let parent = row[2].trimmingCharacters(in: .whitespaces)
+                guard !parent.isEmpty, !ids.contains(CategoryID(rawValue: parent).rawValue) else { continue }
+                lines.append("⚠︎ '\(row.first ?? "?")' points at parent '\(parent)' — no row has that id")
+            }
+
+            // Categories the ledger actually uses that have no budget row.
+            let txRaw = try await service.read(
+                range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+            )
+            let used = Set(
+                txRaw.dropFirst()
+                    .compactMap { $0.count > 6 ? $0[6] : nil }
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    .map { CategoryID(rawValue: $0).rawValue }
+            )
+            let missing = used.subtracting(ids).sorted()
+            lines.append(missing.isEmpty
+                ? "every transaction category has a budget row"
+                : "⚠︎ used on transactions, no budget row: \(missing.joined(separator: ", "))")
+
+            // Same id, different spelling — what the lowercasing now collapses.
+            let rawIDs = rows.compactMap { $0.first }.filter { !$0.isEmpty }
+            if rawIDs.count != Set(rawIDs.map { CategoryID(rawValue: $0).rawValue }).count {
+                lines.append("⚠︎ duplicate ids once normalized — the tab has the same bucket spelled more than one way")
+            }
+        } catch {
+            lines = ["failed: \(error.localizedDescription)"]
+        }
+        budgetReport = lines
+    }
 
     private func loadGmail() async {
         let service = GmailService(auth: auth)
@@ -203,7 +294,7 @@ private struct DebugHarness: View {
             amount: Money(minorUnits: minorUnits, currency: .idr),
             merchantRaw: txDesc.isEmpty ? "Manual entry" : txDesc,
             merchant: txDesc.isEmpty ? nil : txDesc,
-            categoryID: txCategory.isEmpty ? nil : CategoryID(rawValue: txCategory.lowercased()),
+            categoryID: txCategory.isEmpty ? nil : CategoryID(rawValue: txCategory),
             kind: .spend,
             nonSpendType: nil,
             source: .manual,

@@ -26,6 +26,10 @@ struct SettingsView: View {
     @State private var isAddingCategory: Bool = false
     @State private var newCategoryName: String = ""
     @State private var newCategoryDigits: String = ""
+    /// Categories real transactions reference but that never got a budget row —
+    /// see `loadMissingCategories()`.
+    @State private var missingCategories: [CategoryID] = []
+    @State private var isShowingIncomeSplit: Bool = false
 
     #if DEBUG
     @State private var developerTool: DeveloperTool?
@@ -89,6 +93,17 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $isAddingCategory) {
                 addCategorySheet
+            }
+            .sheet(isPresented: $isShowingIncomeSplit) {
+                IncomeSplitScreen(
+                    environment: environment,
+                    interval: currentInterval,
+                    onSkip: { isShowingIncomeSplit = false },
+                    onSaved: {
+                        isShowingIncomeSplit = false
+                        Task { await loadBudgets() }
+                    }
+                )
             }
         }
         .presentationDetents([.large])
@@ -269,6 +284,45 @@ struct SettingsView: View {
                             .font(FTLTypography.caption)
                             .foregroundStyle(FTLColor.textTertiary)
                     }
+                }
+
+                if !missingCategories.isEmpty {
+                    PanelRow(showsDivider: true) {
+                        VStack(alignment: .leading, spacing: FTLSpacing.sm) {
+                            Text("Used in transactions, not in your buckets")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                            ForEach(missingCategories, id: \.self) { categoryID in
+                                HStack {
+                                    Text(categoryID.rawValue.capitalized)
+                                        .font(FTLTypography.caption)
+                                        .foregroundStyle(FTLColor.textPrimary)
+                                    Spacer()
+                                    Button("Add") {
+                                        Task { await addMissingCategory(categoryID) }
+                                    }
+                                    .font(FTLTypography.captionSmall)
+                                    .foregroundStyle(FTLColor.accent)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                PanelRow(showsDivider: true) {
+                    Button {
+                        isShowingIncomeSplit = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chart.pie.fill")
+                                .foregroundStyle(FTLColor.accent)
+                            Text("Set Up by Income")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.accent)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 PanelRow(showsDivider: false) {
@@ -566,8 +620,54 @@ struct SettingsView: View {
     private func loadBudgets() async {
         do {
             budgetTree = try await environment.budgets.tree(for: currentInterval)
+            await loadMissingCategories()
         } catch {
             syncStatus = "Failed to load budgets: \(error.localizedDescription)"
+        }
+    }
+
+    /// Categories a transaction actually uses but that have no budget row at
+    /// all — most commonly rows migrated from an old month-named tab, which
+    /// stamp a categoryID straight from that sheet's free-text column
+    /// (`SheetsLedgerStore.importLegacyMonthTabs`) with no budgets-tab row ever
+    /// created to go with it. Real, silently un-budgeted spend, not a display
+    /// glitch — worth surfacing rather than letting it sit invisible.
+    private func loadMissingCategories() async {
+        guard let root = budgetTree.first else {
+            missingCategories = []
+            return
+        }
+        let known = Self.flattenIDs(root)
+        do {
+            let all = try await environment.ledger.all()
+            let used = Set(all.filter { $0.kind == .spend }.compactMap(\.categoryID))
+            missingCategories = used.subtracting(known).sorted { $0.rawValue < $1.rawValue }
+        } catch {
+            // Best-effort: leave whatever the prompt already showed rather than
+            // blank it over a transient read failure.
+        }
+    }
+
+    private static func flattenIDs(_ node: BudgetNode) -> Set<CategoryID> {
+        node.children.reduce(into: [node.id]) { set, child in
+            set.formUnion(flattenIDs(child))
+        }
+    }
+
+    /// One-tap fix for a row in `missingCategories` — adds it under Total with
+    /// no ceiling yet, using the SAME id the transactions already carry (not a
+    /// freshly re-slugged name) so it lines up exactly.
+    private func addMissingCategory(_ categoryID: CategoryID) async {
+        let cat = SpendCategory(
+            id: categoryID,
+            name: categoryID.rawValue.capitalized,
+            parentID: CategoryID(rawValue: "total")
+        )
+        do {
+            try await environment.budgets.addCategory(cat, under: CategoryID(rawValue: "total"))
+            await loadBudgets()
+        } catch {
+            syncStatus = "Failed to add \(categoryID.rawValue): \(error.localizedDescription)"
         }
     }
 
@@ -589,7 +689,8 @@ struct SettingsView: View {
     private func addCategory(name: String, minorUnits: Int) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let slug = trimmed.lowercased().replacingOccurrences(of: " ", with: "_")
+        // Only the spaces need handling here — CategoryID trims and lowercases.
+        let slug = trimmed.replacingOccurrences(of: " ", with: "_")
         let cat = SpendCategory(id: CategoryID(rawValue: slug), name: trimmed, parentID: CategoryID(rawValue: "total"))
         do {
             try await environment.budgets.addCategory(cat, under: CategoryID(rawValue: "total"))

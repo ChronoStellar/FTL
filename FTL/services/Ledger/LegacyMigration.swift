@@ -77,7 +77,7 @@ actor LegacyMigration {
                     amount: Money(minorUnits: minorUnits, currency: .idr),
                     merchantRaw: description.isEmpty ? "Legacy import" : description,
                     merchant: description.isEmpty ? nil : description,
-                    categoryID: category.isEmpty ? nil : CategoryID(rawValue: category.lowercased()),
+                    categoryID: category.isEmpty ? nil : CategoryID(rawValue: category),
                     kind: .spend,
                     nonSpendType: nil,
                     source: .manual,

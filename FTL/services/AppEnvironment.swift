@@ -31,8 +31,10 @@ final class AppEnvironment {
 
     /// True for `live()`, false for `sample()`. Gates `reconcileTagStore()` —
     /// syncing the on-device tag store from `.sample()`'s fixture categories
-    /// would overwrite the real, persisted taxonomy with demo data.
-    private let isLive: Bool
+    /// would overwrite the real, persisted taxonomy with demo data — and gates
+    /// the one-time income-split onboarding prompt for the same reason: fixture
+    /// data isn't the user's real income to ask about.
+    let isLive: Bool
 
     // MARK: - Phase 2
     //
@@ -166,6 +168,10 @@ final class AppEnvironment {
 
     func makeGoalViewModel() -> GoalViewModel {
         GoalViewModel(goals: goals)
+    }
+
+    func makeIncomeSplitViewModel(interval: DateInterval) -> IncomeSplitViewModel {
+        IncomeSplitViewModel(budgets: budgets, ledger: ledger, interval: interval)
     }
 
     // MARK: - Migration

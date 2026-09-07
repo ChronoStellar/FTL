@@ -148,22 +148,6 @@ actor TagStore {
         try encoded.write(to: fileURL, options: .atomic)
     }
 
-    /// Checks if a given query string corresponds to a known banking/rail service provider.
-    func identifyServiceProvider(_ query: String) -> String? {
-        let q = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        for provider in cachedData.serviceProviders {
-            if provider.name.lowercased().contains(q) {
-                return provider.name
-            }
-            for alias in provider.aliases {
-                if alias.lowercased() == q || q.contains(alias.lowercased()) {
-                    return provider.name
-                }
-            }
-        }
-        return nil
-    }
-
     /// Replaces the "spend" entries with the categories actually sitting in the
     /// user's own Sheet, leaving the fixed non-spend / notATransaction entries
     /// untouched — those describe how the app itself routes money movement

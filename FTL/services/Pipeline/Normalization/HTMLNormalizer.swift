@@ -105,7 +105,6 @@ nonisolated enum HTMLNormalizer: Sendable {
         var result = ""
         result.reserveCapacity(input.count)
 
-        var lastWasNewline = false
         var newlineCount = 0
 
         input.enumerateLines { line, _ in

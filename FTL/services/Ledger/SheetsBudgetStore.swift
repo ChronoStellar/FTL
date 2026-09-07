@@ -49,6 +49,15 @@ actor SheetsBudgetStore: BudgetStore {
         // require the parent to resolve). Same principle as `.unallocated`:
         // a category losing its place in the tree is a bug to surface, not
         // silently drop.
+        // A row naming itself as its own parent is a cycle, not a hierarchy. It
+        // is neither a root (its parent column isn't empty) nor anyone's child
+        // (it can't be its own), so on its own it collapses the entire tree to
+        // nothing — which is exactly what an observed sheet did with
+        // `id=total parent=total`. It was meant to be the root; treat it as one.
+        for (id, parent) in parents where parent == id {
+            parents[id] = nil
+        }
+
         let knownIDs = Set(parents.keys)
         var roots = parents.filter { $0.value == nil }.map(\.key)
         let orphanIDs = parents.compactMap { id, parent -> CategoryID? in
@@ -78,17 +87,28 @@ actor SheetsBudgetStore: BudgetStore {
 
     func setCeiling(_ amount: Money, for categoryID: CategoryID, in interval: DateInterval) async throws {
         var rows = try await ledger.budgetRows()
-        if let index = rows.firstIndex(where: { $0.first == categoryID.rawValue }) {
+        // Compare through CategoryID, never against the raw cell: the id in the
+        // sheet may be "Food" where ours is "food", and a miss here doesn't
+        // fail loudly — it appends a second row for a bucket that already
+        // exists.
+        if let index = rows.firstIndex(where: { CategoryID(rawValue: $0.first ?? "") == categoryID }) {
             var row = rows[index]
             while row.count < 5 { row.append("") }
             row[3] = String(amount.minorUnits)
             rows[index] = row
         } else {
+            // The root is not its own child. Writing `parent = total` on the
+            // `total` row itself makes a cycle: it stops being a root (its
+            // parent column isn't empty) and it can't be anyone's child either,
+            // so the whole tree resolves to nothing and every bucket vanishes
+            // from the dashboard. Hard-coding the parent here is what produced
+            // exactly that.
+            let root = CategoryID(rawValue: "total")
             rows.append(
                 SheetsSchema.row(
                     categoryID: categoryID,
                     name: categoryID.rawValue.capitalized,
-                    parentID: CategoryID(rawValue: "total"),
+                    parentID: categoryID == root ? nil : root,
                     ceiling: amount,
                     month: ""
                 )
@@ -99,7 +119,7 @@ actor SheetsBudgetStore: BudgetStore {
 
     func addCategory(_ category: SpendCategory, under parentID: CategoryID?) async throws {
         var rows = try await ledger.budgetRows()
-        guard !rows.contains(where: { $0.first == category.id.rawValue }) else { return }
+        guard !rows.contains(where: { CategoryID(rawValue: $0.first ?? "") == category.id }) else { return }
         rows.append(
             SheetsSchema.row(
                 categoryID: category.id, name: category.name,
@@ -109,17 +129,23 @@ actor SheetsBudgetStore: BudgetStore {
         try await ledger.writeBudgetRows(rows)
     }
 
+    /// `visited` is a cycle brake, not bookkeeping. The sheet is hand-editable,
+    /// so a → b → a is reachable, and without this the recursion never returns
+    /// — a hang or a stack overflow rather than a wrong number. A node already
+    /// on the current path is dropped instead of followed.
     private func node(
         id: CategoryID,
         names: [CategoryID: String],
         parents: [CategoryID: CategoryID?],
-        ceilings: [CategoryID: Money]
+        ceilings: [CategoryID: Money],
+        visited: Set<CategoryID> = []
     ) -> BudgetNode {
+        let seen = visited.union([id])
         let children = parents
-            .filter { $0.value == id }
+            .filter { $0.value == id && !seen.contains($0.key) }
             .map(\.key)
             .sorted { (names[$0] ?? "") < (names[$1] ?? "") }
-            .map { node(id: $0, names: names, parents: parents, ceilings: ceilings) }
+            .map { node(id: $0, names: names, parents: parents, ceilings: ceilings, visited: seen) }
 
         return BudgetNode(
             id: id,

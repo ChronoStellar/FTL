@@ -331,7 +331,4 @@ struct EvaluationView: View {
         isRunning = false
     }
 
-    private func topSenders(_ report: EvaluationReport) -> [(String, EvaluationReport.SenderStats)] {
-        report.bySender.sorted { $0.value.total > $1.value.total }.prefix(5).map { ($0.key, $0.value) }
-    }
 }

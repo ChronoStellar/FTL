@@ -18,6 +18,11 @@ struct ContentView: View {
     @State private var path: [Route] = []
     @State private var sheet: SheetRoute?
 
+    /// Shown once: whether the income-split onboarding prompt has already
+    /// appeared (skipped or completed) on this device. It stays reachable from
+    /// Settings → Budget Ceilings afterwards — this only stops it nagging.
+    @AppStorage("hasShownIncomeSplitOnboarding") private var hasShownIncomeSplitOnboarding = false
+
     init(environment: AppEnvironment) {
         self.environment = environment
         _home = State(wrappedValue: environment.makeHomeViewModel())
@@ -42,8 +47,24 @@ struct ContentView: View {
         // real network I/O and nothing on screen depends on it finishing.
         .task { await environment.reconcileTagStore() }
         .tint(FTLColor.textTertiary)
-        .task { await home.load() }
+        .task {
+            await home.load()
+            offerIncomeSplitIfNeeded()
+        }
         .sheet(item: $sheet, content: sheetContent)
+    }
+
+    /// Once, live-only, and only when there's real nothing set yet — a Total
+    /// ceiling of zero with buckets already under it. Fixture data in
+    /// `.sample()` isn't the user's income to ask about, and a sheet that
+    /// already has ceilings has nothing this prompt would add.
+    private func offerIncomeSplitIfNeeded() {
+        guard environment.isLive, !hasShownIncomeSplitOnboarding,
+              sheet == nil,
+              let root = home.buckets.first, !root.node.children.isEmpty,
+              root.node.ceiling.minorUnits == 0
+        else { return }
+        sheet = .incomeSplit
     }
 
     // MARK: - Toolbar
@@ -149,6 +170,21 @@ struct ContentView: View {
                 sheet = nil
                 Task { await home.load(forceReload: true) }
             })
+
+        case .incomeSplit:
+            IncomeSplitScreen(
+                environment: environment,
+                interval: home.month?.interval ?? .init(start: .now, duration: 0),
+                onSkip: {
+                    hasShownIncomeSplitOnboarding = true
+                    sheet = nil
+                },
+                onSaved: {
+                    hasShownIncomeSplitOnboarding = true
+                    sheet = nil
+                    Task { await home.load(forceReload: true) }
+                }
+            )
         }
     }
 
@@ -160,7 +196,7 @@ struct ContentView: View {
     }
 
     enum SheetRoute: String, Identifiable {
-        case months, queue, add, settings
+        case months, queue, add, settings, incomeSplit
         var id: String { rawValue }
     }
 }

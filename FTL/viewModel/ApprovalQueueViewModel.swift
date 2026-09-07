@@ -41,7 +41,6 @@ final class ApprovalQueueViewModel {
     }
 
     var isEmpty: Bool { entries.isEmpty }
-    var modelTaggedCount: Int { entries.filter { $0.provenance.isModel }.count }
 
     /// The tag options on each card: every bucket, plus the escape hatch. A
     /// transfer or top-up is not spending, and the user needs to say so without

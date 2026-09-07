@@ -10,11 +10,6 @@ import Foundation
 
 nonisolated enum TransactionMarkerDetector: Sendable {
 
-    /// Core currency markers.
-    static let currencyMarkers = [
-        "Rp", "IDR", "Rp."
-    ]
-
     private static let currencyRegex: NSRegularExpression = {
         // Matches:
         // 1. Standalone currency codes/symbols: \b(rp|idr)\b

@@ -10,7 +10,26 @@ import Foundation
 
 nonisolated struct CategoryID: Sendable, Hashable, Codable, RawRepresentable {
     let rawValue: String
-    init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Trimmed and lowercased at construction, always.
+    ///
+    /// The same bucket arrives spelled differently depending on the path it
+    /// came in on: the budgets tab is hand-editable ("Food"), the legacy month
+    /// import lowercases whatever the old sheet said ("food"), and the add-
+    /// category form slugs from typed text. Two spellings meant two buckets —
+    /// spend attributed to one, a ceiling sitting on the other, and a category
+    /// that looks present everywhere but never matches anything. Normalizing in
+    /// the initializer catches every path at once (sheet reads, legacy import,
+    /// JSON decode, anything typed) rather than asking each call site to
+    /// remember.
+    ///
+    /// Display names are NOT normalized — `SpendCategory.name` is what a person
+    /// reads and stays exactly as they wrote it.
+    init(rawValue: String) {
+        self.rawValue = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
 
     /// The implicit child every parent ceiling carries, so mystery spend stays
     /// visible instead of silently vanishing from the tree.

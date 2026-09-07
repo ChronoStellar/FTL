@@ -92,6 +92,27 @@ struct ApprovalQueueScreen: View {
     }
 }
 
+struct IncomeSplitScreen: View {
+    @State private var viewModel: IncomeSplitViewModel
+    let onSkip: () -> Void
+    let onSaved: () -> Void
+
+    init(
+        environment: AppEnvironment,
+        interval: DateInterval,
+        onSkip: @escaping () -> Void,
+        onSaved: @escaping () -> Void
+    ) {
+        self.onSkip = onSkip
+        self.onSaved = onSaved
+        _viewModel = State(wrappedValue: environment.makeIncomeSplitViewModel(interval: interval))
+    }
+
+    var body: some View {
+        IncomeSplitView(viewModel: viewModel, onSkip: onSkip, onSaved: onSaved)
+    }
+}
+
 struct AddSpendScreen: View {
     @State private var viewModel: AddSpendViewModel
     let onCancel: () -> Void
