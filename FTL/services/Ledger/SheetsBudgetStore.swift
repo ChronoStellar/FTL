@@ -39,7 +39,40 @@ actor SheetsBudgetStore: BudgetStore {
             ceilings[id] = Money(minorUnits: Int(row[3]) ?? 0)
         }
 
-        let roots = parents.filter { $0.value == nil }.map(\.key)
+        // A row only counts as a true root when it declares no parent at all.
+        // A row that DOES declare a parent, but that parent isn't a row of its
+        // own — deleted, renamed, or a typo made by hand in the Sheet — is an
+        // orphan: not a root (it has a parent), and not anyone's child either
+        // (that parent doesn't exist), so it would otherwise vanish from the
+        // tree entirely while still being a perfectly valid category everywhere
+        // else (transactions can still reference it; `categories()` doesn't
+        // require the parent to resolve). Same principle as `.unallocated`:
+        // a category losing its place in the tree is a bug to surface, not
+        // silently drop.
+        let knownIDs = Set(parents.keys)
+        var roots = parents.filter { $0.value == nil }.map(\.key)
+        let orphanIDs = parents.compactMap { id, parent -> CategoryID? in
+            guard let parent, !knownIDs.contains(parent) else { return nil }
+            return id
+        }
+
+        if !orphanIDs.isEmpty {
+            if let existingRoot = roots.first {
+                for id in orphanIDs { parents[id] = existingRoot }
+            } else {
+                // No declared root survived at all, but leaves still point at
+                // one — synthesize the id every other write path in this file
+                // already uses ("total") rather than let the whole tree go
+                // empty.
+                let syntheticRoot = CategoryID(rawValue: "total")
+                names[syntheticRoot] = names[syntheticRoot] ?? "Total"
+                ceilings[syntheticRoot] = ceilings[syntheticRoot] ?? .zero
+                parents[syntheticRoot] = nil
+                for id in orphanIDs { parents[id] = syntheticRoot }
+                roots = [syntheticRoot]
+            }
+        }
+
         return roots.map { node(id: $0, names: names, parents: parents, ceilings: ceilings) }
     }
 

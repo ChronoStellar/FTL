@@ -37,6 +37,10 @@ struct ContentView: View {
             .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
         }
+        // Fire-and-forget, alongside Home's own load rather than gating it —
+        // reconciling the tag store from the Sheet's actual categories is
+        // real network I/O and nothing on screen depends on it finishing.
+        .task { await environment.reconcileTagStore() }
         .tint(FTLColor.textTertiary)
         .task { await home.load() }
         .sheet(item: $sheet, content: sheetContent)

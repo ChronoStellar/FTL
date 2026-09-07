@@ -164,6 +164,35 @@ actor TagStore {
         return nil
     }
 
+    /// Replaces the "spend" entries with the categories actually sitting in the
+    /// user's own Sheet, leaving the fixed non-spend / notATransaction entries
+    /// untouched — those describe how the app itself routes money movement
+    /// (a transfer, a refund, marketing noise) and were never a budget bucket a
+    /// person set up, so a Sheet has nothing to say about them.
+    ///
+    /// Google Sheets is canonical (CLAUDE.md); `TagData.defaults`' six spend
+    /// names were only ever a placeholder for a sheet that doesn't have its own
+    /// yet. Call this whenever the live ledger's categories are available, so
+    /// the model is never asked to classify against a taxonomy the user didn't
+    /// choose. Never call it from the evaluation harness — that runs against a
+    /// fixed corpus and needs a fixed taxonomy to stay reproducible.
+    ///
+    /// Keyword rules whose target category didn't survive reconciliation are
+    /// dropped rather than left dangling — a rule pointing at nothing is worse
+    /// than no rule (Invariant 6: escalate, don't guess).
+    func reconcile(spendCategories: [SpendCategory]) throws {
+        let fixed = cachedData.categories.filter { $0.ledgerTreatment != "spend" }
+        let reconciledSpend = spendCategories.map {
+            TagData.CategoryInfo(name: $0.name, ledgerTreatment: "spend")
+        }
+        let validNames = Set((fixed + reconciledSpend).map(\.name))
+
+        var next = cachedData
+        next.categories = reconciledSpend + fixed
+        next.keywordRules = cachedData.keywordRules.filter { validNames.contains($0.category) }
+        try update(next)
+    }
+
     /// Case-insensitive, exact-name lookup against the canonical category list.
     /// nil means the model named a category that isn't in the store — the caller
     /// must flag this rather than trust the free text.

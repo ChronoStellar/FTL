@@ -29,6 +29,11 @@ final class AppEnvironment {
     let approvals: ApprovalService
     let goals: GoalStore
 
+    /// True for `live()`, false for `sample()`. Gates `reconcileTagStore()` —
+    /// syncing the on-device tag store from `.sample()`'s fixture categories
+    /// would overwrite the real, persisted taxonomy with demo data.
+    private let isLive: Bool
+
     // MARK: - Phase 2
     //
     // The two model jobs. Contracts exist so the spine is built against the right
@@ -47,13 +52,15 @@ final class AppEnvironment {
         ledger: LedgerStore,
         budgets: BudgetStore,
         provisional: ProvisionalStore,
-        goals: GoalStore
+        goals: GoalStore,
+        isLive: Bool
     ) {
         self.auth = auth
         self.ledger = ledger
         self.budgets = budgets
         self.provisional = provisional
         self.goals = goals
+        self.isLive = isLive
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
         self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
     }
@@ -68,7 +75,8 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
             provisional: SwiftDataProvisionalStore(modelContainer: Self.makeProvisionalContainer()),
-            goals: InMemoryGoalStore(empty: true)
+            goals: InMemoryGoalStore(empty: true),
+            isLive: true
         )
     }
 
@@ -99,8 +107,23 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: budgets,
             provisional: InMemoryProvisionalStore(),
-            goals: InMemoryGoalStore()
+            goals: InMemoryGoalStore(),
+            isLive: false
         )
+    }
+
+    // MARK: - Tag store reconciliation
+
+    /// Syncs TagStore's spend-category taxonomy from this ledger's actual
+    /// budget categories, so the model classifier's vocabulary tracks whatever
+    /// the user really set up in Sheets rather than a placeholder name they
+    /// never chose — see TagStore.reconcile(spendCategories:). No-op in
+    /// `.sample()`, and best-effort in `.live()`: a failed read here (offline,
+    /// rate-limited) leaves TagStore exactly as it was, which still works.
+    func reconcileTagStore() async {
+        guard isLive else { return }
+        guard let categories = try? await ledger.categories() else { return }
+        try? await TagStore.shared.reconcile(spendCategories: categories)
     }
 
     // MARK: - View model factories
