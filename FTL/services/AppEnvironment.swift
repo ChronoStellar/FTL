@@ -121,4 +121,10 @@ final class AppEnvironment {
     func makeGoalViewModel() -> GoalViewModel {
         GoalViewModel(goals: goals)
     }
+
+    // MARK: - Migration
+
+    func makeLegacyMigration() -> LegacyMigration {
+        LegacyMigration(auth: auth, ledger: ledger)
+    }
 }

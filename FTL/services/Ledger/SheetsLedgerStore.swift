@@ -112,8 +112,9 @@ actor SheetsLedgerStore: LedgerStore {
 
     // MARK: - Bootstrap
 
-    /// Creates the tabs and headers on first use. Safe to call repeatedly; it
-    /// never touches a tab that already exists.
+    /// Creates the tabs and headers on first use, then auto-imports any data
+    /// sitting in the Phase-0 month-named tabs (e.g. "September 2026") so the
+    /// dashboard works without a manual migration step.
     private func bootstrap() async throws {
         guard !didBootstrap else { return }
         let titles = try await sheets.tabTitles()
@@ -135,8 +136,87 @@ actor SheetsLedgerStore: LedgerStore {
                 inputOption: "RAW"
             )
         }
+
+        // If the transactions tab is empty, pull data from any legacy month-named
+        // tabs the debug harness created. Runs once — after this the transactions
+        // tab has rows and the guard won't fire again.
+        let txRows = try await sheets.read(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+        )
+        if txRows.dropFirst().isEmpty {
+            try await importLegacyMonthTabs(from: titles)
+        }
+
         didBootstrap = true
     }
+
+    // MARK: - Legacy import
+
+    /// Reads every month-named tab ("September 2026", etc.) and appends its rows
+    /// to the `transactions` tab in the 16-column schema.
+    ///
+    /// Called from `bootstrap()` only when the transactions tab is empty, so it
+    /// never creates duplicates during normal use. Uses `sheets.append` directly
+    /// rather than `self.append` to avoid a re-entrant `bootstrap()` call.
+    private func importLegacyMonthTabs(from allTabs: [String]) async throws {
+        let reserved: Set<String> = [
+            SheetsSchema.Tab.transactions,
+            SheetsSchema.Tab.budgets,
+            "Sheet1",
+        ]
+
+        let monthTabs = allTabs.filter { tab in
+            !reserved.contains(tab) && Self.legacyMonthFormatter.date(from: tab) != nil
+        }
+        guard !monthTabs.isEmpty else { return }
+
+        var transactions: [LedgerTransaction] = []
+        let now = Date.now
+
+        for tab in monthTabs {
+            let rows = try await sheets.read(range: SheetsService.a1(tab: tab, "A:D"))
+            for row in rows.dropFirst() {
+                guard row.count >= 4,
+                      let date = Self.legacyDayFormatter.date(from: row[0].trimmingCharacters(in: .whitespaces)),
+                      let amountDouble = Double(row[3].trimmingCharacters(in: .whitespaces))
+                else { continue }
+
+                // IDR exponent is 0 — minor units are whole rupiah.
+                let minorUnits = Int(amountDouble.rounded())
+                let category = row[1].trimmingCharacters(in: .whitespaces)
+                let description = row[2].trimmingCharacters(in: .whitespaces)
+
+                transactions.append(LedgerTransaction(
+                    id: UUID(),
+                    date: date,
+                    amount: Money(minorUnits: minorUnits, currency: .idr),
+                    merchantRaw: description.isEmpty ? "Legacy import" : description,
+                    merchant: description.isEmpty ? nil : description,
+                    categoryID: category.isEmpty ? nil : CategoryID(rawValue: category.lowercased()),
+                    kind: .spend,
+                    nonSpendType: nil,
+                    source: .manual,
+                    sourcesMerged: [],
+                    splits: [],
+                    lineItems: [],
+                    provenance: .manual,
+                    flags: [],
+                    capturedAt: date,
+                    approvedAt: now,
+                    notes: "Migrated from \(tab)"
+                ))
+            }
+        }
+
+        guard !transactions.isEmpty else { return }
+        try await sheets.append(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange),
+            values: transactions.map(SheetsSchema.row(from:)),
+            inputOption: "RAW"
+        )
+    }
+
+    // MARK: - Static helpers
 
     /// A new sheet gets bucket names but no ceilings. Names are needed before
     /// anything can be tagged; the numbers are the user's to set, and inventing
@@ -153,4 +233,20 @@ actor SheetsLedgerStore: LedgerStore {
                 )
             }
     }
+
+    private static let legacyMonthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "LLLL yyyy"      // "September 2026"
+        return f
+    }()
+
+    private static let legacyDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }
+

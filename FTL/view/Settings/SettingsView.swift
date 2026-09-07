@@ -29,6 +29,9 @@ struct SettingsView: View {
 
     #if DEBUG
     @State private var developerTool: DeveloperTool?
+    @State private var isMigrating: Bool = false
+    @State private var migrationResult: String?
+    @State private var didMigrate: Bool = false
     #endif
 
     private var currentInterval: DateInterval {
@@ -310,7 +313,46 @@ struct SettingsView: View {
     private var debugPanel: some View {
         PanelCard {
             debugRow("Google API harness", .harness, showsDivider: true)
-            debugRow("Evaluation", .evaluation, showsDivider: false)
+            debugRow("Evaluation", .evaluation, showsDivider: true)
+
+            // Legacy data migration
+            PanelRow(showsDivider: migrationResult != nil) {
+                Button {
+                    Task { await runMigration() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isMigrating {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(FTLColor.accent)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Migrate Legacy Data")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(didMigrate ? FTLColor.textTertiary : FTLColor.textPrimary)
+                            Text("Import entries from month-named tabs into the transactions tab")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                        }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isMigrating || didMigrate)
+            }
+
+            if let migrationResult {
+                PanelRow(showsDivider: false) {
+                    Text(migrationResult)
+                        .font(FTLTypography.captionSmall)
+                        .foregroundStyle(
+                            migrationResult.contains("Failed")
+                                ? FTLColor.destructive
+                                : FTLColor.textSecondary
+                        )
+                }
+            }
         }
         // Presented rather than pushed: a NavigationLink inside this sheet's
         // stack doesn't push, and a lab bench doesn't need to be in the
@@ -584,4 +626,27 @@ struct SettingsView: View {
         }
         isSyncingSpreadsheet = false
     }
+
+    #if DEBUG
+    private func runMigration() async {
+        isMigrating = true
+        migrationResult = "Scanning month-named tabs…"
+        do {
+            let migration = environment.makeLegacyMigration()
+            let result = try await migration.migrate()
+            // Invalidate the ledger cache so the dashboard picks up the new rows
+            _ = try? await environment.ledger.reload()
+            didMigrate = true
+            if result.rowsMigrated == 0 {
+                migrationResult = "No legacy data found across \(result.tabsScanned) month tabs."
+            } else {
+                migrationResult = "Migrated \(result.rowsMigrated) rows from \(result.tabsScanned) tab\(result.tabsScanned == 1 ? "" : "s")."
+                    + (result.rowsSkipped > 0 ? " \(result.rowsSkipped) skipped (unparseable)." : "")
+            }
+        } catch {
+            migrationResult = "Failed: \(error.localizedDescription)"
+        }
+        isMigrating = false
+    }
+    #endif
 }
