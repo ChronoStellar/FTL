@@ -6,13 +6,42 @@
 //  (banks, payment rails, e-wallets), and merchant keyword rules.
 //  Backed by a fast, editable JSON store.
 //
+//  Each category carries its own `ledgerTreatment`. This is what lets
+//  FoundationModelClassifier derive `kind` (spend / non-spend / not-a-transaction)
+//  from the model's own categorical choice instead of a second, independent
+//  boolean — the model previously emitted `isTransferOrRefund` with no required
+//  agreement with `transactionType`, so a refund whose boolean disagreed with its
+//  own category fell through with `kind = nil` and vanished. A category not in
+//  this list is now a detectable event (flag it) instead of silently-accepted
+//  free text.
+//
 
 import Foundation
 
 nonisolated struct TagData: Codable, Sendable {
-    var categories: [String]
+    var categories: [CategoryInfo]
     var serviceProviders: [ServiceProviderInfo]
     var keywordRules: [KeywordRule]
+
+    nonisolated struct CategoryInfo: Codable, Sendable, Identifiable, Hashable {
+        var id: String { name }
+        var name: String
+        /// "spend" | "nonSpend" | "notATransaction". Not `TransactionKind`
+        /// directly — "notATransaction" has no row to have a kind at all, it
+        /// means the category is marketing/noise and nothing gets created.
+        var ledgerTreatment: String
+        /// One of `NonSpendType`'s raw values ("refund", "transfer", "topup",
+        /// "creditCardPayment", "cashback"), or nil when the category doesn't map
+        /// cleanly to one — "Bank Transfer / Top-Up" straddles two and is left
+        /// nil rather than guessed. Meaningless unless `ledgerTreatment == "nonSpend"`.
+        var nonSpendType: String?
+
+        init(name: String, ledgerTreatment: String, nonSpendType: String? = nil) {
+            self.name = name
+            self.ledgerTreatment = ledgerTreatment
+            self.nonSpendType = nonSpendType
+        }
+    }
 
     nonisolated struct ServiceProviderInfo: Codable, Sendable, Identifiable {
         var id: String { name }
@@ -39,15 +68,15 @@ nonisolated struct TagData: Codable, Sendable {
 
     static let defaults = TagData(
         categories: [
-            "Food & Dining",
-            "Ride & Transport",
-            "Groceries & Supermarket",
-            "E-Commerce & Shopping",
-            "Utilities & Bills",
-            "Subscriptions & Digital",
-            "Bank Transfer / Top-Up",
-            "Refund / Inflow",
-            "Marketing / Notification"
+            CategoryInfo(name: "Food & Dining", ledgerTreatment: "spend"),
+            CategoryInfo(name: "Ride & Transport", ledgerTreatment: "spend"),
+            CategoryInfo(name: "Groceries & Supermarket", ledgerTreatment: "spend"),
+            CategoryInfo(name: "E-Commerce & Shopping", ledgerTreatment: "spend"),
+            CategoryInfo(name: "Utilities & Bills", ledgerTreatment: "spend"),
+            CategoryInfo(name: "Subscriptions & Digital", ledgerTreatment: "spend"),
+            CategoryInfo(name: "Bank Transfer / Top-Up", ledgerTreatment: "nonSpend"),
+            CategoryInfo(name: "Refund / Inflow", ledgerTreatment: "nonSpend", nonSpendType: "refund"),
+            CategoryInfo(name: "Marketing / Notification", ledgerTreatment: "notATransaction"),
         ],
         serviceProviders: [
             ServiceProviderInfo(name: "blu by BCA Digital", aliases: ["blu", "bluAccount", "blubybcadigital.id"], type: "bank"),
@@ -135,13 +164,24 @@ actor TagStore {
         return nil
     }
 
+    /// Case-insensitive, exact-name lookup against the canonical category list.
+    /// nil means the model named a category that isn't in the store — the caller
+    /// must flag this rather than trust the free text.
+    func categoryInfo(named name: String) -> TagData.CategoryInfo? {
+        let q = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return cachedData.categories.first { $0.name.lowercased() == q }
+    }
+
     /// Formats a clean reference guide for model system instructions.
     func promptTaxonomyGuide() -> String {
-        let categoriesList = cachedData.categories.map { "- \($0)" }.joined(separator: "\n")
+        let categoriesList = cachedData.categories
+            .map { "- \($0.name) [\($0.ledgerTreatment)]" }
+            .joined(separator: "\n")
         let providersList = cachedData.serviceProviders.map { "\($0.name) (aliases: \($0.aliases.joined(separator: ", ")))" }.joined(separator: "; ")
 
         return """
-        CANONICAL CATEGORIES:
+        CANONICAL CATEGORIES (must choose one of these EXACTLY — a category not on \
+        this list will be rejected):
         \(categoriesList)
 
         KNOWN SERVICE PROVIDERS (Banks, Rails, E-Wallets — NOT merchants):

@@ -45,6 +45,11 @@ nonisolated struct CapturedEmail: Sendable, Hashable, Codable, Identifiable {
         [subject, cleanBody ?? snippet].joined(separator: "\n")
     }
 
+    /// True if the email mentions Indonesian currency (Rp, Rp., IDR).
+    var hasCurrencyMarker: Bool {
+        TransactionMarkerDetector.hasCurrencyMarker(in: searchText)
+    }
+
     var date: Date {
         Date(timeIntervalSince1970: (Double(internalDate) ?? 0) / 1000)
     }

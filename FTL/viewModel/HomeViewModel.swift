@@ -14,6 +14,7 @@ import Observation
 @Observable @MainActor
 final class HomeViewModel {
     private let calc: CalcTool
+    private let ledger: LedgerStore
     private let provisional: ProvisionalStore
     private let goals: GoalStore
     private let calendar: Calendar
@@ -28,11 +29,13 @@ final class HomeViewModel {
 
     init(
         calc: CalcTool,
+        ledger: LedgerStore,
         provisional: ProvisionalStore,
         goals: GoalStore,
         calendar: Calendar = .current
     ) {
         self.calc = calc
+        self.ledger = ledger
         self.provisional = provisional
         self.goals = goals
         self.calendar = calendar
@@ -94,9 +97,12 @@ final class HomeViewModel {
 
     // MARK: - Actions
 
-    func load() async {
+    func load(forceReload: Bool = false) async {
         if case .idle = phase { phase = .loading }
         do {
+            if forceReload {
+                _ = try? await ledger.reload()
+            }
             months = try await calc.monthSummaries(limit: 6)
             if selectedMonthID == nil { selectedMonthID = months.last?.id }
             try await reloadSelectedMonth()

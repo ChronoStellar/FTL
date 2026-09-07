@@ -35,6 +35,29 @@ nonisolated struct Verdict: Sendable {
     var taggedKeywords: [String] = []
     var dateString: String? = nil
     var serviceProvider: String? = nil
+    /// nil covers two different things: a deterministic parser (kind isn't its
+    /// job to report) and a classifier verdict where the category said
+    /// not-a-transaction. Distinguish them via `isPurchase`.
+    var nonSpendType: NonSpendType? = nil
+
+    // MARK: - Latency instrumentation
+    //
+    // Same email, different wall-clock time, more than once. These three are the
+    // candidate explanations that live inside a single `classify()` call — how
+    // much the model asked for, how much it wrote back, how much it was given to
+    // read. Filled in by FoundationModelClassifier; zero for a deterministic
+    // ReceiptParser, which makes neither tool calls nor a chosen-length answer.
+
+    /// How many times the model invoked a tool before answering. Each call is a
+    /// full extra inference round trip — this is usually the dominant variable.
+    var toolCallCount: Int = 0
+    /// Total characters across the model's free-text output fields (`thinking`,
+    /// `taggedKeywords`, `reviewReason`). A proxy for output tokens, which is what
+    /// on-device generation cost is actually dominated by.
+    var outputCharacterCount: Int = 0
+    /// Characters of email content actually sent to the model, after the 4000-char
+    /// cap. Varies well below the cap on shorter emails.
+    var inputCharacterCount: Int = 0
 
     static let notAPurchase = Verdict(isPurchase: false, flags: [])
 }
@@ -55,6 +78,15 @@ nonisolated struct ItemResult: Sendable, Codable, Identifiable {
     var thinking: String?
     var refused: Bool
     var latencyMs: Int
+    var toolCallCount: Int = 0
+    var outputCharacterCount: Int = 0
+    var inputCharacterCount: Int = 0
+    var kind: String? = nil          // "spend" | "nonSpend" | nil (not a transaction)
+    var nonSpendType: String? = nil
+    /// True when a ReviewFlag was raised over the category — unrecognized, or
+    /// disagreed with the model's own isFinancialTransaction/isTransferOrRefund.
+    /// This is what would have told us about the refund without reading `thinking`.
+    var hadCategoryFlag: Bool = false
 }
 
 // MARK: - Report
@@ -82,6 +114,17 @@ nonisolated struct EvaluationReport: Sendable, Codable {
     var amountExactMatches: Int
     var medianLatencyMs: Int
     var p95LatencyMs: Int
+
+    /// Quick on-device signal before you ever open Python: does latency actually
+    /// move with tool calls, or is something else (thermal, simulator load)
+    /// driving the variance instead?
+    var averageToolCalls: Double = 0
+    var averageOutputCharacters: Double = 0
+
+    /// How often the model's category disagreed with its own booleans, or named
+    /// a category TagStore doesn't recognize. Each one is a row that would have
+    /// silently gotten the wrong kind (or vanished) before this was flagged.
+    var categoryFlagCount: Int = 0
 
     /// Per-sender breakdown — where the wins and the gaps actually are.
     var bySender: [String: SenderStats]
@@ -125,9 +168,11 @@ struct Evaluator {
     func run(
         _ judge: EmailJudge,
         limit: Int? = nil,
+        filterCurrency: Bool = false,
         onProgress: @Sendable (Int, Int) -> Void = { _, _ in }
     ) async -> EvaluationReport {
-        let emails = limit.map { Array(corpus.emails.prefix($0)) } ?? corpus.emails
+        let baseList = filterCurrency ? corpus.emailsWithCurrency() : corpus.emails
+        let emails = limit.map { Array(baseList.prefix($0)) } ?? baseList
         var report = EvaluationReport(
             judge: judge.name, runAt: .now, total: emails.count,
             labelled: 0, judged: 0, refused: 0, correct: 0, wrong: 0,
@@ -135,12 +180,16 @@ struct Evaluator {
             medianLatencyMs: 0, p95LatencyMs: 0, bySender: [:]
         )
         var latencies: [Int] = []
+        var toolCallCounts: [Int] = []
+        var outputCharCounts: [Int] = []
 
         for (index, email) in emails.enumerated() {
             let started = ContinuousClock.now
             let verdict = await judge.judge(email)
             let elapsed = Int(started.duration(to: .now).components.attoseconds / 1_000_000_000_000_000)
             latencies.append(elapsed)
+            toolCallCounts.append(verdict.toolCallCount)
+            outputCharCounts.append(verdict.outputCharacterCount)
 
             var stats = report.bySender[email.senderDomain] ?? .init()
             stats.total += 1
@@ -185,6 +234,8 @@ struct Evaluator {
             }
 
             let amountStr = verdict.amount.map { "\($0.currency.symbol) \($0.minorUnits)" }
+            let hadCategoryFlag = verdict.flags.contains { $0.reason == .ambiguousKind }
+            if hadCategoryFlag { report.categoryFlagCount += 1 }
             let item = ItemResult(
                 id: email.id,
                 date: displayDate,
@@ -198,7 +249,13 @@ struct Evaluator {
                 merchant: verdict.merchantRaw,
                 thinking: verdict.thinking,
                 refused: verdict.refused,
-                latencyMs: elapsed
+                latencyMs: elapsed,
+                toolCallCount: verdict.toolCallCount,
+                outputCharacterCount: verdict.outputCharacterCount,
+                inputCharacterCount: verdict.inputCharacterCount,
+                kind: verdict.kind?.rawValue,
+                nonSpendType: verdict.nonSpendType?.rawValue,
+                hadCategoryFlag: hadCategoryFlag
             )
             report.items.append(item)
 
@@ -209,6 +266,12 @@ struct Evaluator {
         if !latencies.isEmpty {
             report.medianLatencyMs = latencies[latencies.count / 2]
             report.p95LatencyMs = latencies[min(latencies.count - 1, Int(Double(latencies.count) * 0.95))]
+        }
+        if !toolCallCounts.isEmpty {
+            report.averageToolCalls = Double(toolCallCounts.reduce(0, +)) / Double(toolCallCounts.count)
+        }
+        if !outputCharCounts.isEmpty {
+            report.averageOutputCharacters = Double(outputCharCounts.reduce(0, +)) / Double(outputCharCounts.count)
         }
         return report
     }

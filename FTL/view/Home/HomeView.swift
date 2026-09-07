@@ -35,7 +35,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
-        .refreshable { await viewModel.load() }
+        .refreshable { await viewModel.load(forceReload: true) }
     }
 
     // MARK: - Loaded

@@ -45,11 +45,22 @@ actor SheetsBudgetStore: BudgetStore {
 
     func setCeiling(_ amount: Money, for categoryID: CategoryID, in interval: DateInterval) async throws {
         var rows = try await ledger.budgetRows()
-        guard let index = rows.firstIndex(where: { $0.first == categoryID.rawValue }) else { return }
-        var row = rows[index]
-        while row.count < 5 { row.append("") }
-        row[3] = String(amount.minorUnits)
-        rows[index] = row
+        if let index = rows.firstIndex(where: { $0.first == categoryID.rawValue }) {
+            var row = rows[index]
+            while row.count < 5 { row.append("") }
+            row[3] = String(amount.minorUnits)
+            rows[index] = row
+        } else {
+            rows.append(
+                SheetsSchema.row(
+                    categoryID: categoryID,
+                    name: categoryID.rawValue.capitalized,
+                    parentID: CategoryID(rawValue: "total"),
+                    ceiling: amount,
+                    month: ""
+                )
+            )
+        }
         try await ledger.writeBudgetRows(rows)
     }
 

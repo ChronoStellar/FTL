@@ -49,7 +49,11 @@ actor InMemoryBudgetStore: BudgetStore {
 // MARK: - Provisional cache
 
 actor InMemoryProvisionalStore: ProvisionalStore {
-    private var entries: [ProvisionalEntry] = SampleLedger.provisionalEntries
+    private var entries: [ProvisionalEntry]
+
+    init(empty: Bool = false) {
+        self.entries = empty ? [] : SampleLedger.provisionalEntries
+    }
 
     func insert(_ newEntries: [ProvisionalEntry]) async throws { entries.append(contentsOf: newEntries) }
 
@@ -106,7 +110,11 @@ actor InMemoryLedgerStore: LedgerStore {
 // MARK: - Goal
 
 actor InMemoryGoalStore: GoalStore {
-    private var stored: SavingsGoal? = SampleLedger.goal
+    private var stored: SavingsGoal?
+
+    init(empty: Bool = false) {
+        self.stored = empty ? nil : SampleLedger.goal
+    }
 
     func goal() async throws -> SavingsGoal? { stored }
     func save(_ goal: SavingsGoal) async throws { stored = goal }

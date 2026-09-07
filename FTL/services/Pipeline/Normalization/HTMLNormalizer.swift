@@ -9,7 +9,7 @@
 
 import Foundation
 
-enum HTMLNormalizer: Sendable {
+nonisolated enum HTMLNormalizer: Sendable {
 
     /// Strips raw HTML into clean, layout-preserving plain text.
     static func strip(_ html: String) -> String? {

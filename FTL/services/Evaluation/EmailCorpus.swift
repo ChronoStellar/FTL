@@ -87,4 +87,9 @@ struct EmailCorpus: Sendable {
     func emails(from domain: String) -> [CapturedEmail] {
         emails.filter { $0.senderDomain.hasSuffix(domain) }
     }
+
+    /// Emails that contain currency markers (Rp / IDR), candidate receipts.
+    func emailsWithCurrency() -> [CapturedEmail] {
+        emails.filter { $0.hasCurrencyMarker }
+    }
 }

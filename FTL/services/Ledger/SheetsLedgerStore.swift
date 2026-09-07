@@ -15,12 +15,25 @@
 import Foundation
 
 actor SheetsLedgerStore: LedgerStore {
-    private let sheets: SheetsService
+    private let auth: GoogleAuthManager
+    private var customSpreadsheetID: String?
     private var cache: [LedgerTransaction]?
     private var didBootstrap = false
 
-    init(auth: GoogleAuthManager, spreadsheetID: String = SheetsService.spreadsheetID) {
-        self.sheets = SheetsService(auth: auth, spreadsheetID: spreadsheetID)
+    private var sheets: SheetsService {
+        SheetsService(auth: auth, spreadsheetID: customSpreadsheetID ?? SheetsService.activeSpreadsheetID)
+    }
+
+    init(auth: GoogleAuthManager, spreadsheetID: String? = nil) {
+        self.auth = auth
+        self.customSpreadsheetID = spreadsheetID
+    }
+
+    /// Invalidates cache and fetches fresh ledger rows from the active spreadsheet.
+    func reload() async throws -> [LedgerTransaction] {
+        cache = nil
+        didBootstrap = false
+        return try await all()
     }
 
     // MARK: - Reads

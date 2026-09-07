@@ -141,7 +141,10 @@ struct ContentView: View {
             )
 
         case .settings:
-            SettingsView(trustLevel: environment.trustLevel, onDone: { sheet = nil })
+            SettingsView(environment: environment, onDone: {
+                sheet = nil
+                Task { await home.load(forceReload: true) }
+            })
         }
     }
 

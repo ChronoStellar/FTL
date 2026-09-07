@@ -10,20 +10,52 @@
 import Foundation
 
 struct SheetsService {
-    // The single spreadsheet this app operates on.
-    // From the sheet URL: docs.google.com/spreadsheets/d/THIS_PART/edit
-    static let spreadsheetID = "1wdjmVUJln-Iwjw-fyS43kmC0WleXhRzyNbVJcqrh8Hc"
+    // Default spreadsheet ID
+    static let defaultSpreadsheetID = "1wdjmVUJln-Iwjw-fyS43kmC0WleXhRzyNbVJcqrh8Hc"
+
+    /// The active spreadsheet ID, persisted in UserDefaults.
+    static var activeSpreadsheetID: String {
+        get {
+            let custom = UserDefaults.standard.string(forKey: "ftl_custom_spreadsheet_id")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let custom, !custom.isEmpty { return custom }
+            return defaultSpreadsheetID
+        }
+        set {
+            let clean = extractSpreadsheetID(from: newValue)
+            UserDefaults.standard.set(clean, forKey: "ftl_custom_spreadsheet_id")
+        }
+    }
+
+    /// Helper to extract clean spreadsheet ID from a raw ID or full Google Sheets URL.
+    static func extractSpreadsheetID(from input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let match = trimmed.range(of: #"/spreadsheets/d/([a-zA-Z0-9-_]+)"#, options: .regularExpression) {
+            let sub = trimmed[match]
+            let parts = sub.split(separator: "/")
+            if parts.count >= 3 {
+                return String(parts[2])
+            }
+        }
+        return trimmed
+    }
+
+    /// Legacy accessor for backwards compatibility.
+    static var spreadsheetID: String {
+        activeSpreadsheetID
+    }
 
     /// Column headers written when a new month tab is created.
     static let headers = ["Date", "Category", "Description", "Amount"]
 
+    private let auth: GoogleAuthManager
     private let client: GoogleAPIClient
     private let spreadsheetID: String
     private let base = URL(string: "https://sheets.googleapis.com/v4/spreadsheets/")!
 
-    init(auth: GoogleAuthManager, spreadsheetID: String = SheetsService.spreadsheetID) {
+    init(auth: GoogleAuthManager, spreadsheetID: String? = nil) {
+        self.auth = auth
         self.client = GoogleAPIClient(auth: auth)
-        self.spreadsheetID = spreadsheetID
+        self.spreadsheetID = spreadsheetID ?? Self.activeSpreadsheetID
     }
 
     // MARK: - Expense API
@@ -57,7 +89,7 @@ struct SheetsService {
     }
 
     /// The tab name for a date, e.g. "September 2026".
-    static func monthTabName(for date: Date = .now) -> String {
+    nonisolated static func monthTabName(for date: Date = .now) -> String {
         monthFormatter.string(from: date)
     }
 
@@ -75,9 +107,84 @@ struct SheetsService {
 
     /// Reads a range, e.g. "'September 2026'!A:D", returning rows of cell strings.
     func read(range: String) async throws -> [[String]] {
-        let url = base.appending(path: "\(spreadsheetID)/values/\(range)")
-        let response: ValueRange = try await client.send(url)
-        return response.values ?? []
+        if auth.isSignedIn {
+            do {
+                let url = base.appending(path: "\(spreadsheetID)/values/\(range)")
+                let response: ValueRange = try await client.send(url)
+                if let vals = response.values, !vals.isEmpty {
+                    return vals
+                }
+            } catch {
+                // If authenticated request fails, attempt public CSV fallback
+                if let publicRows = try? await readPublicCSV(range: range), !publicRows.isEmpty {
+                    return publicRows
+                }
+                throw error
+            }
+        }
+        // Unauthenticated or fallback
+        return (try? await readPublicCSV(range: range)) ?? []
+    }
+
+    private func readPublicCSV(range: String) async throws -> [[String]] {
+        var sheetName = ""
+        if let exclamation = range.firstIndex(of: "!") {
+            sheetName = String(range[..<exclamation]).trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+        } else {
+            sheetName = range.trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+        }
+
+        var urlString = "https://docs.google.com/spreadsheets/d/\(spreadsheetID)/gviz/tq?tqx=out:csv"
+        if !sheetName.isEmpty {
+            if let encoded = sheetName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                urlString += "&sheet=\(encoded)"
+            }
+        }
+        guard let url = URL(string: urlString) else { return [] }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return []
+        }
+        guard let csvText = String(data: data, encoding: .utf8) else { return [] }
+        return parseCSV(csvText)
+    }
+
+    private func parseCSV(_ text: String) -> [[String]] {
+        var rows: [[String]] = []
+        var currentRow: [String] = []
+        var currentField = ""
+        var inQuotes = false
+
+        var index = text.startIndex
+        while index < text.endIndex {
+            let char = text[index]
+            if char == "\"" {
+                inQuotes.toggle()
+            } else if char == "," && !inQuotes {
+                currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+                currentField = ""
+            } else if (char == "\r" || char == "\n") && !inQuotes {
+                if char == "\r" && text.index(after: index) < text.endIndex && text[text.index(after: index)] == "\n" {
+                    index = text.index(after: index)
+                }
+                currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+                if !currentRow.isEmpty && currentRow.contains(where: { !$0.isEmpty }) {
+                    rows.append(currentRow)
+                }
+                currentRow = []
+                currentField = ""
+            } else {
+                currentField.append(char)
+            }
+            index = text.index(after: index)
+        }
+        if !currentField.isEmpty || !currentRow.isEmpty {
+            currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+            if !currentRow.isEmpty && currentRow.contains(where: { !$0.isEmpty }) {
+                rows.append(currentRow)
+            }
+        }
+        return rows
     }
 
     /// Overwrites a range. `USER_ENTERED` parses values as if typed (numbers,
@@ -105,10 +212,19 @@ struct SheetsService {
 
     /// Titles of all tabs in the spreadsheet.
     func tabTitles() async throws -> [String] {
-        var url = base.appending(path: spreadsheetID)
-        url.append(queryItems: [.init(name: "fields", value: "sheets.properties.title")])
-        let response: Spreadsheet = try await client.send(url)
-        return (response.sheets ?? []).map { $0.properties.title }
+        if auth.isSignedIn {
+            do {
+                var url = base.appending(path: spreadsheetID)
+                url.append(queryItems: [.init(name: "fields", value: "sheets.properties.title")])
+                let response: Spreadsheet = try await client.send(url)
+                if let sheets = response.sheets, !sheets.isEmpty {
+                    return sheets.map(\.properties.title)
+                }
+            } catch {
+                // Fall through to known tabs
+            }
+        }
+        return [Self.monthTabName(for: .now), "Sheet1", SheetsSchema.Tab.transactions, SheetsSchema.Tab.budgets]
     }
 
     /// Creates a new tab (worksheet) with the given title.
@@ -120,10 +236,27 @@ struct SheetsService {
         try await client.send(url, method: "POST", body: try JSONEncoder().encode(request))
     }
 
+    /// Tests connection to the active spreadsheet and returns tabs count, transaction rows, and budget rows.
+    func testConnection() async throws -> (tabCount: Int, transactionCount: Int, budgetCount: Int) {
+        let titles = try await tabTitles()
+        var txCount = 0
+        var bgCount = 0
+
+        let txRows = try await read(range: Self.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange))
+        let monthRows = try await read(range: Self.a1(tab: Self.monthTabName(for: .now), "A:D"))
+        let sheet1Rows = try await read(range: Self.a1(tab: "Sheet1", "A:D"))
+        txCount = max(txRows.count > 1 ? txRows.count - 1 : 0, monthRows.count > 1 ? monthRows.count - 1 : 0, sheet1Rows.count > 1 ? sheet1Rows.count - 1 : 0)
+
+        let bgRows = try await read(range: Self.a1(tab: SheetsSchema.Tab.budgets, SheetsSchema.budgetRange))
+        bgCount = max(0, bgRows.count - 1)
+
+        return (max(1, titles.count), txCount, bgCount)
+    }
+
     // MARK: - Helpers
 
     /// A1 notation with the tab name single-quoted (required for names with spaces).
-    static func a1(tab: String, _ range: String) -> String {
+    nonisolated static func a1(tab: String, _ range: String) -> String {
         "'\(tab)'!\(range)"
     }
 

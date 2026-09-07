@@ -68,8 +68,8 @@ final class AppEnvironment {
             auth: auth,
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
-            provisional: InMemoryProvisionalStore(),
-            goals: InMemoryGoalStore()
+            provisional: InMemoryProvisionalStore(empty: true),
+            goals: InMemoryGoalStore(empty: true)
         )
     }
 
@@ -93,7 +93,7 @@ final class AppEnvironment {
     // dependency graph stays in this file.
 
     func makeHomeViewModel() -> HomeViewModel {
-        HomeViewModel(calc: calc, provisional: provisional, goals: goals)
+        HomeViewModel(calc: calc, ledger: ledger, provisional: provisional, goals: goals)
     }
 
     func makeBucketDetailViewModel(

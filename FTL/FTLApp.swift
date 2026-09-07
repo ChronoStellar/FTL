@@ -16,16 +16,16 @@ struct FTLApp: App {
     /// DEBUG skip-sign-in path swaps it for fixtures, because without a token
     /// every Sheets call would fail and the UI would be unworkable.
     @State private var environment = AppEnvironment.live()
-    @State private var isSampleMode = false
+    @State private var isBypassActive = false
 
     var body: some Scene {
         WindowGroup {
             RootView(
                 environment: environment,
-                isSampleMode: isSampleMode,
+                isSampleMode: isBypassActive,
                 onUseSampleData: {
                     environment = .sample()
-                    isSampleMode = true
+                    isBypassActive = true
                 }
             )
             .environmentObject(auth)

@@ -25,6 +25,15 @@ nonisolated protocol LedgerStore: Sendable {
     func transaction(id: LedgerTransaction.ID) async throws -> LedgerTransaction?
 
     func categories() async throws -> [SpendCategory]
+
+    /// Invalidates any cached ledger state and fetches fresh rows from the source.
+    func reload() async throws -> [LedgerTransaction]
+}
+
+extension LedgerStore {
+    func reload() async throws -> [LedgerTransaction] {
+        try await all()
+    }
 }
 
 nonisolated enum LedgerError: Error, Sendable {

@@ -15,7 +15,7 @@
 
 import Foundation
 
-enum SheetsSchema {
+nonisolated enum SheetsSchema {
 
     // MARK: - Tabs
 

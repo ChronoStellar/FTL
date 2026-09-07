@@ -20,6 +20,26 @@ struct EvaluationView: View {
     @State private var progressText = ""
     @State private var languages: [(String, Int)] = []
     @State private var transactionStats: (currencyCount: Int, successPhraseCount: Int, bothCount: Int)?
+    @State private var sampleFilter: SampleFilter = .all
+
+    enum SampleFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case purchases = "Purchases"
+        case rejected = "Rejected"
+        var id: String { rawValue }
+    }
+
+    private var filteredItems: [ItemResult] {
+        guard let report else { return [] }
+        switch sampleFilter {
+        case .all:
+            return report.items
+        case .purchases:
+            return report.items.filter { $0.isPurchase }
+        case .rejected:
+            return report.items.filter { $0.refused }
+        }
+    }
 
     var body: some View {
         List {
@@ -65,20 +85,44 @@ struct EvaluationView: View {
 
             Section("Foundation Model (On-Device)") {
                 if FoundationModelClassifier.isAvailable {
-                    Text("SystemLanguageModel is ready.")
+                    Text("SystemLanguageModel is ready. Non-Rp emails are skipped deterministically by rule.")
                         .font(.caption)
                         .foregroundStyle(.green)
 
-                    HStack(spacing: 12) {
-                        Button(isRunning ? "Running…" : "Test 5 samples") {
-                            Task { await run(FoundationModelJudge(), limit: 5) }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button {
+                            Task { await run(FoundationModelJudge(), limit: 20, filterCurrency: true) }
+                        } label: {
+                            HStack {
+                                Image(systemName: "sparkles")
+                                Text(isRunning ? "Running…" : "Test 20 Candidate Emails (with Rp)")
+                                    .fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity)
                         }
+                        .buttonStyle(.borderedProminent)
                         .disabled(corpus == nil || isRunning)
 
-                        Button(isRunning ? "Running…" : "Test 20 samples") {
-                            Task { await run(FoundationModelJudge(), limit: 20) }
+                        HStack(spacing: 12) {
+                            Button {
+                                Task { await run(FoundationModelJudge(), limit: 5, filterCurrency: true) }
+                            } label: {
+                                Text(isRunning ? "Running…" : "Test 5 (Rp only)")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(corpus == nil || isRunning)
+
+                            Button {
+                                Task { await run(FoundationModelJudge(), limit: 5, filterCurrency: false) }
+                            } label: {
+                                Text(isRunning ? "Running…" : "Test 5 (Raw emails)")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(corpus == nil || isRunning)
                         }
-                        .disabled(corpus == nil || isRunning)
+                        .buttonStyle(.borderless)
                     }
                 } else {
                     Text("FoundationModels unavailable on this device/simulator. Requires Apple Intelligence on iOS 26+.")
@@ -87,16 +131,21 @@ struct EvaluationView: View {
                 }
 
                 if !progressText.isEmpty {
-                    Text("Progress: \(progressText)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Progress: \(progressText)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
             if let report {
                 Section("Result — \(report.judge)") {
+                    LabeledContent("Total Evaluated", value: "\(report.total)")
+                    LabeledContent("Purchases Identified", value: "\(report.items.filter { $0.isPurchase }.count)")
+                    LabeledContent("Rejected by Rule", value: "\(report.refused)")
                     LabeledContent("Coverage", value: "\(report.judged)/\(report.total)")
-                    LabeledContent("Refused", value: "\(report.refused)")
                     if report.labelled > 0 {
                         LabeledContent("Accuracy", value: String(format: "%.0f%%", report.accuracy * 100))
                         LabeledContent("Honest rate", value: String(format: "%.0f%%", report.honestRate * 100))
@@ -105,27 +154,49 @@ struct EvaluationView: View {
                         Text("No labels yet — accuracy needs labels.json in the bundle.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                    LabeledContent("Median", value: "\(report.medianLatencyMs) ms")
-                    ForEach(topSenders(report), id: \.0) { domain, stats in
-                        LabeledContent(domain, value: "\(stats.judged)/\(stats.total)")
+                    LabeledContent("Median Latency", value: "\(report.medianLatencyMs) ms")
+                    LabeledContent("p95 Latency", value: "\(report.p95LatencyMs) ms")
+                    // Correlate these two against latency to find out what's
+                    // actually driving the variance: tool calls (extra inference
+                    // round trips) or output length (chosen by the model per
+                    // email) — rather than guessing.
+                    LabeledContent("Avg tool calls", value: String(format: "%.1f", report.averageToolCalls))
+                    LabeledContent("Avg output chars", value: String(format: "%.0f", report.averageOutputCharacters))
+                    // Each one is a row where the model's category disagreed with
+                    // its own booleans, or named a category TagStore doesn't know
+                    // — exactly the pattern that silently dropped the refund.
+                    LabeledContent("Category flags", value: "\(report.categoryFlagCount)")
+                }
+
+                Section("Sender Breakdown (\(report.bySender.count) senders)") {
+                    ForEach(report.bySender.sorted { $0.value.total > $1.value.total }, id: \.key) { domain, stats in
+                        LabeledContent(domain.isEmpty ? "unknown" : domain, value: "\(stats.judged) judged / \(stats.total) total")
                             .font(.caption)
                     }
                 }
 
                 if !report.items.isEmpty {
-                    Section("Sample Inspections (\(report.items.count))") {
-                        ForEach(report.items) { item in
+                    Section {
+                        Picker("Filter Samples", selection: $sampleFilter) {
+                            Text("All (\(report.items.count))").tag(SampleFilter.all)
+                            Text("Purchases (\(report.items.filter { $0.isPurchase }.count))").tag(SampleFilter.purchases)
+                            Text("Rejected (\(report.items.filter { $0.refused }.count))").tag(SampleFilter.rejected)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.vertical, 4)
+
+                        ForEach(filteredItems) { item in
                             DisclosureGroup {
                                 VStack(alignment: .leading, spacing: 8) {
                                     if let thinking = item.thinking, !thinking.isEmpty {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Label("Thinking Process", systemImage: "brain")
-                                                .font(.caption).bold().foregroundStyle(.secondary)
+                                            Label(item.refused ? "Rule Pre-Filter Verdict" : "Thinking Process", systemImage: item.refused ? "shield.slash" : "brain")
+                                                .font(.caption).bold().foregroundStyle(item.refused ? .orange : .secondary)
                                             Text(thinking)
                                                 .font(.footnote)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(8)
-                                                .background(Color(.secondarySystemBackground))
+                                                .background(item.refused ? Color.orange.opacity(0.08) : Color(.secondarySystemBackground))
                                                 .cornerRadius(8)
                                         }
                                     }
@@ -182,12 +253,21 @@ struct EvaluationView: View {
                                             .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     Spacer()
-                                    Text(item.isPurchase ? (item.transactionType ?? "Purchase") : "Not a Purchase")
-                                        .font(.caption2).bold()
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(item.isPurchase ? Color.green.opacity(0.15) : Color.gray.opacity(0.15))
-                                        .foregroundStyle(item.isPurchase ? .green : .secondary)
-                                        .cornerRadius(4)
+                                    if item.refused {
+                                        Text("Rejected (No Rp)")
+                                            .font(.caption2).bold()
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(Color.orange.opacity(0.15))
+                                            .foregroundStyle(.orange)
+                                            .cornerRadius(4)
+                                    } else {
+                                        Text(item.isPurchase ? (item.transactionType ?? "Purchase") : "Not a Purchase")
+                                            .font(.caption2).bold()
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(item.isPurchase ? Color.green.opacity(0.15) : Color.gray.opacity(0.15))
+                                            .foregroundStyle(item.isPurchase ? .green : .secondary)
+                                            .cornerRadius(4)
+                                    }
                                 }
                             }
                         }
@@ -236,11 +316,11 @@ struct EvaluationView: View {
         transactionStats = (currencyCount, successPhraseCount, bothCount)
     }
 
-    private func run(_ judge: EmailJudge, limit: Int? = nil) async {
+    private func run(_ judge: EmailJudge, limit: Int? = nil, filterCurrency: Bool = false) async {
         guard let corpus else { return }
         isRunning = true
         progressText = "Starting..."
-        let result = await Evaluator(corpus: corpus).run(judge, limit: limit) { current, total in
+        let result = await Evaluator(corpus: corpus).run(judge, limit: limit, filterCurrency: filterCurrency) { current, total in
             Task { @MainActor in
                 progressText = "\(current) / \(total)"
             }
