@@ -77,6 +77,12 @@ nonisolated struct DiscoveryExpectation: Sendable, Codable {
     /// learned a pattern, and simply never saw the other layout. Counting is
     /// what makes that visible.
     let expectedLayouts: [String: Int]
+
+    /// Domain → why its expected layout count is lower than the truth.
+    ///
+    /// Reported as a known issue rather than a pass, so a limitation that is
+    /// currently accepted cannot quietly become a limitation nobody remembers.
+    let layoutKnownIssues: [String: String]?
     /// Domain → why it must be refused. The reasons differ, and a single pass/
     /// fail would hide that: a brochure, a sender with too few emails, and a
     /// sender in another currency are rejected by three different tests.

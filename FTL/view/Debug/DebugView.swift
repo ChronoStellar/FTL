@@ -434,6 +434,16 @@ private struct DebugHarness: View {
     /// `BluReceiptParser` is the oracle, which is why this can run before
     /// `labels.json` exists — the truth for this sender is already in the
     /// codebase, and 116/116 is the bar its replacement has to clear.
+    /// Times one phase and reports it, so "it got slower" is answerable
+    /// without guessing which part.
+    @discardableResult
+    private func timed<T>(_ label: String, into lines: inout [String], _ work: () async throws -> T) async rethrows -> T {
+        let started = Date.now
+        let value = try await work()
+        lines.append(String(format: "  %.2fs  %@", Date.now.timeIntervalSince(started), label))
+        return value
+    }
+
     /// The fixture suite. Deterministic, so this is the one thing in this
     /// screen that can be believed without being re-read every time.
     private func runCases() async {
@@ -480,7 +490,13 @@ private struct DebugHarness: View {
 
         var lines: [String] = []
         do {
-            let corpus = try EmailCorpus.load()
+            // Phase timings, because "it got slower" needs an answer, not a
+            // theory. The corpus load is 75 MB of JSON and has always been the
+            // floor; everything after it is the pipeline's own cost.
+            let corpus = try await timed("load corpus (75 MB JSON)", into: &lines) {
+                try EmailCorpus.load()
+            }
+            lines.append("  — \(corpus.emails.count) emails")
             // `empty: true` is load-bearing. The default seeds this store with
             // SampleLedger's preview fixtures, and the first run of this
             // harness reported them as pipeline output — placeholder rows dated
@@ -500,9 +516,9 @@ private struct DebugHarness: View {
                 fetchLimit: corpus.emails.count
             )
 
-            let started = Date.now
-            let result = try await rail.sync()
-            lines.append(String(format: "elapsed %.2fs", Date.now.timeIntervalSince(started)))
+            let result = try await timed("rail.sync — fetch, parse, dedup, queue", into: &lines) {
+                try await rail.sync()
+            }
             lines.append("fetched \(result.fetched) · queued \(result.queued) · flagged \(result.flagged)")
             lines.append("not a purchase \(result.notAPurchase) · skipped \(result.skipped) · seen \(result.alreadySeen)")
             lines.append("possible duplicates \(result.duplicates)")
@@ -510,7 +526,9 @@ private struct DebugHarness: View {
             // Second pass, same log: nothing should come through. Dedup is the
             // thing standing between a re-sync and duplicate spending, and it
             // has never been checked over more than a few emails.
-            let again = try await rail.sync()
+            let again = try await timed("rail.sync again — dedup only", into: &lines) {
+                try await rail.sync()
+            }
             lines.append("re-sync → queued \(again.queued) (expect 0), already seen \(again.alreadySeen)")
 
             let pending = try await provisional.pending()
@@ -550,7 +568,9 @@ private struct DebugHarness: View {
             // all obvious in the row, all invisible in a count.
             let ledger = InMemoryLedgerStore(empty: true)
             let approvals = DefaultApprovalService(store: provisional, ledger: ledger)
-            let approved = try await approvals.approve(pending.map(\.id))
+            let approved = try await timed("approve \(pending.count) rows into the ledger", into: &lines) {
+                try await approvals.approve(pending.map(\.id))
+            }
             lines.append("approved \(approved.written.count), failed \(approved.failed.count)")
 
             let written = try await ledger.all()

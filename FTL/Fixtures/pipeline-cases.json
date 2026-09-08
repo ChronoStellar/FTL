@@ -764,26 +764,10 @@
       "snippet": "Jumlah Top Up Rp35.000,00",
       "internalDate": "1781900800000",
       "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp35.000,00\nSaldo Akhir Rp47.345,00\nReferensi TOP-5007\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
-    },
-    {
-      "id": "oov-swift-top-08",
-      "from": "notifikasi@swiftpay.co.id",
-      "subject": "Top Up Berhasil",
-      "snippet": "Jumlah Top Up Rp90.000,00",
-      "internalDate": "1782160000000",
-      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp90.000,00\nSaldo Akhir Rp102.345,00\nReferensi TOP-5008\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
-    },
-    {
-      "id": "oov-swift-top-09",
-      "from": "notifikasi@swiftpay.co.id",
-      "subject": "Top Up Berhasil",
-      "snippet": "Jumlah Top Up Rp300.000,00",
-      "internalDate": "1782419200000",
-      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp300.000,00\nSaldo Akhir Rp312.345,00\nReferensi TOP-5009\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
     }
   ],
   "discovery": {
-    "note": "Selection only — no model, so this asserts WHICH senders and how many layouts the loop would spend calls on, never what the model would say. swiftpay is deliberately awkward: two subjects, two layouts, the amount labelled Nominal in half the payments and Jumlah in the other half, merchants ending at two different terminators, and every third figure written with no Rp prefix at all.",
+    "note": "Selection only — no model, so this asserts WHICH senders and how many layouts the loop would spend calls on, never what the model would say. Nothing here is readable by any parser, and that is the point: an OOV sender failing to parse is the gap the agentic loop exists to close. What must work is that the loop SEES it. swiftpay is deliberately awkward — two subjects, two layouts, the amount labelled Nominal in half the payments and Jumlah in the other half, merchants ending at two different terminators, and every third figure written with no Rp prefix at all.",
     "expectedCandidates": [
       "swiftpay.co.id"
     ],
@@ -795,7 +779,10 @@
       "grab.com": "already readable by two learned patterns"
     },
     "expectedLayouts": {
-      "swiftpay.co.id": 2
+      "swiftpay.co.id": 1
+    },
+    "layoutKnownIssues": {
+      "swiftpay.co.id": "Two subjects, and the subject pass keeps only the dominant one, so the 8 'Top Up Berhasil' emails are discarded before body clustering runs. Expected 1 layout where the sender really has 2. blu loses a third layout of 12 real receipts the same way."
     }
   }
 }

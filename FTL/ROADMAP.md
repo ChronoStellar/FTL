@@ -401,11 +401,121 @@ have expressed both?"* — reached by running the schema against sender #1 rathe
 than hand-writing parser #2. Worth doing Grab anyway, but the schema is no longer
 shaped by a single template's assumptions.
 
-### 10. Sender discovery · **M**
-The other half of "learn which emails to fetch". A sender becomes
-`.receiptSource` when a pattern for it actually held up — not when the model
-thought it looked promising. Same propose→verify→promote shape, and it prunes the
-fetch list so model calls are never spent on LinkedIn.
+### 10. Sender discovery · **M** — ✅ selection built, ⚠️ never run end-to-end
+`PatternDiscovery` picks its own targets from unread money mail. Naming the
+sender was the last hand-conditioned step in the loop; nothing types a domain
+now.
+
+The funnel is entirely deterministic — regex and set arithmetic, no model
+anywhere — which is what makes it safe to leave running:
+
+    all mail → carries Rp/IDR → nothing can read it → groups into a layout
+    → its figures MOVE → enough of them → worth a model call
+
+**The step that makes it safe is amount variance.** Ranked by volume alone, the
+top two candidates in the real corpus are Apple's "your iCloud storage is full"
+and Traveloka's discount campaign — both templated, both full of Rp, neither a
+transaction. A pattern learned from either reads a figure out of every email and
+scores 1.0 coverage, which is exactly the failure coverage cannot detect. Asking
+whether the numbers change costs one regex pass and separates them completely:
+
+| | variance |
+|---|---|
+| blu 55 · blu 40 · grab ride · grab food | 0.88 – 1.00 |
+| apple · traveloka · linkedin · edx | 0.04 – 0.12 |
+
+**It has never proposed a pattern for a sender nobody had named.** On the 1,000-
+email corpus it correctly finds *zero* candidates: after blu and Grab, what is
+left is brochures, or real receipt senders with 3–9 emails against a floor of 10
+(Mandiri 0.67, KAI 0.50 — both clear the variance bar and fail on volume). The
+limit is the sample, not the loop. Re-export at 3,000–5,000 and it has work.
+
+---
+
+## Where this stands — 2026-09-08
+
+### What went well
+
+**Grab learned, and the trust ladder held on its first real test.** Two layouts
+separated deterministically, both patterns provisional, both persisted. The one
+thing the agent got wrong — the merchant — arrived in the queue *flagged*
+`unverifiedPattern` rather than trusted. Assist, never Auto, working as designed
+rather than as an aspiration.
+
+**The prompt's language, not the receipt's, was gating synthesis.** Measured on
+device: `SystemLanguageModel` supports 21 locales, Indonesian not among them, and
+it judges the WHOLE PROMPT. The old terse scaffolding (`--- EXAMPLE 1 ---` /
+`SUBJECT:` / `TEXT:`) around a ride receipt detected as `id 0.83`; the same
+receipt alone reads `en 1.00`. **blu had only ever worked because its prompt
+happened to detect as Dutch, which is on the list.** Framing in English prose
+takes every layout to `en 1.00`, Indonesian food receipts included. See the note
+on `FoundationModelSynthesizer.prompt` before touching prompt formatting.
+
+**Every purchase through Grab was being counted twice** — the merchant's receipt
+and the bank's card notification, both true records of one payment. Rp 718,016 of
+Rp 7,026,838: spending read **10% high**. Neither parser was wrong. The detector
+for it already existed (`candidates(matching:)`, `possibleDuplicate`,
+`Fingerprint.adjacent`) and had **no callers**.
+
+**A deterministic fixture suite.** 29 cases, committable, no personal data,
+pinned learned patterns so the executor runs with no model or network. It has
+already caught two things nobody was looking for.
+
+### What didn't work
+
+The pattern is consistent enough to name: **every instrument that was calibrated
+for one context and reused in another gave a confident wrong answer.**
+
+| the instrument | asked the wrong question |
+|---|---|
+| `coverage` | "did it extract something?" — non-empty is a liveness check, not a quality bar. Scored garbage merchants 1.00 on 21 real rows |
+| `LanguageGate` | filtered *email* language for a task gated on *prompt* language, and its `[.english]` set is narrower than the model's 21 locales |
+| subject-first triage | one subject is not one layout (Grab, 0.52 coverage) — and one layout is not one subject (blu loses a third layout of 12 receipts) |
+| `Fingerprint` ±Rp5,000/±3d | built to pair a statement line with a receipt whose totals differ; useless where the bank charges exactly what the merchant billed. 48/137 flagged, 29 wrong |
+| `isLikelyTransaction` | precise on Grab (21/21) and **0/116 on blu** — vocabulary does not generalise |
+| boilerplate-ratio plausibility | separates on average (0.14 vs 0.71) but rejects 15/116 real merchants — would sink a *good* pattern |
+
+Process failures worth not repeating, all mine:
+
+- **Four speculative fixes for an empty dashboard** before writing an inspector.
+  The inspector found it in one run.
+- **The pipeline harness seeded with `SampleLedger` preview fixtures**, which
+  sorted to the top and were reported as pipeline output. A test whose fixtures
+  are indistinguishable from its results is worse than no test.
+- **Hand-counting a 60-character window** for four fixture expectations. The
+  pipeline was right in all four; the fixture was wrong.
+- **Changing production triage to fit fixture data I had just written.** The
+  finding was real (blu's third layout); acting on it unasked was not. It took
+  Grab from 2 clusters to 24, turned a latent O(clusters × emails) cost in
+  `discriminators` into an OOM crash, and cost a revert.
+- **Discovery fed from the rail's own fetch could never grow.** The rail asks
+  Gmail for `from:(domains it already parses)`, so an unknown sender's mail never
+  arrives. The corpus hid it completely — `EmailCorpus` returns every sender.
+
+### What's next
+
+Ordered by what actually blocks something.
+
+1. **Re-learn Grab under the plausibility bar, then fill a month and compare
+   against the sheet.** The check should take the ride pattern to 0/11 and the
+   food pattern to 5/10, forcing a retry that is now fed concrete failures.
+2. **Grab's merchant anchors are still wrong** — 5 known issues in the fixture,
+   pinned as they actually behave. They turn green when the anchors do.
+3. **`flatText` is recomputed on every access outside `SenderTriage`** — every
+   `canParse`, every `parse`, every gate excerpt strips the whole HTML body
+   again. `Prepared` fixed the one hot spot; the real fix is flattening once on
+   entry, which changes `CapturedEmail`'s shape and touches every parser. Do it
+   on the timings, not on a hunch.
+4. **The subject pass costs blu a third layout of 12 real receipts.** Removing it
+   works and is measured — but takes Grab to 24 clusters and narrows the promo
+   margin from 0.04–0.12 vs 0.88 to 0.41 vs 0.75. A live trade, worth taking on
+   its own merits.
+5. **Ship blockers, unchanged:** the whole capture pipeline is `#if DEBUG`, 82 MB
+   of real mail ships in the bundle (Stage 0 #3), and there is still no test
+   target — the fixtures run from a debug screen, not CI (Stage 2 #5).
+6. **Smaller, real:** a refund is non-spend so it never offsets the card hold it
+   reverses; a duplicate split across two bank charges (5.000 + 46.500 vs 51.500)
+   cannot be caught by exact matching and is pinned unflagged.
 
 ---
 
@@ -470,6 +580,17 @@ sheet on every visit isn't nothing.
 ---
 
 ## Working notes
+
+**When something gets slower or crashes, suspect the property you called in a
+loop.** `CapturedEmail.flatText` strips the whole HTML body through several
+regexes on *every access*. Clustering called it once per email per cluster, which
+was invisible at 2 clusters and an OOM at 24. `SenderTriage.Prepared` reads each
+email once; nothing downstream should touch `flatText` again.
+
+**Coverage is shape-fitting, not correctness.** It says "this pattern fits the
+template", never "this pattern is right". Anything it clears goes to a person
+flagged, and `verifiedAgainst: 0` is stamped deliberately so the artifact cannot
+imply a measurement nobody made.
 
 **`xcodebuild` incremental builds went stale mid-session** — reporting
 BUILD SUCCEEDED while running zero compile steps, with the simulator launching a

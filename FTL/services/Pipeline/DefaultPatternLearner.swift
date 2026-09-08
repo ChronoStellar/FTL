@@ -143,6 +143,23 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
                         evidence: measured.evidence
                     )
                 }
+
+                // Retry with what coverage OBJECTED to, not with silence.
+                //
+                // This path used to fall through to `feedback = scored`, which
+                // for a sender with no oracle is empty by construction —
+                // `attempted` is 0, so `failures` is 0. The loop then spent its
+                // remaining three attempts re-proposing with no idea what was
+                // wrong, for exactly the senders discovery exists to reach.
+                //
+                // Concrete misses are what corrected blu twice. There is no
+                // reason the no-oracle path should be denied them.
+                feedback = PatternFeedback(
+                    attempted: measured.evidence,
+                    succeeded: Int((measured.rate * Double(measured.evidence)).rounded()),
+                    failures: measured.failures
+                )
+                continue
             }
 
             feedback = scored

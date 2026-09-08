@@ -5,13 +5,14 @@
 //  How many LAYOUTS a sender's mail comes in, and which emails share each one.
 //
 //  A layout is the thing a pattern can be written against: one document shape,
-//  reused. Senders have several, and the count is not guessable from the
-//  outside — Grab sends two receipt layouts plus a dozen campaign layouts under
-//  overlapping subjects, blu sends three.
+//  reused. Senders have several, and the count is not guessable from outside.
 //
-//  ONE SUBJECT IS NOT ONE LAYOUT. This is what broke the first Grab run, and it
-//  was this file's fault, not the model's. All 21 of Grab's receipts share the
-//  subject "Your Grab E-Receipt", but they are two different documents:
+//  Two passes, cheap one first — subjects, then bodies.
+//
+//  ONE SUBJECT IS NOT ONE LAYOUT, which is why the second pass exists. It broke
+//  the first Grab run, and it was this file's fault rather than the model's. All
+//  21 of Grab's receipts share the subject "Your Grab E-Receipt" and are two
+//  different documents underneath:
 //
 //      food (10)   TOTAL Rp 44300 … Pesanan Dari: Rasapi - Sambikerep …
 //      ride (11)   Total Paid Rp9.000 … Receipt issued by the driver …
@@ -20,22 +21,16 @@
 //  pattern scored against a holdout that was half food: 0.52 coverage, under
 //  the bar, rejected. The same pattern scores 1.00 against rides alone.
 //
-//  AND ONE LAYOUT IS NOT ONE SUBJECT. The mirror case, found later. This file
-//  used to keep only the dominant subject cluster before looking at bodies, on
-//  the theory that a repeating subject is a template and marketing is written
-//  fresh each time. It cost data both ways: a sender using two subjects had
-//  half its mail discarded unseen, and blu's third layout — 12 real receipts —
-//  never reached the loop.
-//
-//  Both mistakes had the same root: subject was being used as a proxy for
-//  layout. So clustering reads the BODY, over all of the sender's mail, and
-//  marketing is refused by `Template.amountVariance` — a brochure repeats its
-//  prices, a receipt does not — rather than by guessing from the subject line.
+//  ONE LAYOUT IS NOT ONE SUBJECT either — the mirror case, found later and NOT
+//  fixed here. The subject pass keeps only the dominant cluster, so a sender
+//  using two subjects loses the smaller one unseen. See `templates(from:)` for
+//  what that costs, what removing the pass would fix, and what it would cost in
+//  turn. It is a live trade-off, deliberately left as one.
 //
 //  Measured on the real export, no model, no labels, no network:
 //
-//      grab   11 @ 0.91 ✓   10 @ 1.00 ✓   promos 0.41, 0.30, 0.11, 0.29 ✗
-//      blu    70 @ 0.86 ✓   34 @ 0.91 ✓   12 @ 0.75 ✓   fraud warnings ✗
+//      grab.com            21 templated → 11 ride + 10 food, 0 promos
+//      blubybcadigital.id  95 templated → 55 + 40, 0 promos
 //
 
 import Foundation
@@ -88,70 +83,141 @@ nonisolated enum SenderTriage: Sendable {
         let amountVariance: Double
     }
 
-    /// The sender's layouts, largest first, each newest-first inside.
+    /// One email, read ONCE.
     ///
-    /// Every layout, marketing included — judging them is not this type's job.
-    /// `Template.amountVariance` says which are transactional and the caller's
-    /// evidence floor says which are worth a model call, and those two together
-    /// do the filtering that a subject pre-pass used to attempt.
+    /// `CapturedEmail.flatText` is a computed property that strips the whole
+    /// HTML body through several regexes on every access. Clustering touched it
+    /// once per email per cluster, which was tolerable while a subject pre-pass
+    /// cut each sender to one or two clusters and became an out-of-memory crash
+    /// the moment that pre-pass was removed: thousands of full-body strips,
+    /// each allocating a large transient string.
     ///
-    /// It used to keep only the dominant SUBJECT cluster first, on the theory
-    /// that a repeating subject is a template and marketing is written fresh.
-    /// That was written before the variance test existed and it loses data two
-    /// ways: a sender with two subjects has half its mail discarded, and blu's
-    /// third layout — 12 real receipts — never reached the loop at all.
+    /// So the text is read once, everything derived from it is derived here,
+    /// and nothing downstream touches `flatText` again.
+    private struct Prepared {
+        let email: CapturedEmail
+        /// Tokens over `signatureLength`, for similarity.
+        var signature: Set<String>
+        /// Tokens over `discriminatorLength`, for the layout's identifying word.
+        let head: Set<String>
+        /// Rp figures in the head of the text, for `amountVariance`.
+        let amounts: Set<Money>
+
+        init(_ email: CapturedEmail) {
+            let text = email.flatText
+            self.email = email
+            self.signature = SenderTriage.tokens(in: text, limit: signatureLength)
+            self.head = SenderTriage.tokens(in: text, limit: discriminatorLength)
+            self.amounts = Set(IndonesianMoney.all(in: String(text.prefix(amountScanLength))))
+        }
+    }
+
+    /// The sender's receipt layouts, largest first, each newest-first inside.
     ///
-    /// Measured over the full corpora with the pre-pass removed:
+    /// Two passes, and the order matters for cost as well as correctness: the
+    /// subject pass reads only `subject`, so it cuts the sender down before
+    /// anything touches a body.
+    ///
+    /// 1. Keep the dominant SUBJECT cluster — a repeating subject is a
+    ///    template, and marketing is written fresh each time.
+    /// 2. Cluster THOSE by body shape, because one subject is not one layout:
+    ///    all 21 Grab receipts share "Your Grab E-Receipt" and are two
+    ///    different documents underneath.
+    ///
+    /// KNOWN LIMITATION, measured and deliberately left in place: a sender that
+    /// uses two subjects has the smaller one discarded here, unseen. blu has a
+    /// third layout of 12 real receipts that never reaches the loop for exactly
+    /// this reason, and the fixture's `swiftpay` reproduces it on purpose.
+    ///
+    /// Dropping the subject pass fixes that — `Template.amountVariance` refuses
+    /// marketing on its own, so the pass is no longer load-bearing for
+    /// correctness. Measured over the full corpora without it:
     ///
     ///     grab  11 @ 0.91 ✓   10 @ 1.00 ✓   promos 0.41, 0.30, 0.11, 0.29 ✗
     ///     blu   70 @ 0.86 ✓   34 @ 0.91 ✓   12 @ 0.75 ✓   warnings ✗
     ///
-    /// Both receipt layouts kept, every promo refused, and blu's third layout
-    /// recovered. Note the margin narrowed: brochures scored 0.04–0.12 when
-    /// only subject-matched mail reached here, and Grab's largest promo cluster
-    /// now scores 0.41 against a 0.5 bar, because campaigns quote different
-    /// discounts to each other even while repeating within a campaign. Still a
-    /// clear separation — 0.41 to 0.75 — but no longer a chasm, and worth
-    /// re-measuring before that threshold is moved.
+    /// It also takes Grab from 2 clusters to 24, and two margins narrow with
+    /// it: the promo/receipt variance gap goes from 0.04–0.12 vs 0.88 down to
+    /// 0.41 vs 0.75, and `discriminators` walks every other cluster's mail.
+    /// Worth doing on its own merits and its own measurement, not as a side
+    /// effect of a fixture.
     static func templates(from emails: [CapturedEmail]) -> [Template] {
-        let receipts = emails
+        let receipts = templatedEmails(from: emails)
         guard !receipts.isEmpty else { return [] }
 
-        let clusters = layoutClusters(in: receipts)
+        let prepared = receipts.map(Prepared.init)
+        let clusters = layoutClusters(in: prepared)
+
         guard clusters.count > 1 else {
             return [
                 Template(
-                    emails: receipts,
+                    emails: prepared.map(\.email),
                     discriminators: [],
-                    amountVariance: amountVariance(of: receipts)
+                    amountVariance: variance(of: prepared)
                 )
             ]
         }
 
         return clusters.map { cluster in
             Template(
-                emails: cluster,
+                emails: cluster.map(\.email),
                 discriminators: discriminators(of: cluster, among: clusters),
-                amountVariance: amountVariance(of: cluster)
+                amountVariance: variance(of: cluster)
             )
         }
     }
 
-    /// See `Template.amountVariance`.
+    /// Share of the layout's emails whose set of Rp figures is unique.
     ///
-    /// Reads the head of each email rather than all of it: a footer can carry a
-    /// fixed fee or a price list, and those are the same in every email by
-    /// definition — counting them drags a real receipt's score down toward a
-    /// brochure's.
-    static func amountVariance(of emails: [CapturedEmail]) -> Double {
-        guard !emails.isEmpty else { return 0 }
-        let fingerprints = emails.map { email in
-            Set(IndonesianMoney.all(in: String(email.flatText.prefix(amountScanLength))))
-        }
-        return Double(Set(fingerprints).count) / Double(emails.count)
+    /// The one question that separates a receipt template from a brochure, and
+    /// it needs no model, no labels and no vocabulary: a receipt's numbers move,
+    /// an advertisement's do not.
+    ///
+    /// Reads the head of each email rather than all of it — a footer can carry
+    /// a fixed fee or a price list, and those are identical in every email by
+    /// definition, which drags a real receipt's score toward a brochure's.
+    private static func variance(of prepared: [Prepared]) -> Double {
+        guard !prepared.isEmpty else { return 0 }
+        return Double(Set(prepared.map(\.amounts)).count) / Double(prepared.count)
     }
 
-    private static let amountScanLength = 1500
+    /// See `variance` — this is the same measure for callers holding emails.
+    /// Reads each email once; do not call it in a loop over clusters.
+    static func amountVariance(of emails: [CapturedEmail]) -> Double {
+        variance(of: emails.map(Prepared.init))
+    }
+
+    /// The sender's templated emails, newest first.
+    ///
+    /// Returns everything when no subject repeats: a sender whose subjects are
+    /// all unique has no template to learn, and saying so by returning the lot
+    /// lets the caller's evidence bar reject it rather than this guessing.
+    ///
+    /// Reads `subject` only — never a body — so it is the cheap pass and
+    /// belongs first.
+    static func templatedEmails(from emails: [CapturedEmail]) -> [CapturedEmail] {
+        guard !emails.isEmpty else { return [] }
+
+        let clusters = Dictionary(grouping: emails) { normalize($0.subject) }
+        guard let dominant = clusters.max(by: { $0.value.count < $1.value.count }) else {
+            return emails
+        }
+        guard dominant.value.count > 1 else { return emails }
+
+        return dominant.value.sorted { $0.date > $1.date }
+    }
+
+    /// Digits and emoji collapsed, so "Order #123" and "Order #456" are one
+    /// template rather than two. Case folded for the same reason `CategoryID`
+    /// is: the same subject typed twice shouldn't be two things.
+    static func normalize(_ subject: String) -> String {
+        subject
+            .replacingOccurrences(of: #"\d+"#, with: "#", options: .regularExpression)
+            .replacingOccurrences(of: #"[\p{Emoji_Presentation}\p{Extended_Pictographic}]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
 
     // MARK: - Layout clustering
 
@@ -162,31 +228,30 @@ nonisolated enum SenderTriage: Sendable {
     /// would make every email its own cluster. So the vocabulary is restricted
     /// to words that recur across the sender first, and similarity is measured
     /// only over those. What survives is the template's furniture.
-    private static func layoutClusters(in emails: [CapturedEmail]) -> [[CapturedEmail]] {
+    private static func layoutClusters(in prepared: [Prepared]) -> [[Prepared]] {
         var documentFrequency: [String: Int] = [:]
-        var signatures: [String: Set<String>] = [:]
-
-        for email in emails {
-            let words = tokens(in: email, limit: signatureLength)
-            signatures[email.id] = words
-            for word in words { documentFrequency[word, default: 0] += 1 }
+        for item in prepared {
+            for word in item.signature { documentFrequency[word, default: 0] += 1 }
         }
 
-        let floor = max(2, emails.count / 4)
+        let floor = max(2, prepared.count / 4)
         let vocabulary = Set(documentFrequency.filter { $0.value >= floor }.keys)
-        for (id, words) in signatures { signatures[id] = words.intersection(vocabulary) }
+        let narrowed = prepared.map { item -> Prepared in
+            var copy = item
+            copy.signature = item.signature.intersection(vocabulary)
+            return copy
+        }
 
         // Greedy single pass, in the caller's order. Deterministic, O(n·k), and
         // the alternative — real agglomerative clustering — buys nothing on the
         // two-to-three layouts a sender actually has.
-        var clusters: [(signature: Set<String>, members: [CapturedEmail])] = []
-        for email in emails {
-            let signature = signatures[email.id] ?? []
+        var clusters: [(signature: Set<String>, members: [Prepared])] = []
+        for item in narrowed {
             var bestIndex: Int?
             var bestScore = 0.0
 
             for (index, cluster) in clusters.enumerated() {
-                let score = jaccard(signature, cluster.signature)
+                let score = jaccard(item.signature, cluster.signature)
                 if score > bestScore {
                     bestScore = score
                     bestIndex = index
@@ -194,12 +259,12 @@ nonisolated enum SenderTriage: Sendable {
             }
 
             if let bestIndex, bestScore >= similarityThreshold {
-                clusters[bestIndex].members.append(email)
+                clusters[bestIndex].members.append(item)
                 // Intersect, so the cluster's signature stays what its members
                 // AGREE on rather than drifting toward whatever joined last.
-                clusters[bestIndex].signature.formIntersection(signature)
+                clusters[bestIndex].signature.formIntersection(item.signature)
             } else {
-                clusters.append((signature, [email]))
+                clusters.append((item.signature, [item]))
             }
         }
 
@@ -222,19 +287,19 @@ nonisolated enum SenderTriage: Sendable {
     /// rides and nothing else, `diterbitkan` selects 10/10 food orders and
     /// nothing else — promos included.
     private static func discriminators(
-        of cluster: [CapturedEmail],
-        among clusters: [[CapturedEmail]]
+        of cluster: [Prepared],
+        among clusters: [[Prepared]]
     ) -> [String] {
         guard let first = cluster.first else { return [] }
 
-        var shared = tokens(in: first, limit: discriminatorLength)
-        for email in cluster.dropFirst() {
-            shared.formIntersection(tokens(in: email, limit: discriminatorLength))
-        }
+        var shared = first.head
+        for item in cluster.dropFirst() { shared.formIntersection(item.head) }
+        guard !shared.isEmpty else { return [] }
 
-        for other in clusters where !isSame(other, cluster) {
-            for email in other {
-                shared.subtract(tokens(in: email, limit: discriminatorLength))
+        for other in clusters where other.first?.email.id != first.email.id {
+            for item in other {
+                shared.subtract(item.head)
+                if shared.isEmpty { return [] }
             }
         }
 
@@ -246,20 +311,15 @@ nonisolated enum SenderTriage: Sendable {
             .map { $0 }
     }
 
-    private static func isSame(_ lhs: [CapturedEmail], _ rhs: [CapturedEmail]) -> Bool {
-        lhs.first?.id == rhs.first?.id && lhs.count == rhs.count
-    }
-
     // MARK: - Tokens
 
-    /// Letters only, three or more, lowercased. Digits are dropped for the same
-    /// reason `normalize` collapses them: an amount and a booking ID are the
-    /// email's content, and content is what we are trying to look past.
-    private static func tokens(in email: CapturedEmail, limit: Int) -> Set<String> {
-        let head = email.flatText.prefix(limit)
+    /// Letters only, three or more, lowercased. Digits are dropped because an
+    /// amount and a booking ID are the email's content, and content is exactly
+    /// what this is trying to look past.
+    private static func tokens(in text: String, limit: Int) -> Set<String> {
         var words: Set<String> = []
         var current = ""
-        for character in head {
+        for character in text.prefix(limit) {
             if character.isLetter {
                 current.append(character)
             } else {
@@ -281,6 +341,8 @@ nonisolated enum SenderTriage: Sendable {
     /// of the marketing tail that varies per campaign.
     private static let signatureLength = 2000
     private static let discriminatorLength = 300
+    /// How far into an email to look for figures when scoring variance.
+    private static let amountScanLength = 1500
     /// Grab's two layouts share almost no boilerplate and score far below this;
     /// two receipts of one layout score far above. There is no close call in the
     /// real corpus, which is why a single fixed threshold is honest here.

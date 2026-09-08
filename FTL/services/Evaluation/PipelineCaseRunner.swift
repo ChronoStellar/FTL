@@ -115,7 +115,7 @@ nonisolated struct PipelineCaseRunner: Sendable {
                     differences: actual == expected
                         ? []
                         : ["\(actual) qualifying layout(s), expected \(expected)"],
-                    knownIssue: nil
+                    knownIssue: fixture.discovery.layoutKnownIssues?[domain]
                 )
             )
         }

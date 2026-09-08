@@ -109,30 +109,95 @@ nonisolated struct PatternVerifier: Sendable {
         return PatternFeedback(attempted: attempted, succeeded: succeeded, failures: failures)
     }
 
-    /// How often the pattern reads SOMETHING plausible — an amount plus a
-    /// non-empty merchant — with no opinion on whether it read the right thing.
+    nonisolated struct Coverage: Sendable {
+        let rate: Double
+        let evidence: Int
+        /// Implausible reads, in the shape a retry can be fed.
+        let failures: [PatternFeedback.Failure]
+    }
+
+    /// How often the pattern reads something PLAUSIBLE — an amount, plus a
+    /// merchant that looks like a name rather than a slice of the receipt.
     ///
-    /// This exists for senders with no oracle. It is a much weaker claim than
-    /// `verify`, and the difference matters: a pattern anchored on the wrong
-    /// label extracts a value from every email and scores 1.0 here. Coverage
-    /// says "this pattern fits the template's shape", never "this pattern is
+    /// This exists for senders with no oracle, and it is still a much weaker
+    /// claim than `verify`: a pattern anchored on the wrong label reads a
+    /// well-formed value from every email and scores 1.0 here. Coverage says
+    /// "this pattern fits the template's shape", never "this pattern is
     /// correct". Callers must route the result to a human rather than trust it.
-    func coverage(_ pattern: ExtractionPattern, against emails: [CapturedEmail]) -> (rate: Double, evidence: Int) {
+    ///
+    /// What changed is the meaning of "something". It used to be "non-empty",
+    /// which let the Grab patterns score 1.00 while returning
+    /// `"Mahmud Prasetyo. 5.0 Compliments for driver Layanan Mantap Break"` as
+    /// a merchant on 21 real rows. Non-empty is not a quality bar; it is barely
+    /// a liveness check.
+    func coverage(_ pattern: ExtractionPattern, against emails: [CapturedEmail]) -> Coverage {
         let candidate = PatternDrivenParser(pattern: pattern)
         var read = 0
         var considered = 0
+        var failures: [PatternFeedback.Failure] = []
 
         for email in emails where candidate.canParse(email) {
             considered += 1
-            if case .parsed(let receipt) = candidate.parse(email),
-               receipt.amount.minorUnits > 0,
-               !receipt.merchantRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                read += 1
+            guard case .parsed(let receipt) = candidate.parse(email) else { continue }
+            guard receipt.amount.minorUnits > 0 else { continue }
+
+            if let complaint = Self.implausibility(of: receipt.merchantRaw) {
+                failures.append(
+                    .init(
+                        emailID: email.id,
+                        excerpt: Self.excerpt(email),
+                        field: "merchant",
+                        extracted: receipt.merchantRaw,
+                        expected: complaint
+                    )
+                )
+                continue
             }
+            read += 1
         }
 
-        guard considered > 0 else { return (0, 0) }
-        return (Double(read) / Double(considered), considered)
+        guard considered > 0 else { return Coverage(rate: 0, evidence: 0, failures: []) }
+        return Coverage(
+            rate: Double(read) / Double(considered),
+            evidence: considered,
+            failures: failures
+        )
+    }
+
+    /// Why a read cannot be a merchant name, or nil if nothing is obviously
+    /// wrong with it.
+    ///
+    /// One rule, because one rule is what the data supported. A value that runs
+    /// to the anchor's window edge was never terminated — it stopped because it
+    /// ran out of room, which means the anchor describes a starting point and
+    /// no ending. That is structural, not a guess about what names look like.
+    ///
+    /// Measured against 137 real rows, using blu's hand-written merchants as
+    /// the positive control and the two learned Grab patterns as the negative:
+    ///
+    ///     runs to the window edge   catches 16/21 bad,  0/116 good
+    ///     contains an Rp value       catches  0/21 bad,  0/116 good
+    ///     more than six words        catches 20/21 bad,  7/116 good
+    ///     grouped number (9.000)     catches 11/21 bad,  1/116 good
+    ///
+    /// Only the first is free. It is also enough: it takes the ride pattern to
+    /// 0/11 and the food pattern to 5/10, both far under `coverageThreshold`.
+    ///
+    /// A boilerplate-ratio rule — a merchant should not be made of the words
+    /// that appear in every one of the sender's emails — was measured too. It
+    /// separates well on average (blu 0.14, Grab food 0.71) but rejects 15 of
+    /// 116 real blu merchants at a useful threshold, which would sink a GOOD
+    /// pattern. Rejected on the numbers, not on taste.
+    static func implausibility(of merchant: String) -> String? {
+        let trimmed = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "a merchant name, but nothing was read" }
+        // Trimming removes at most the leading space after the anchor, so a
+        // value that filled the window lands within a character or two of it.
+        if trimmed.count >= ExtractionPattern.Anchor.window - 2 {
+            return "a merchant name that ENDS somewhere — this ran to the "
+                + "\(ExtractionPattern.Anchor.window)-character limit, so the anchor has no terminator"
+        }
+        return nil
     }
 
     /// Promotion is not just "scored well" — it is "scored well against enough
