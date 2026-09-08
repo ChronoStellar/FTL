@@ -68,6 +68,7 @@ nonisolated struct CorpusEmailSource: CapturedEmailSource {
 /// seen and measure nothing. Same protocol, so the rail cannot tell.
 actor InMemoryCaptureLog: CaptureLog {
     private var seen: Set<String> = []
+    private var entries: [CaptureLogEntry] = []
 
     init() {}
 
@@ -75,9 +76,18 @@ actor InMemoryCaptureLog: CaptureLog {
         Set(messageIDs).subtracting(seen)
     }
 
-    func record(_ entries: [CaptureLogEntry]) async throws {
-        for entry in entries { seen.insert(entry.messageID) }
+    func record(_ newEntries: [CaptureLogEntry]) async throws {
+        for entry in newEntries {
+            seen.insert(entry.messageID)
+            entries.append(entry)
+        }
     }
 
     func recentlySeenCount() async throws -> Int { seen.count }
+
+    /// What the rail decided about each message, kept so a fixture run can
+    /// assert on the verdict — including the ones that produce no row at all.
+    /// `notAPurchase` and `skipped` are outcomes worth pinning: a promo that
+    /// starts queueing is a regression the provisional store never sees.
+    func recorded() -> [CaptureLogEntry] { entries }
 }

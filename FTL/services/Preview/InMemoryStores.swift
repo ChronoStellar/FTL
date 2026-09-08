@@ -86,7 +86,15 @@ actor InMemoryProvisionalStore: ProvisionalStore {
 // MARK: - Ledger
 
 actor InMemoryLedgerStore: LedgerStore {
-    private var rows: [LedgerTransaction] = SampleLedger.transactions
+    private var rows: [LedgerTransaction]
+
+    /// `empty: true` for a harness. The seeded default is right for previews and
+    /// wrong for measurement — fixtures dated today sort above real output and
+    /// read as results, which is exactly how the first pipeline run reported
+    /// four placeholder purchases as though the app had found them.
+    init(empty: Bool = false) {
+        self.rows = empty ? [] : SampleLedger.transactions
+    }
 
     func all() async throws -> [LedgerTransaction] { rows }
 

@@ -1,0 +1,475 @@
+{
+  "patterns": [
+    {
+      "senderDomain": "grab.com",
+      "template": "compliments",
+      "subjectContains": ["Grab E-Receipt"],
+      "bodyContains": ["compliments"],
+      "amount": [{ "after": "Total Paid", "before": ["Receipt issued"], "occurrence": 1 }],
+      "merchant": [{ "after": "Receipt issued by the driver", "before": [], "occurrence": 1 }],
+      "nonSpendMarkers": [],
+      "version": 1,
+      "proposedAt": "2026-09-08T08:00:00Z",
+      "verifiedAgainst": 0,
+      "accuracy": 0,
+      "author": "on-device-foundation-model"
+    },
+    {
+      "senderDomain": "grab.com",
+      "template": "diterbitkan",
+      "subjectContains": ["Grab E-Receipt"],
+      "bodyContains": ["diterbitkan"],
+      "amount": [{ "after": "TOTAL", "before": ["TANGGAL"], "occurrence": 1 }],
+      "merchant": [{ "after": "Diterbitkan oleh", "before": ["Pesanan ID"], "occurrence": 1 }],
+      "nonSpendMarkers": [],
+      "version": 1,
+      "proposedAt": "2026-09-08T08:00:00Z",
+      "verifiedAgainst": 0,
+      "accuracy": 0,
+      "author": "on-device-foundation-model"
+    }
+  ],
+  "cases": [
+    {
+      "name": "blu-purchase-total-label",
+      "note": "The ordinary case. Amount labelled Total, merchant between bluAccount and Amount.",
+      "email": {
+        "id": "fx-001",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1788307200000",
+        "bodyPlain": "Transaction Successful\nTotal Rp25.000,00\nTransaction Date 01 Sep 2026\nbluAccount WARUNG SEDERHANA BANDUNG Amount Rp25.000,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 25000,
+        "merchantRaw": "WARUNG SEDERHANA BANDUNG",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-purchase-amount-label",
+      "note": "Second layout: no Total, figure labelled Amount, merchant ends at bluVirtual. The anchor fallback was worth ~3 points of accuracy and nothing else covers it.",
+      "email": {
+        "id": "fx-002",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1788393600000",
+        "bodyPlain": "Transaction Successful\nAmount Rp75.500,00\nbluAccount TOKO BUKU MERDEKA bluVirtual Card 1234"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 75500,
+        "merchantRaw": "TOKO BUKU MERDEKA",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-purchase-html-body",
+      "note": "HTML-only body, one field per table cell. A parser written against Gmail snippets read 3 of 112 real emails when it met bodies like this; flatText is what makes the two shapes converge.",
+      "email": {
+        "id": "fx-003",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful ...",
+        "internalDate": "1788480000000",
+        "bodyHtml": "<html><body><table><tr><td>Transaction Successful</td></tr><tr><td>Total</td><td>Rp12.750,00</td></tr><tr><td>bluAccount</td><td>KEDAI KOPI SORE</td></tr><tr><td>Amount</td><td>Rp12.750,00</td></tr></table></body></html>"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 12750,
+        "merchantRaw": "KEDAI KOPI SORE",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-transfer-flags-ambiguous",
+      "note": "Bank name beside an account number, plus Admin Fee. Inferred as a transfer, so it must carry ambiguousKind — the app worked this out rather than being told.",
+      "email": {
+        "id": "fx-004",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1788566400000",
+        "bodyPlain": "Transaction Successful\nAmount Rp500.000,00\nbluAccount BUDI SANTOSO... BCA 1234 5678 90 Admin Fee Rp2.500,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 500000,
+        "merchantRaw": "BUDI SANTOSO... BCA 1234 5678 90",
+        "kind": "nonSpend",
+        "nonSpendType": "transfer",
+        "flags": ["ambiguousKind"]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-transfer-to-another-person",
+      "note": "Identical shape, a payee who is not the account holder. Paying a person may well be spending, and the app cannot tell — which is exactly why it flags instead of deciding. Pinned so nobody 'improves' this into a silent classification.",
+      "email": {
+        "id": "fx-005",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1788652800000",
+        "bodyPlain": "Transaction Successful\nAmount Rp1.250.000,00\nbluAccount SITI RAHAYU... BCA 9988 7766 55 Admin Fee Rp2.500,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 1250000,
+        "merchantRaw": "SITI RAHAYU... BCA 9988 7766 55",
+        "kind": "nonSpend",
+        "nonSpendType": "transfer",
+        "flags": ["ambiguousKind"]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-incoming-not-flagged",
+      "note": "Money arriving. Non-spend because blu says Incoming in the subject, so the app is repeating the sender rather than inferring — no flag. A flag here would cry wolf and teach people to approve past flags.",
+      "email": {
+        "id": "fx-006",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Incoming Transaction to Your blu",
+        "snippet": "Incoming Transaction",
+        "internalDate": "1788739200000",
+        "bodyPlain": "Incoming Transaction to Your blu\nAmount Rp3.000.000,00\nbluAccount PT SUMBER REJEKI Transaction ID INC-0001"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 3000000,
+        "merchantRaw": "PT SUMBER REJEKI",
+        "kind": "nonSpend",
+        "nonSpendType": "transfer",
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-refund-not-flagged",
+      "note": "Refund, stated by the sender. Non-spend, no flag. Note it does not REDUCE spending — it sits in its own bucket, which is why a hold and its reversal do not cancel out. Pinned as current behaviour.",
+      "email": {
+        "id": "fx-007",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Refund Successful",
+        "snippet": "Refund Successful",
+        "internalDate": "1788825600000",
+        "bodyPlain": "Refund Successful\nTotal Rp15.000,00\nbluAccount TOKO SERBA ADA Transaction Date 03 Sep 2026"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 15000,
+        "merchantRaw": "TOKO SERBA ADA",
+        "kind": "nonSpend",
+        "nonSpendType": "refund",
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-missing-amount-is-queued-flagged",
+      "note": "Template matched, no figure in it. Must be queued with unparseable — dropping it would lose a real purchase because one anchor moved, which is the failure this app cares most about.",
+      "email": {
+        "id": "fx-008",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1788912000000",
+        "bodyPlain": "Transaction Successful\nbluAccount WARUNG KOPI PAGI Transaction ID TRX-0009"
+      },
+      "expect": {
+        "verdict": "flagged",
+        "amount": 0,
+        "merchantRaw": "Transaction Successful",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unparseable"]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-promo-never-queued",
+      "note": "Same sender, marketing. Subject carries neither transaction nor refund, so it must never reach the queue however much currency it contains.",
+      "email": {
+        "id": "fx-009",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Enjoy 50% off this weekend",
+        "snippet": "Save up to Rp100.000 on your next purchase",
+        "internalDate": "1788998400000",
+        "bodyPlain": "Enjoy 50% off this weekend\nSave up to Rp100.000,00 on every transaction with your blu card."
+      },
+      "expect": {
+        "verdict": "notAPurchase",
+        "amount": null,
+        "merchantRaw": null,
+        "kind": null,
+        "nonSpendType": null,
+        "flags": null
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-hold-counts-as-spend",
+      "note": "A card authorisation hold. Counted as spending today; its reversal arrives as a refund and does not cancel it, so the two together overstate the month. Pinned to make that visible rather than arguable.",
+      "email": {
+        "id": "fx-010",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1789084800000",
+        "bodyPlain": "Transaction Successful\nTotal Rp10.000,00\nbluAccount GLOBALSTORE *TEMPORARY HOLD Amount Rp10.000,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 10000,
+        "merchantRaw": "GLOBALSTORE *TEMPORARY HOLD",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": "A hold and its reversal both land; the refund is non-spend so it never offsets the hold."
+    },
+    {
+      "name": "blu-repeat-purchase-not-a-duplicate",
+      "note": "Two identical amounts, same day, SAME parser. Two coffees, not one counted twice. Must stay unflagged — this is what stops duplicate detection from firing on ordinary life.",
+      "email": {
+        "id": "fx-011",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1789171200000",
+        "bodyPlain": "Transaction Successful\nTotal Rp13.000,00\nbluAccount KEDAI KOPI SORE Amount Rp13.000,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 13000,
+        "merchantRaw": "KEDAI KOPI SORE",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "blu-repeat-purchase-twin",
+      "note": "The second coffee. Same amount, same day, same parser as fx-011, and equally unflagged.",
+      "email": {
+        "id": "fx-012",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1789192800000",
+        "bodyPlain": "Transaction Successful\nTotal Rp13.000,00\nbluAccount KEDAI KOPI SORE Amount Rp13.000,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 13000,
+        "merchantRaw": "KEDAI KOPI SORE",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": []
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "grab-ride-learned-pattern",
+      "note": "Executed by a pinned learned pattern, so the executor is testable with no model. Amount is right; merchant is the driver plus half the receipt, and the row carries unverifiedPattern because nothing verified it.",
+      "email": {
+        "id": "fx-013",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt",
+        "snippet": "Grab E-Receipt",
+        "internalDate": "1789257600000",
+        "bodyPlain": "Grab E-Receipt Bike Hemat Hope you enjoyed your ride! Booking ID: A-000111 Total Paid Rp9.000 Receipt issued by the driver Andi Pratama. 5.0 Compliments for driver Layanan Mantap Breakdown Fare 9.000 Fare 9.000 Total Paid 9.000"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 9000,
+        "merchantRaw": "Andi Pratama. 5.0 Compliments for driver Layanan Mantap Break",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unverifiedPattern"]
+      },
+      "knownIssue": "Merchant reads the driver's name and the fare breakdown. Coverage scores this 1.00 because it extracted something; only a plausibility check on the value catches it."
+    },
+    {
+      "name": "grab-food-learned-pattern",
+      "note": "The sender's OTHER layout, under a byte-identical subject. Proves bodyContains is what separates them — subject matching alone scored a correct pattern at 0.52.",
+      "email": {
+        "id": "fx-014",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt",
+        "snippet": "Grab E-Receipt",
+        "internalDate": "1789344000000",
+        "bodyPlain": "Your Grab E-Receipt Selamat menikmati makanan Anda! TOTAL Rp44.300 TANGGAL | WAKTU 12 Aug 26 Jenis Kendaraan: GrabFood Diterbitkan oleh Pengemudi Rudi Hartono Diterbitkan untuk Pelanggan Pesanan ID A-000222 Pesanan Dari: RUMAH MAKAN BAHARI"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 44300,
+        "merchantRaw": "Pengemudi Rudi Hartono Diterbitkan untuk Pelanggan",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unverifiedPattern"]
+      },
+      "knownIssue": "Merchant reads the driver, not the restaurant. The restaurant is in the same email after 'Pesanan Dari:'."
+    },
+    {
+      "name": "grab-promo-refused-by-body-marker",
+      "note": "Grab sends three promos for every receipt. bodyContains refuses them without a model — measured, one word selects 11 ride receipts out of 128 emails and no promo.",
+      "email": {
+        "id": "fx-015",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt is waiting - diskon 40%!",
+        "snippet": "Diskon s.d. 40% untuk perjalananmu",
+        "internalDate": "1789430400000",
+        "bodyPlain": "Diskon s.d. 40%! Hemat sampai Rp30.000 untuk perjalanan berikutnya. Pakai kode HEMAT40."
+      },
+      "expect": {
+        "verdict": "skipped",
+        "amount": null,
+        "merchantRaw": null,
+        "kind": null,
+        "nonSpendType": null,
+        "flags": null
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "dup-merchant-receipt",
+      "note": "One purchase, two emails, part one: the merchant's own receipt. Pairs with dup-bank-charge.",
+      "email": {
+        "id": "fx-016",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt",
+        "snippet": "Grab E-Receipt",
+        "internalDate": "1789516800000",
+        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000333 Total Paid Rp37.500 Receipt issued by the driver Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdown Fare 37.500"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 37500,
+        "merchantRaw": "Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdown",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unverifiedPattern", "possibleDuplicate"]
+      },
+      "knownIssue": "Merchant is the driver — see grab-ride-learned-pattern."
+    },
+    {
+      "name": "dup-bank-charge",
+      "note": "Part two: the bank's card notification for the same ride, same amount, same day. Every Grab purchase in the real corpus arrived twice this way and inflated spending by 10%.",
+      "email": {
+        "id": "fx-017",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1789516800000",
+        "bodyPlain": "Transaction Successful\nTotal Rp37.500,00\nbluAccount Grab* A-000333 Amount Rp37.500,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 37500,
+        "merchantRaw": "Grab* A-000333",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["possibleDuplicate"]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "dup-receipt-day-before-charge",
+      "note": "The same pairing with the charge posting a day later. Same-day matching missed one of these in the real data; the tolerance is one day because two and three caught nothing more.",
+      "email": {
+        "id": "fx-018",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt",
+        "snippet": "Grab E-Receipt",
+        "internalDate": "1789603200000",
+        "bodyPlain": "Grab E-Receipt GrabBike Hope you enjoyed your ride! Booking ID: A-000444 Total Paid Rp21.000 Receipt issued by the driver Sari Melati. 5.0 Compliments for driver Ramah Breakdown Fare 21.000"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 21000,
+        "merchantRaw": "Sari Melati. 5.0 Compliments for driver Ramah Breakdown Fare",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unverifiedPattern", "possibleDuplicate"]
+      },
+      "knownIssue": "Merchant is the driver — see grab-ride-learned-pattern."
+    },
+    {
+      "name": "dup-charge-day-after-receipt",
+      "note": "Its twin, dated one day earlier. Together with fx-018 this pins the ±1 day window.",
+      "email": {
+        "id": "fx-019",
+        "from": "no-reply@blubybcadigital.id",
+        "subject": "Transaction Successful",
+        "snippet": "Transaction Successful",
+        "internalDate": "1789516800000",
+        "bodyPlain": "Transaction Successful\nTotal Rp21.000,00\nbluAccount Grab* A-000444 Amount Rp21.000,00"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 21000,
+        "merchantRaw": "Grab* A-000444",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["possibleDuplicate"]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "dup-split-charge-receipt",
+      "note": "The known miss: the merchant bills one figure and the bank posts two. Exact matching cannot see it, and matching sums of charges would merge unrelated purchases. Pinned unflagged so the gap is documented rather than rediscovered.",
+      "email": {
+        "id": "fx-020",
+        "from": "no-reply@grab.com",
+        "subject": "Your Grab E-Receipt",
+        "snippet": "Grab E-Receipt",
+        "internalDate": "1789689600000",
+        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000555 Total Paid Rp51.500 Receipt issued by the driver Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Fare 46.500 Platform Fee 5.000"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 51500,
+        "merchantRaw": "Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Fare",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": ["unverifiedPattern"]
+      },
+      "knownIssue": "Split across two bank charges (5.000 + 46.500), so no exact twin exists and the duplicate goes uncaught."
+    },
+    {
+      "name": "unknown-sender-is-skipped",
+      "note": "A real receipt from a sender nothing knows. Must be skipped, not guessed at — and it is what PatternDiscovery exists to eventually cover.",
+      "email": {
+        "id": "fx-021",
+        "from": "billing@example-store.co.id",
+        "subject": "Invoice 8842 paid",
+        "snippet": "Total Rp88.000",
+        "internalDate": "1789776000000",
+        "bodyPlain": "Invoice 8842 paid\nTotal Rp88.000,00\nThank you for your order."
+      },
+      "expect": {
+        "verdict": "skipped",
+        "amount": null,
+        "merchantRaw": null,
+        "kind": null,
+        "nonSpendType": null,
+        "flags": null
+      },
+      "knownIssue": null
+    }
+  ]
+}

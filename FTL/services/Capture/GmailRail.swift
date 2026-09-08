@@ -87,6 +87,8 @@ nonisolated struct GmailRail: Sendable {
         var alreadySeen = 0
         var queued = 0
         var flagged = 0
+        /// Rows that look like the other rail's copy of the same purchase.
+        var duplicates = 0
         var notAPurchase = 0
         var skipped = 0
 
@@ -94,6 +96,7 @@ nonisolated struct GmailRail: Sendable {
             if fetched == 0 { return "No new mail in the window." }
             var parts = ["\(queued) queued"]
             if flagged > 0 { parts.append("\(flagged) flagged") }
+            if duplicates > 0 { parts.append("\(duplicates) possible duplicates") }
             if skipped + notAPurchase > 0 { parts.append("\(skipped + notAPurchase) not receipts") }
             return parts.joined(separator: " · ")
         }
@@ -164,11 +167,99 @@ nonisolated struct GmailRail: Sendable {
         // that silently disappears, which is the failure this app cares most
         // about avoiding.
         if !entries.isEmpty {
+            entries = try await flaggingDuplicates(entries)
+            result.duplicates = entries.filter { entry in
+                entry.flags.contains { $0.reason == .possibleDuplicate }
+            }.count
             try await provisional.insert(entries)
         }
         try await log.record(logEntries)
 
         return result
+    }
+
+    // MARK: - Duplicates
+
+    /// One purchase, two emails: the merchant sends a receipt and the bank
+    /// sends a card notification, and both are true records of the same money.
+    ///
+    /// Measured over 137 rows from the real corpus, EVERY Grab transaction was
+    /// counted twice — once by `grab.com/…` and once by `blu-receipt` as
+    /// `Grab* A-9MVBRDUGW7GDAV`. Rp 718,016 of Rp 7,026,838, so spending read
+    /// **10% high**. Nothing was wrong with either parser; each read its own
+    /// email correctly.
+    ///
+    /// Matched on EXACT amount, deliberately, rather than on `Fingerprint`'s
+    /// ±Rp5,000 buckets. That tolerance exists to pair a statement line with a
+    /// receipt whose totals genuinely differ by a tip or a service charge. This
+    /// pairing is the opposite case — the bank charges precisely what the
+    /// merchant billed — so the tolerance catches nothing extra and floods the
+    /// queue: measured on the same rows, bucket matching would have flagged 48
+    /// of 137 against this rule's 39, all nine extra of them wrong. A flag that
+    /// fires on a third of the queue trains people to approve past it.
+    ///
+    /// The buckets still do the searching — `candidates(matching:)` is indexed
+    /// on them — and the exact test filters what comes back.
+    ///
+    /// Flagged, never merged. Two rows both saying Rp 44.300 on 12 Aug might be
+    /// one Grab ride billed twice or two rides at the same fare, and only the
+    /// person who took them knows. Invariant 6.
+    private func flaggingDuplicates(_ entries: [ProvisionalEntry]) async throws -> [ProvisionalEntry] {
+        var flagged = entries
+        for index in flagged.indices {
+            let entry = flagged[index]
+            let stored = (try? await provisional.candidates(matching: entry.transaction.fingerprint)) ?? []
+
+            // Both directions: the pair usually arrives in the SAME sync, so
+            // checking only what is already stored would miss every one of them.
+            let others = stored + entries.filter { $0.id != entry.id }
+            guard let twin = others.first(where: { Self.isSameCharge($0, as: entry) }) else { continue }
+
+            flagged[index].flags.append(
+                ReviewFlag(
+                    reason: .possibleDuplicate,
+                    detail: "Same amount and day as \(Self.ruleName(of: twin))"
+                )
+            )
+        }
+        return flagged
+    }
+
+    /// Same money, within a day, seen by two different rails.
+    ///
+    /// The differing-source test is what keeps a genuine repeat out of it: two
+    /// Rp 13.000 coffees on one day, both read by `blu-receipt`, are two
+    /// coffees. The same figure arriving once from the merchant and once from
+    /// the bank is one purchase.
+    ///
+    /// A day of slack, not none. Measured on the 137 real rows: same-day only
+    /// caught 19 of Grab's 21, missing a ride whose receipt arrived on the 10th
+    /// and whose card charge posted on the 9th. Widening to ±1 day caught 20
+    /// and flagged exactly one more row — its twin. ±2 and ±3 caught nothing
+    /// further, so the slack stops here rather than at `Fingerprint`'s ±3.
+    ///
+    /// The 21st has no exact twin and cannot get one: blu split that fare into
+    /// Rp 5.000 and Rp 46.500 against Grab's single Rp 51.500. Matching sums of
+    /// charges is a different and much harder problem, and guessing at it would
+    /// merge unrelated purchases.
+    private static func isSameCharge(_ lhs: ProvisionalEntry, as rhs: ProvisionalEntry) -> Bool {
+        guard lhs.transaction.amount == rhs.transaction.amount,
+              ruleName(of: lhs) != ruleName(of: rhs)
+        else { return false }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: min(lhs.transaction.date, rhs.transaction.date)),
+            to: Calendar.current.startOfDay(for: max(lhs.transaction.date, rhs.transaction.date))
+        ).day ?? .max
+        return days <= dateSlackDays
+    }
+
+    /// See `isSameCharge` — measured, not assumed.
+    private static let dateSlackDays = 1
+
+    private static func ruleName(of entry: ProvisionalEntry) -> String {
+        if case .rule(let id) = entry.provenance { return id.rawValue }
+        return "another source"
     }
 
     // MARK: - Building the row

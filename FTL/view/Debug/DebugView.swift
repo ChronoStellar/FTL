@@ -54,7 +54,11 @@ private struct DebugHarness: View {
     @State private var probeReport: [String] = []
     @State private var isProbing = false
 
+    @State private var caseReport: [String] = []
+    @State private var isCasing = false
+
     @State private var pipelineReport: [String] = []
+    @State private var pipelineFileURL: URL?
     @State private var isPiping = false
 
     @State private var coverageReport: [String] = []
@@ -190,6 +194,23 @@ private struct DebugHarness: View {
             }
             .task { await loadMonth() }
 
+            // Synthetic cases with the answers attached. Deterministic — no
+            // model, no network, no device patterns — so a red line here is a
+            // regression rather than a difference of opinion about real mail.
+            Section("Fixture cases") {
+                Button(isCasing ? "Running…" : "Run pipeline cases") {
+                    Task { await runCases() }
+                }
+                .disabled(isCasing)
+
+                ForEach(Array(caseReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("✗") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             // The pipeline as a pipeline. Everything else in this screen
             // measures a component; this runs the real rail end to end and
             // shows what lands in the queue.
@@ -198,6 +219,12 @@ private struct DebugHarness: View {
                     Task { await runPipeline() }
                 }
                 .disabled(isPiping)
+
+                if let pipelineFileURL {
+                    ShareLink(item: pipelineFileURL) {
+                        Label("Share ledger rows (.tsv)", systemImage: "square.and.arrow.up")
+                    }
+                }
 
                 ForEach(Array(pipelineReport.enumerated()), id: \.offset) { _, line in
                     Text(line)
@@ -407,6 +434,36 @@ private struct DebugHarness: View {
     /// `BluReceiptParser` is the oracle, which is why this can run before
     /// `labels.json` exists — the truth for this sender is already in the
     /// codebase, and 116/116 is the bar its replacement has to clear.
+    /// The fixture suite. Deterministic, so this is the one thing in this
+    /// screen that can be believed without being re-read every time.
+    private func runCases() async {
+        isCasing = true
+        defer { isCasing = false }
+
+        var lines: [String] = []
+        do {
+            let fixture = try PipelineFixture.load()
+            let report = try await PipelineCaseRunner().run(fixture)
+
+            lines.append("\(report.passed)/\(report.outcomes.count) passed · \(report.failures.count) failing · \(report.known.count) known issue(s)")
+            lines.append("")
+
+            for outcome in report.outcomes {
+                let mark = outcome.passed ? (outcome.knownIssue == nil ? "✓" : "◐") : "✗"
+                lines.append("\(mark) \(outcome.name)")
+                for difference in outcome.differences {
+                    lines.append("    \(difference)")
+                }
+                if let known = outcome.knownIssue, outcome.passed {
+                    lines.append("    known: \(known)")
+                }
+            }
+        } catch {
+            lines.append("✗ failed to run: \(error)")
+        }
+        caseReport = lines
+    }
+
     /// The whole pipeline, end to end, over recorded mail.
     ///
     /// Real `GmailRail`, real parsers, real precedence, real dedup, real
@@ -448,6 +505,7 @@ private struct DebugHarness: View {
             lines.append(String(format: "elapsed %.2fs", Date.now.timeIntervalSince(started)))
             lines.append("fetched \(result.fetched) · queued \(result.queued) · flagged \(result.flagged)")
             lines.append("not a purchase \(result.notAPurchase) · skipped \(result.skipped) · seen \(result.alreadySeen)")
+            lines.append("possible duplicates \(result.duplicates)")
 
             // Second pass, same log: nothing should come through. Dedup is the
             // thing standing between a re-sync and duplicate spending, and it
@@ -482,20 +540,35 @@ private struct DebugHarness: View {
                 lines.append("flags: " + flagged.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
             }
 
-            // The actual product. Read these — a wrong merchant or a
-            // thousandfold amount is obvious here and invisible in a count.
+            // The last untested link, and the only output that matters: run the
+            // queue through the REAL approval service into a ledger, and emit
+            // the rows in the exact shape `SheetsLedgerStore` appends.
+            //
+            // Approving everything is not a claim that everything is correct —
+            // it is how you see what WOULD be written. A wrong merchant, a
+            // thousandfold amount, a spend that should have been a transfer:
+            // all obvious in the row, all invisible in a count.
+            let ledger = InMemoryLedgerStore(empty: true)
+            let approvals = DefaultApprovalService(store: provisional, ledger: ledger)
+            let approved = try await approvals.approve(pending.map(\.id))
+            lines.append("approved \(approved.written.count), failed \(approved.failed.count)")
+
+            let written = try await ledger.all()
+                .sorted { $0.date > $1.date }
+            let tsv = ([SheetsSchema.transactionColumns.joined(separator: "\t")]
+                + written.map { SheetsSchema.row(from: $0).joined(separator: "\t") })
+                .joined(separator: "\n")
+
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ftl-ledger-rows.tsv")
+            try tsv.write(to: url, atomically: true, encoding: .utf8)
+            pipelineFileURL = url
+
             lines.append("")
-            lines.append("sample rows")
-            for entry in pending.sorted(by: { $0.transaction.date > $1.transaction.date }).prefix(8) {
-                let tx = entry.transaction
-                // Kind is printed because its absence cost a wrong reading:
-                // a transfer already labelled non-spend looked, in a dump of
-                // date/amount/merchant alone, exactly like a spend.
-                let kind = entry.resolution.kind == .spend
-                    ? "spend"
-                    : (entry.resolution.nonSpendType.map { "non-spend/\($0.rawValue)" } ?? "non-spend")
-                let marks = entry.flags.isEmpty ? "" : "  ⚑ " + entry.flags.map(\.reason.rawValue).joined(separator: ",")
-                lines.append("  \(Self.day.string(from: tx.date))  \(MoneyFormatter.rp(tx.amount))  \(kind)  \(tx.merchantRaw.prefix(30))\(marks)")
+            lines.append("\(written.count) row(s) — sheet format, share for the full file")
+            lines.append(SheetsSchema.transactionColumns.joined(separator: "\t"))
+            for tx in written.prefix(6) {
+                lines.append(SheetsSchema.row(from: tx).joined(separator: "\t"))
             }
         } catch {
             lines.append("⚠︎ failed: \(error.localizedDescription)")
