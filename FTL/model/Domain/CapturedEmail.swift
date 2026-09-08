@@ -28,6 +28,49 @@ nonisolated struct CapturedEmail: Sendable, Hashable, Codable, Identifiable {
     let bodyPlain: String?
     let bodyHtml: String?
 
+    init(
+        id: String,
+        threadId: String?,
+        from: String,
+        to: String?,
+        subject: String,
+        snippet: String,
+        internalDate: String,
+        labelIds: [String]?,
+        bodyPlain: String?,
+        bodyHtml: String?
+    ) {
+        self.id = id
+        self.threadId = threadId
+        self.from = from
+        self.to = to
+        self.subject = subject
+        self.snippet = snippet
+        self.internalDate = internalDate
+        self.labelIds = labelIds
+        self.bodyPlain = bodyPlain
+        self.bodyHtml = bodyHtml
+    }
+
+    /// A live Gmail fetch, in the same shape as the recorded corpus. The export
+    /// and the rail share one decoder (`GmailExporter`), so a parser sees no
+    /// difference between an email that arrived this morning and one from
+    /// `sample.json`.
+    init(exported: ExportedEmail) {
+        self.init(
+            id: exported.id,
+            threadId: exported.threadId,
+            from: exported.from,
+            to: exported.to,
+            subject: exported.subject,
+            snippet: exported.snippet,
+            internalDate: exported.internalDate,
+            labelIds: exported.labelIds,
+            bodyPlain: exported.bodyPlain,
+            bodyHtml: exported.bodyHtml
+        )
+    }
+
     /// Cleaned body text: plain body if present, or decoded/stripped HTML layout.
     var cleanBody: String? {
         if let bodyPlain, !bodyPlain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -40,9 +83,24 @@ nonisolated struct CapturedEmail: Sendable, Hashable, Codable, Identifiable {
     }
 
     /// Everything a parser may read, in priority order: body when present,
-    /// otherwise the snippet.
+    /// otherwise the snippet. Keeps line structure — the model reads this.
     var searchText: String {
         [subject, cleanBody ?? snippet].joined(separator: "\n")
+    }
+
+    /// `searchText` with every run of whitespace collapsed to one space.
+    ///
+    /// **Parsers must match against this, not `searchText`.** The two sources
+    /// carry the same words in different shapes: a Gmail snippet is one long
+    /// line ("Total Rp18.000,00"), while a stripped HTML body puts each table
+    /// cell on its own ("Total\nRp18.000,00"). A parser written against one
+    /// silently fails on the other — which is exactly what happened when the
+    /// rail started delivering real bodies to a parser measured on snippets.
+    /// Flattening makes them the same text.
+    var flatText: String {
+        searchText
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// True if the email mentions Indonesian currency (Rp, Rp., IDR).

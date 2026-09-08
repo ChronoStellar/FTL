@@ -5,10 +5,14 @@
 //  blu by BCA — the largest receipt source in the corpus (116 of 1000 emails,
 //  95 of them with a byte-identical subject).
 //
-//  Reads the Gmail snippet, not the body: blu sends HTML-only, so there is no
-//  plain body to parse, and the ~200-character preview happens to carry the whole
-//  transaction. Every one of the 112 transaction emails yields an amount from the
-//  snippet alone.
+//  blu sends HTML-only, so there is no plain body. Originally this read the
+//  ~200-character Gmail snippet, which carries the whole transaction — all 112
+//  transaction emails in the corpus yield an amount from the snippet alone.
+//
+//  Live mail from GmailRail arrives WITH `bodyHtml`, and the stripped body says
+//  the same things in a different shape: one field per line rather than one run-
+//  on sentence. Both are read through `CapturedEmail.flatText`, which collapses
+//  whitespace so the two converge — see that property.
 //
 //  Two shapes:
 //    purchase  Total Rp18.000,00 … bluAccount KEMBANG TAHU MUSTOPA SURABAYA Amount …
@@ -20,10 +24,13 @@
 
 import Foundation
 
-struct BluReceiptParser: ReceiptParser {
+struct BluReceiptParser: ReceiptParser, DomainScopedParser {
     let id = RuleID(rawValue: "blu-receipt")
 
-    private static let domain = "blubybcadigital.id"
+    static let domain = "blubybcadigital.id"
+    /// Lets GmailRail narrow the Gmail query to this sender instead of
+    /// downloading the inbox and discarding most of it.
+    var domain: String { Self.domain }
 
     func canParse(_ email: CapturedEmail) -> Bool {
         email.senderDomain.hasSuffix(Self.domain)
@@ -38,7 +45,10 @@ struct BluReceiptParser: ReceiptParser {
             return .notAPurchase
         }
 
-        let text = email.searchText
+        // flatText, not searchText: a stripped HTML body breaks every field
+        // onto its own line, and this parser's anchors assume the words sit
+        // beside each other the way they do in a snippet.
+        let text = email.flatText
         guard let counterparty = Self.counterparty(in: text) else {
             return .incomplete(missing: "counterparty")
         }
@@ -50,6 +60,12 @@ struct BluReceiptParser: ReceiptParser {
 
         let isTransfer = Self.looksLikeAccountTransfer(counterparty: counterparty, text: text)
         let isRefund = subject.contains("refund")
+        // "Incoming Transaction to Your blu" — money arriving, not leaving. It
+        // passes the subject gate above (it contains "transaction") and would
+        // otherwise fall through to .spend, adding what you RECEIVED to what you
+        // spent: every total inflated, buckets pushed over ceilings by their own
+        // income. Invariant 5 — labelled, kept, excluded from the aggregates.
+        let isIncoming = subject.contains("incoming")
 
         return .parsed(
             ParsedReceipt(
@@ -59,8 +75,8 @@ struct BluReceiptParser: ReceiptParser {
                 date: email.date,
                 amount: amount,
                 merchantRaw: counterparty,
-                kind: (isTransfer || isRefund) ? .nonSpend : .spend,
-                nonSpendType: isRefund ? .refund : (isTransfer ? .transfer : nil),
+                kind: (isTransfer || isRefund || isIncoming) ? .nonSpend : .spend,
+                nonSpendType: isRefund ? .refund : ((isTransfer || isIncoming) ? .transfer : nil),
                 flags: []
             )
         )

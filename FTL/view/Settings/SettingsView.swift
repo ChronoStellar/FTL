@@ -33,6 +33,8 @@ struct SettingsView: View {
 
     #if DEBUG
     @State private var developerTool: DeveloperTool?
+    @State private var isSyncingMail: Bool = false
+    @State private var mailSyncResult: String?
     @State private var isMigrating: Bool = false
     @State private var migrationResult: String?
     @State private var didMigrate: Bool = false
@@ -360,6 +362,15 @@ struct SettingsView: View {
             Text("Every captured row waits for your approval. Auto-approval stays off until accuracy is re-measured — unattended writes require strict verification.")
                 .font(FTLTypography.captionSmall)
                 .foregroundStyle(FTLColor.textQuaternary)
+
+            // Not a DEBUG-only concern: if the queue is running in memory, rows
+            // awaiting approval die with the app and nothing else on screen
+            // would say so.
+            if !environment.isProvisionalStorePersistent {
+                Text("The approval queue is running in memory this session — its rows will not survive a relaunch. Approve anything waiting before you quit.")
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.budgetOverCeiling)
+            }
         }
     }
 
@@ -368,6 +379,33 @@ struct SettingsView: View {
         PanelCard {
             debugRow("Google API harness", .harness, showsDivider: true)
             debugRow("Evaluation", .evaluation, showsDivider: true)
+
+            // Gmail rail — Stage 1 #4
+            PanelRow(showsDivider: true) {
+                Button {
+                    Task { await syncMail() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSyncingMail {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "tray.and.arrow.down")
+                                .foregroundStyle(FTLColor.accent)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Fetch receipts from Gmail")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Text(mailSyncResult ?? "blu only. Parsed rows wait in the approval queue.")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                        }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isSyncingMail)
+            }
 
             // Legacy data migration
             PanelRow(showsDivider: migrationResult != nil) {
@@ -729,6 +767,22 @@ struct SettingsView: View {
     }
 
     #if DEBUG
+    private func syncMail() async {
+        guard let rail = environment.makeGmailRail() else {
+            mailSyncResult = "Not available in sample mode."
+            return
+        }
+        isSyncingMail = true
+        mailSyncResult = "Checking Gmail…"
+        do {
+            let result = try await rail.sync()
+            mailSyncResult = result.summary
+        } catch {
+            mailSyncResult = "Failed: \(error.localizedDescription)"
+        }
+        isSyncingMail = false
+    }
+
     private func runMigration() async {
         isMigrating = true
         migrationResult = "Scanning month-named tabs…"

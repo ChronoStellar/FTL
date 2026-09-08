@@ -6,9 +6,10 @@
 //  tooling and the Swift under test: JSON in, JSON out, nothing shared but the
 //  file format.
 //
-//  ⚠️ `test/sample.json` is 6.6 MB and ships in the app bundle so the on-device
-//  harness can read it. Move it behind a DEBUG-only resource rule before any
-//  build that leaves your phone.
+//  ⚠️ BOTH corpora ship in the app bundle: `sample.json` (6.6 MB) and
+//  `gmail_export.json` (75 MB) — 82 MB of real email metadata in a 94 MB app.
+//  Roadmap Stage 0 #3 still records this as "6.6 MB"; it isn't. This has to be
+//  gated out of Release before any build leaves the device.
 //
 
 import Foundation
@@ -44,12 +45,27 @@ struct EmailCorpus: Sendable {
         }
     }
 
+    /// Defaults to `gmail_export.json` — the export that KEPT `bodyHtml`.
+    ///
+    /// `sample.json` had bodies stripped, so every parser measured against it
+    /// was really measured against Gmail snippets. That number didn't transfer:
+    /// `BluReceiptParser` scored 116/116 on snippets and 3/112 the first time
+    /// GmailRail handed it a real HTML body, because a stripped table puts each
+    /// field on its own line. A harness that can't see that shape can't catch
+    /// that class of bug. Falls back to `sample.json` when the export isn't
+    /// present.
+    ///
+    /// ⚠️ The export is ~75 MB on disk and decodes to substantially more in
+    /// memory. Fine for a DEBUG harness run; it is not something to load on a
+    /// screen the user waits for.
     static func load(
-        emails emailResource: String = "sample",
+        emails emailResource: String = "gmail_export",
         labels labelResource: String = "labels",
         bundle: Bundle = .main
     ) throws -> EmailCorpus {
-        guard let url = bundle.url(forResource: emailResource, withExtension: "json") else {
+        let url = bundle.url(forResource: emailResource, withExtension: "json")
+            ?? bundle.url(forResource: "sample", withExtension: "json")
+        guard let url else {
             throw LoadError.missing("\(emailResource).json")
         }
         let decoder = JSONDecoder()

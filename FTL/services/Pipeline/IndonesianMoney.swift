@@ -39,8 +39,16 @@ enum IndonesianMoney {
 
     /// The amount labelled `Total`, falling back to `Amount`. blu leads with
     /// "Total" on a purchase and with "Amount" on a transfer.
+    ///
+    /// Any whitespace separates the two, not just a single space: an HTML table
+    /// puts the label in one cell and the figure in the next, which strips to a
+    /// newline. Matching on `label + " "` read 3 of 112 real emails.
     static func labelled(_ label: String, in text: String) -> Money? {
-        guard let range = text.range(of: label + " ", options: .caseInsensitive) else { return nil }
+        let escaped = NSRegularExpression.escapedPattern(for: label)
+        guard let range = text.range(
+            of: escaped + #"\s+"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return nil }
         return first(in: String(text[range.lowerBound...].prefix(40)))
     }
 }

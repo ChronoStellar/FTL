@@ -29,6 +29,16 @@ final class AppEnvironment {
     let approvals: ApprovalService
     let goals: GoalStore
 
+    /// What the Gmail rail has already handled. Nil in `sample()` — fixtures
+    /// have no mailbox to sync.
+    let captureLog: CaptureLog?
+
+    /// False when the on-disk store couldn't be opened and the queue is running
+    /// in memory for this session. Surfaced in Settings: a cache that silently
+    /// stopped persisting looks identical to one that works, right up until a
+    /// relaunch eats the queue.
+    let isProvisionalStorePersistent: Bool
+
     /// True for `live()`, false for `sample()`. Gates `reconcileTagStore()` —
     /// syncing the on-device tag store from `.sample()`'s fixture categories
     /// would overwrite the real, persisted taxonomy with demo data — and gates
@@ -55,7 +65,9 @@ final class AppEnvironment {
         budgets: BudgetStore,
         provisional: ProvisionalStore,
         goals: GoalStore,
-        isLive: Bool
+        isLive: Bool,
+        captureLog: CaptureLog? = nil,
+        isProvisionalStorePersistent: Bool = true
     ) {
         self.auth = auth
         self.ledger = ledger
@@ -63,6 +75,8 @@ final class AppEnvironment {
         self.provisional = provisional
         self.goals = goals
         self.isLive = isLive
+        self.captureLog = captureLog
+        self.isProvisionalStorePersistent = isProvisionalStorePersistent
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
         self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
     }
@@ -81,13 +95,18 @@ final class AppEnvironment {
     /// Approve before you quit is no longer load-bearing; it stays good practice.
     static func live(auth: GoogleAuthManager = .shared) -> AppEnvironment {
         let ledger = SheetsLedgerStore(auth: auth)
+        // One container, both stores. The provisional queue and the capture log
+        // are two tables in the same file, so they must not open it twice.
+        let store = Self.makeProvisionalContainer()
         return AppEnvironment(
             auth: auth,
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
-            provisional: SwiftDataProvisionalStore(modelContainer: Self.makeProvisionalContainer()),
+            provisional: SwiftDataProvisionalStore(modelContainer: store.container),
             goals: InMemoryGoalStore(empty: true),
-            isLive: true
+            isLive: true,
+            captureLog: SwiftDataCaptureLog(modelContainer: store.container),
+            isProvisionalStorePersistent: store.isPersistent
         )
     }
 
@@ -97,15 +116,26 @@ final class AppEnvironment {
     /// a future breaking schema change): a cache that stops persisting for one
     /// session is recoverable — the ledger is still the Sheet — a launch-time
     /// crash on a finance app is not the trade to make for the same guarantee.
-    private static func makeProvisionalContainer() -> ModelContainer {
-        let schema = Schema([ProvisionalEntryRecord.self])
-        if let onDisk = try? ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]) {
-            return onDisk
+    /// Returns whether the store is actually on disk, because the fallback is
+    /// otherwise INVISIBLE. A `print` doesn't exist in a release build: the app
+    /// would run in memory, dedupe and the queue would look normal all session,
+    /// and everything would evaporate on relaunch — the exact failure Stage 0 #1
+    /// exists to prevent, arriving silently. Whoever holds this must be able to
+    /// say so on screen.
+    private static func makeProvisionalContainer() -> (container: ModelContainer, isPersistent: Bool) {
+        let schema = Schema([ProvisionalEntryRecord.self, CapturedEmailRecord.self])
+        do {
+            return (try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]), true)
+        } catch {
+            print("⚠️ on-disk container failed to open (\(error)) — falling back to in-memory.")
+            // swiftlint:disable:next force_try — an in-memory container has no disk
+            // I/O to fail on; if this throws the SwiftData runtime itself is broken.
+            let memory = try! ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+            )
+            return (memory, false)
         }
-        print("⚠️ SwiftDataProvisionalStore: on-disk container failed to open — falling back to in-memory. The provisional queue will not survive this relaunch.")
-        // swiftlint:disable:next force_try — an in-memory container has no disk
-        // I/O to fail on; if this throws the SwiftData runtime itself is broken.
-        return try! ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
     }
 
     /// Fixtures. Used by the DEBUG skip-sign-in path so the UI can be worked on
@@ -177,6 +207,18 @@ final class AppEnvironment {
 
     func makeGoalViewModel() -> GoalViewModel {
         GoalViewModel(goals: goals)
+    }
+
+    /// The Gmail rail, when there is a mailbox and a place to log what it has
+    /// seen. Nil in `sample()`.
+    func makeGmailRail() -> GmailRail? {
+        guard isLive, let captureLog else { return nil }
+        return GmailRail(
+            exporter: GmailExporter(auth: auth),
+            parsers: [BluReceiptParser()],
+            provisional: provisional,
+            log: captureLog
+        )
     }
 
     func makeIncomeSplitViewModel(interval: DateInterval) -> IncomeSplitViewModel {

@@ -48,12 +48,21 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     var id: String { senderDomain + ":" + version.description }
 
     let senderDomain: String
-    /// Applies only to emails whose subject contains this. Nil means every email
-    /// from the sender.
-    let subjectContains: String?
+    /// Applies to emails whose subject contains ANY of these. Empty means every
+    /// email from the sender.
+    ///
+    /// A list, not one string: blu's receipts say "Transaction" and its refunds
+    /// say "Refund", and a pattern that can only name one silently disowns the
+    /// other four emails.
+    let subjectContains: [String]
 
-    let amount: Anchor
-    let merchant: Anchor
+    /// Tried in order; the first that yields a value wins.
+    ///
+    /// One anchor per field could not express blu: a QRIS purchase labels the
+    /// figure `Total`, a card transfer labels it `Amount`. Measured, the
+    /// fallback is worth ~3 points of accuracy on its own.
+    let amount: [Anchor]
+    let merchant: [Anchor]
     /// Substrings that mark the movement as non-spend — "Admin Fee", a bank name.
     let nonSpendMarkers: [String]
 
@@ -72,12 +81,45 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     nonisolated struct Anchor: Sendable, Hashable, Codable {
         /// Text immediately before the value.
         let after: String
-        /// Text that ends it. Nil means to end of line.
-        let before: String?
+
+        /// Anything that can end the value. The EARLIEST one present wins;
+        /// empty means "up to `window` characters".
+        ///
+        /// Two corrections live here, both found by running the schema against
+        /// 112 real blu emails rather than reasoning about it:
+        ///
+        /// 1. It used to be one string. blu has several layouts —
+        ///    `bluAccount SHOPEE bluVirtual Card …` has no `Amount` after the
+        ///    merchant at all, where `bluAccount Kembang Tahu … Amount Rp…`
+        ///    does. One terminator scored 48%; the list scored 96%.
+        /// 2. Empty used to mean "to end of line", which assumed the one-line
+        ///    shape of a Gmail snippet. A real HTML receipt is a table: each
+        ///    field strips onto its own line, so end-of-line after a label like
+        ///    `Total` captures nothing. Anchors run against
+        ///    `CapturedEmail.flatText`, where lines don't exist, so an open
+        ///    anchor is bounded by length instead.
+        let before: [String]
+
         /// Nth occurrence when `after` repeats — blu says "Rp" many times.
         let occurrence: Int
 
-        init(after: String, before: String? = nil, occurrence: Int = 1) {
+        /// How far an OPEN anchor (no terminator) reads. Wide enough for a
+        /// merchant name and a figure, short enough not to swallow the footer.
+        static let window = 60
+
+        /// How far to LOOK for a terminator. Deliberately much larger than
+        /// `window`, and confusing the two cost a real run: the model correctly
+        /// proposed "the amount sits between `Total` and `Transaction Date`",
+        /// but in blu's layout those are 95 characters apart, so a 60-character
+        /// search found no terminator and scored a correct pattern at 12%.
+        ///
+        /// The two bounds answer different questions. `window` asks "how much
+        /// text can this value plausibly be?"; this asks "how far away may its
+        /// end marker sit?" — and a marker can be far while the value is short,
+        /// because everything between them is the rest of the receipt.
+        static let searchSpan = 400
+
+        init(after: String, before: [String] = [], occurrence: Int = 1) {
             self.after = after
             self.before = before
             self.occurrence = occurrence

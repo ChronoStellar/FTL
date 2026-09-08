@@ -60,6 +60,20 @@ actor GmailExporter {
         self.client = GoogleAPIClient(auth: auth)
     }
 
+    /// Fetches messages matching `query` as `CapturedEmail` — the same shape the
+    /// fixture corpus decodes into, so a parser cannot tell a live email from a
+    /// recorded one.
+    ///
+    /// Shares this actor's ID paging and MIME/base64 extraction rather than
+    /// GmailRail growing its own: two decoders for one wire format is how they
+    /// drift, and the export is the thing the parsers were measured against.
+    func fetchCaptured(query: String, limit: Int, concurrency: Int = 6) async throws -> [CapturedEmail] {
+        let ids = try await fetchMessageIDs(targetCount: limit, query: query, progress: { _ in })
+        guard !ids.isEmpty else { return [] }
+        let exported = await downloadMessages(ids: ids, concurrency: concurrency, progress: { _ in })
+        return exported.map(CapturedEmail.init(exported:))
+    }
+
     /// Fetches up to `targetCount` messages matching `query`, then writes `.json` and `.csv` files.
     ///
     /// - Parameters:

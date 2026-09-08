@@ -43,6 +43,10 @@ private struct DebugHarness: View {
     @State private var budgetReport: [String] = []
     @State private var isInspecting = false
 
+    // Pattern synthesis (Stage 4)
+    @State private var synthReport: [String] = []
+    @State private var isSynthesizing = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -172,6 +176,20 @@ private struct DebugHarness: View {
             }
             .task { await loadMonth() }
 
+            Section("Pattern synthesis · blu") {
+                Button(isSynthesizing ? "Proposing…" : "Learn a pattern for blu") {
+                    Task { await runSynthesis() }
+                }
+                .disabled(isSynthesizing)
+
+                ForEach(Array(synthReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             Section("Budgets tab (raw)") {
                 Button(isInspecting ? "Reading…" : "Inspect budgets + categories") {
                     Task { await inspectBudgets() }
@@ -292,6 +310,88 @@ private struct DebugHarness: View {
             lines = ["failed: \(error.localizedDescription)"]
         }
         budgetReport = lines
+    }
+
+    /// Runs the whole loop against blu: propose from 5 examples, verify against
+    /// the ~111 held out, retry on failure, report what came back.
+    ///
+    /// `BluReceiptParser` is the oracle, which is why this can run before
+    /// `labels.json` exists — the truth for this sender is already in the
+    /// codebase, and 116/116 is the bar its replacement has to clear.
+    private func runSynthesis() async {
+        isSynthesizing = true
+        defer { isSynthesizing = false }
+
+        var lines: [String] = []
+
+        // Availability first: the corpus load below is 75 MB of JSON, and there
+        // is no reason to pay for it only to discover there's no model.
+        guard FoundationModelSynthesizer.isAvailable else {
+            synthReport = ["⚠︎ FoundationModels unavailable here — needs a real device."]
+            return
+        }
+
+        do {
+            // ⚠️ Loads the whole 75 MB export to use ~116 of it. Fine for a
+            // debug run on a desk; do not put this behind a user-facing button.
+            let corpus = try EmailCorpus.load()
+            let blu = corpus.emails(from: BluReceiptParser.domain)
+            lines.append("corpus \(corpus.emails.count) · blu \(blu.count)")
+
+            let learner = DefaultPatternLearner(
+                synthesizer: FoundationModelSynthesizer(),
+                oracle: ParserOracle(BluReceiptParser())
+            )
+            let started = Date.now
+            let outcome = await learner.learn(
+                senderDomain: BluReceiptParser.domain,
+                from: blu,
+                policy: .default
+            )
+            lines.append(String(format: "elapsed %.1fs", Date.now.timeIntervalSince(started)))
+
+            switch outcome {
+            case .promoted(let pattern, let feedback):
+                lines.append("✅ PROMOTED — \(Self.describe(feedback))")
+                lines.append(contentsOf: Self.describe(pattern))
+            case .rejected(let best, let feedback, let attempts):
+                lines.append("⚠︎ REJECTED after \(attempts) attempt(s)")
+                if let feedback { lines.append("best: \(Self.describe(feedback))") }
+                if let best { lines.append(contentsOf: Self.describe(best)) }
+                for failure in (feedback?.failures.prefix(4) ?? []) {
+                    lines.append("⚠︎ \(failure.field): got \(failure.extracted ?? "nil") want \(failure.expected ?? "?")")
+                }
+            case .insufficientEvidence(let available):
+                lines.append("⚠︎ insufficient evidence — \(available) email(s)")
+            case .gated(let reason):
+                lines.append("⚠︎ LanguageGate refused: \(reason)")
+            }
+        } catch {
+            lines.append("⚠︎ failed: \(error.localizedDescription)")
+        }
+        synthReport = lines
+    }
+
+    private static func describe(_ feedback: PatternFeedback) -> String {
+        String(format: "%d/%d correct (%.1f%%)", feedback.succeeded, feedback.attempted, feedback.accuracy * 100)
+    }
+
+    /// The artifact, in full. The point of the loop is that this is readable —
+    /// if it isn't, you can't revoke what you can't understand.
+    private static func describe(_ pattern: ExtractionPattern) -> [String] {
+        func anchors(_ list: [ExtractionPattern.Anchor]) -> String {
+            list.map { anchor in
+                let ends = anchor.before.isEmpty ? "…\(ExtractionPattern.Anchor.window) chars" : anchor.before.joined(separator: " | ")
+                return "after '\(anchor.after)' → \(ends)"
+            }.joined(separator: "  ,  ")
+        }
+        return [
+            "  subject: \(pattern.subjectContains.isEmpty ? "(any)" : pattern.subjectContains.joined(separator: " | "))",
+            "  amount:  \(anchors(pattern.amount))",
+            "  merchant:\(anchors(pattern.merchant))",
+            "  nonSpend:\(pattern.nonSpendMarkers.isEmpty ? " (none)" : " " + pattern.nonSpendMarkers.joined(separator: " | "))",
+            "  verified on \(pattern.verifiedAgainst) · v\(pattern.version) · \(pattern.author)",
+        ]
     }
 
     private static func columnLetter(_ index: Int) -> String {
