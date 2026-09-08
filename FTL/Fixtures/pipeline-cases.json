@@ -3,10 +3,28 @@
     {
       "senderDomain": "grab.com",
       "template": "compliments",
-      "subjectContains": ["Grab E-Receipt"],
-      "bodyContains": ["compliments"],
-      "amount": [{ "after": "Total Paid", "before": ["Receipt issued"], "occurrence": 1 }],
-      "merchant": [{ "after": "Receipt issued by the driver", "before": [], "occurrence": 1 }],
+      "subjectContains": [
+        "Grab E-Receipt"
+      ],
+      "bodyContains": [
+        "compliments"
+      ],
+      "amount": [
+        {
+          "after": "Total Paid",
+          "before": [
+            "Receipt issued"
+          ],
+          "occurrence": 1
+        }
+      ],
+      "merchant": [
+        {
+          "after": "Receipt issued by the driver",
+          "before": [],
+          "occurrence": 1
+        }
+      ],
       "nonSpendMarkers": [],
       "version": 1,
       "proposedAt": "2026-09-08T08:00:00Z",
@@ -17,10 +35,30 @@
     {
       "senderDomain": "grab.com",
       "template": "diterbitkan",
-      "subjectContains": ["Grab E-Receipt"],
-      "bodyContains": ["diterbitkan"],
-      "amount": [{ "after": "TOTAL", "before": ["TANGGAL"], "occurrence": 1 }],
-      "merchant": [{ "after": "Diterbitkan oleh", "before": ["Pesanan ID"], "occurrence": 1 }],
+      "subjectContains": [
+        "Grab E-Receipt"
+      ],
+      "bodyContains": [
+        "diterbitkan"
+      ],
+      "amount": [
+        {
+          "after": "TOTAL",
+          "before": [
+            "TANGGAL"
+          ],
+          "occurrence": 1
+        }
+      ],
+      "merchant": [
+        {
+          "after": "Diterbitkan oleh",
+          "before": [
+            "Pesanan ID"
+          ],
+          "occurrence": 1
+        }
+      ],
       "nonSpendMarkers": [],
       "version": 1,
       "proposedAt": "2026-09-08T08:00:00Z",
@@ -110,7 +148,9 @@
         "merchantRaw": "BUDI SANTOSO... BCA 1234 5678 90",
         "kind": "nonSpend",
         "nonSpendType": "transfer",
-        "flags": ["ambiguousKind"]
+        "flags": [
+          "ambiguousKind"
+        ]
       },
       "knownIssue": null
     },
@@ -131,7 +171,9 @@
         "merchantRaw": "SITI RAHAYU... BCA 9988 7766 55",
         "kind": "nonSpend",
         "nonSpendType": "transfer",
-        "flags": ["ambiguousKind"]
+        "flags": [
+          "ambiguousKind"
+        ]
       },
       "knownIssue": null
     },
@@ -194,7 +236,9 @@
         "merchantRaw": "Transaction Successful",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unparseable"]
+        "flags": [
+          "unparseable"
+        ]
       },
       "knownIssue": null
     },
@@ -291,15 +335,17 @@
         "subject": "Your Grab E-Receipt",
         "snippet": "Grab E-Receipt",
         "internalDate": "1789257600000",
-        "bodyPlain": "Grab E-Receipt Bike Hemat Hope you enjoyed your ride! Booking ID: A-000111 Total Paid Rp9.000 Receipt issued by the driver Andi Pratama. 5.0 Compliments for driver Layanan Mantap Breakdown Fare 9.000 Fare 9.000 Total Paid 9.000"
+        "bodyPlain": "Grab E-Receipt Bike Hemat Hope you enjoyed your ride! Booking ID: A-000111 Total Paid Rp9.000 Receipt issued by the driver Andi Pratama. 5.0 Compliments for driver Layanan Mantap Bredown Fare 9.000 Fare 9.000 Total Paid 9.000"
       },
       "expect": {
         "verdict": "queued",
         "amount": 9000,
-        "merchantRaw": "Andi Pratama. 5.0 Compliments for driver Layanan Mantap Break",
+        "merchantRaw": "Andi Pratama. 5.0 Compliments for driver Layanan Mantap Bre",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unverifiedPattern"]
+        "flags": [
+          "unverifiedPattern"
+        ]
       },
       "knownIssue": "Merchant reads the driver's name and the fare breakdown. Coverage scores this 1.00 because it extracted something; only a plausibility check on the value catches it."
     },
@@ -320,7 +366,9 @@
         "merchantRaw": "Pengemudi Rudi Hartono Diterbitkan untuk Pelanggan",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unverifiedPattern"]
+        "flags": [
+          "unverifiedPattern"
+        ]
       },
       "knownIssue": "Merchant reads the driver, not the restaurant. The restaurant is in the same email after 'Pesanan Dari:'."
     },
@@ -354,15 +402,18 @@
         "subject": "Your Grab E-Receipt",
         "snippet": "Grab E-Receipt",
         "internalDate": "1789516800000",
-        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000333 Total Paid Rp37.500 Receipt issued by the driver Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdown Fare 37.500"
+        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000333 Total Paid Rp37.500 Receipt issued by the driver Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdo Fare 37.500"
       },
       "expect": {
         "verdict": "queued",
         "amount": 37500,
-        "merchantRaw": "Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdown",
+        "merchantRaw": "Joko Susilo. 5.0 Compliments for driver Tepat Waktu Breakdo",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unverifiedPattern", "possibleDuplicate"]
+        "flags": [
+          "unverifiedPattern",
+          "possibleDuplicate"
+        ]
       },
       "knownIssue": "Merchant is the driver — see grab-ride-learned-pattern."
     },
@@ -383,7 +434,9 @@
         "merchantRaw": "Grab* A-000333",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["possibleDuplicate"]
+        "flags": [
+          "possibleDuplicate"
+        ]
       },
       "knownIssue": null
     },
@@ -396,15 +449,18 @@
         "subject": "Your Grab E-Receipt",
         "snippet": "Grab E-Receipt",
         "internalDate": "1789603200000",
-        "bodyPlain": "Grab E-Receipt GrabBike Hope you enjoyed your ride! Booking ID: A-000444 Total Paid Rp21.000 Receipt issued by the driver Sari Melati. 5.0 Compliments for driver Ramah Breakdown Fare 21.000"
+        "bodyPlain": "Grab E-Receipt GrabBike Hope you enjoyed your ride! Booking ID: A-000444 Total Paid Rp21.000 Receipt issued by the driver Sari Melati. 5.0 Compliments for driver Ramah Breakdown Far 21.000"
       },
       "expect": {
         "verdict": "queued",
         "amount": 21000,
-        "merchantRaw": "Sari Melati. 5.0 Compliments for driver Ramah Breakdown Fare",
+        "merchantRaw": "Sari Melati. 5.0 Compliments for driver Ramah Breakdown Far",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unverifiedPattern", "possibleDuplicate"]
+        "flags": [
+          "unverifiedPattern",
+          "possibleDuplicate"
+        ]
       },
       "knownIssue": "Merchant is the driver — see grab-ride-learned-pattern."
     },
@@ -425,7 +481,9 @@
         "merchantRaw": "Grab* A-000444",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["possibleDuplicate"]
+        "flags": [
+          "possibleDuplicate"
+        ]
       },
       "knownIssue": null
     },
@@ -438,21 +496,23 @@
         "subject": "Your Grab E-Receipt",
         "snippet": "Grab E-Receipt",
         "internalDate": "1789689600000",
-        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000555 Total Paid Rp51.500 Receipt issued by the driver Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Fare 46.500 Platform Fee 5.000"
+        "bodyPlain": "Grab E-Receipt Car Standard Hope you enjoyed your ride! Booking ID: A-000555 Total Paid Rp51.500 Receipt issued by the driver Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Far 46.500 Platform Fee 5.000"
       },
       "expect": {
         "verdict": "queued",
         "amount": 51500,
-        "merchantRaw": "Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Fare",
+        "merchantRaw": "Bayu Nugroho. 5.0 Compliments for driver Aman Breakdown Far",
         "kind": "spend",
         "nonSpendType": null,
-        "flags": ["unverifiedPattern"]
+        "flags": [
+          "unverifiedPattern"
+        ]
       },
       "knownIssue": "Split across two bank charges (5.000 + 46.500), so no exact twin exists and the duplicate goes uncaught."
     },
     {
-      "name": "unknown-sender-is-skipped",
-      "note": "A real receipt from a sender nothing knows. Must be skipped, not guessed at — and it is what PatternDiscovery exists to eventually cover.",
+      "name": "unknown-sender-is-never-fetched",
+      "note": "A real receipt from a sender nothing knows. It is not skipped — it is never requested: GmailRail narrows its query to from:(the domains of parsers it already has), so an unknown sender's mail never arrives to be judged. Harmless for capture, fatal for discovery: PatternDiscovery can only propose patterns for senders the app can already read. Feeding it live mail needs a fetch that is not scoped to known parsers.",
       "email": {
         "id": "fx-021",
         "from": "billing@example-store.co.id",
@@ -462,14 +522,280 @@
         "bodyPlain": "Invoice 8842 paid\nTotal Rp88.000,00\nThank you for your order."
       },
       "expect": {
-        "verdict": "skipped",
+        "verdict": "notFetched",
         "amount": null,
         "merchantRaw": null,
         "kind": null,
         "nonSpendType": null,
         "flags": null
       },
-      "knownIssue": null
+      "knownIssue": "PatternDiscovery cannot reach a sender the rail never fetches."
     }
-  ]
+  ],
+  "discoveryCorpus": [
+    {
+      "id": "oov-deals-00",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #1",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1780000000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-deals-01",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #2",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1780432000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-deals-02",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #3",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1780864000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-deals-03",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #4",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1781296000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-deals-04",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #5",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1781728000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-deals-05",
+      "from": "blast@deals.example.com",
+      "subject": "Promo Spesial Bulan Ini #6",
+      "snippet": "Promo Spesial Bulan Ini!",
+      "internalDate": "1782160000000",
+      "bodyPlain": "Promo Spesial Bulan Ini!\nPaket Hemat mulai Rp29.000,00\nPaket Keluarga Rp99.000,00\nPaket Premium Rp199.000,00\nBerlaku sampai akhir bulan. Pakai kode HEMAT."
+    },
+    {
+      "id": "oov-tiny-00",
+      "from": "billing@tinyshop.example.com",
+      "subject": "Invoice paid",
+      "snippet": "Invoice paid",
+      "internalDate": "1780000000000",
+      "bodyPlain": "Invoice paid\nTotal Rp88.000,00\nOrder 4400\nThank you for shopping with Tinyshop."
+    },
+    {
+      "id": "oov-tiny-01",
+      "from": "billing@tinyshop.example.com",
+      "subject": "Invoice paid",
+      "snippet": "Invoice paid",
+      "internalDate": "1780604800000",
+      "bodyPlain": "Invoice paid\nTotal Rp45.500,00\nOrder 4401\nThank you for shopping with Tinyshop."
+    },
+    {
+      "id": "oov-tiny-02",
+      "from": "billing@tinyshop.example.com",
+      "subject": "Invoice paid",
+      "snippet": "Invoice paid",
+      "internalDate": "1781209600000",
+      "bodyPlain": "Invoice paid\nTotal Rp120.000,00\nOrder 4402\nThank you for shopping with Tinyshop."
+    },
+    {
+      "id": "oov-usd-00",
+      "from": "receipts@northwind.example.com",
+      "subject": "Your receipt from Northwind",
+      "snippet": "Receipt from Northwind",
+      "internalDate": "1780000000000",
+      "bodyPlain": "Receipt from Northwind\nAmount charged USD 12.99\nPlan Pro monthly\nInvoice NW-700"
+    },
+    {
+      "id": "oov-usd-01",
+      "from": "receipts@northwind.example.com",
+      "subject": "Your receipt from Northwind",
+      "snippet": "Receipt from Northwind",
+      "internalDate": "1780777600000",
+      "bodyPlain": "Receipt from Northwind\nAmount charged USD 24.5\nPlan Pro monthly\nInvoice NW-701"
+    },
+    {
+      "id": "oov-swift-pay-00",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Nominal 43.500",
+      "internalDate": "1780000000000",
+      "bodyPlain": "Pembayaran Berhasil\nNominal 43.500\nPenerima MITRA DAGANG 01\nID Transaksi SWP-9000\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-01",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Jumlah Rp128.000,00",
+      "internalDate": "1780259200000",
+      "bodyPlain": "Pembayaran Berhasil\nJumlah Rp128.000,00\nPenerima MITRA DAGANG 02\nMetode SwiftPay Saldo\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-02",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Nominal Rp17.250,00",
+      "internalDate": "1780518400000",
+      "bodyPlain": "Pembayaran Berhasil\nNominal Rp17.250,00\nPenerima MITRA DAGANG 03\nID Transaksi SWP-9002\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-03",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Jumlah 305.000",
+      "internalDate": "1780777600000",
+      "bodyPlain": "Pembayaran Berhasil\nJumlah 305.000\nPenerima MITRA DAGANG 04\nMetode SwiftPay Saldo\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-04",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Nominal Rp62.800,00",
+      "internalDate": "1781036800000",
+      "bodyPlain": "Pembayaran Berhasil\nNominal Rp62.800,00\nPenerima MITRA DAGANG 05\nID Transaksi SWP-9004\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-05",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Jumlah Rp9.900,00",
+      "internalDate": "1781296000000",
+      "bodyPlain": "Pembayaran Berhasil\nJumlah Rp9.900,00\nPenerima MITRA DAGANG 06\nMetode SwiftPay Saldo\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-06",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Nominal 214.300",
+      "internalDate": "1781555200000",
+      "bodyPlain": "Pembayaran Berhasil\nNominal 214.300\nPenerima MITRA DAGANG 07\nID Transaksi SWP-9006\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-07",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Jumlah Rp78.650,00",
+      "internalDate": "1781814400000",
+      "bodyPlain": "Pembayaran Berhasil\nJumlah Rp78.650,00\nPenerima MITRA DAGANG 08\nMetode SwiftPay Saldo\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-08",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Nominal Rp33.100,00",
+      "internalDate": "1782073600000",
+      "bodyPlain": "Pembayaran Berhasil\nNominal Rp33.100,00\nPenerima MITRA DAGANG 09\nID Transaksi SWP-9008\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-pay-09",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Pembayaran Berhasil",
+      "snippet": "Jumlah 156.400",
+      "internalDate": "1782332800000",
+      "bodyPlain": "Pembayaran Berhasil\nJumlah 156.400\nPenerima MITRA DAGANG 10\nMetode SwiftPay Saldo\nBiaya Admin Rp1.000,00\nTerima kasih telah menggunakan SwiftPay."
+    },
+    {
+      "id": "oov-swift-top-00",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp50.000,00",
+      "internalDate": "1780086400000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp50.000,00\nSaldo Akhir Rp62.345,00\nReferensi TOP-5000\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-01",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp100.000,00",
+      "internalDate": "1780345600000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp100.000,00\nSaldo Akhir Rp112.345,00\nReferensi TOP-5001\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-02",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp250.000,00",
+      "internalDate": "1780604800000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp250.000,00\nSaldo Akhir Rp262.345,00\nReferensi TOP-5002\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-03",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp75.000,00",
+      "internalDate": "1780864000000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp75.000,00\nSaldo Akhir Rp87.345,00\nReferensi TOP-5003\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-04",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp20.000,00",
+      "internalDate": "1781123200000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp20.000,00\nSaldo Akhir Rp32.345,00\nReferensi TOP-5004\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-05",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp500.000,00",
+      "internalDate": "1781382400000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp500.000,00\nSaldo Akhir Rp512.345,00\nReferensi TOP-5005\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-06",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp150.000,00",
+      "internalDate": "1781641600000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp150.000,00\nSaldo Akhir Rp162.345,00\nReferensi TOP-5006\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-07",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp35.000,00",
+      "internalDate": "1781900800000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp35.000,00\nSaldo Akhir Rp47.345,00\nReferensi TOP-5007\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-08",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp90.000,00",
+      "internalDate": "1782160000000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp90.000,00\nSaldo Akhir Rp102.345,00\nReferensi TOP-5008\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    },
+    {
+      "id": "oov-swift-top-09",
+      "from": "notifikasi@swiftpay.co.id",
+      "subject": "Top Up Berhasil",
+      "snippet": "Jumlah Top Up Rp300.000,00",
+      "internalDate": "1782419200000",
+      "bodyPlain": "Top Up Berhasil\nJumlah Top Up Rp300.000,00\nSaldo Akhir Rp312.345,00\nReferensi TOP-5009\nSumber Dana Kartu Debit\nSwiftPay — dompet digital."
+    }
+  ],
+  "discovery": {
+    "note": "Selection only — no model, so this asserts WHICH senders and how many layouts the loop would spend calls on, never what the model would say. swiftpay is deliberately awkward: two subjects, two layouts, the amount labelled Nominal in half the payments and Jumlah in the other half, merchants ending at two different terminators, and every third figure written with no Rp prefix at all.",
+    "expectedCandidates": [
+      "swiftpay.co.id"
+    ],
+    "expectedNonCandidates": {
+      "deals.example.com": "templated and full of Rp, but every email quotes the same three prices — a brochure, refused on amount variance",
+      "tinyshop.example.com": "genuine receipts, only three of them — below the evidence floor, so it waits rather than guessing",
+      "northwind.example.com": "no Rp or IDR anywhere, so the currency filter drops it before selection",
+      "blubybcadigital.id": "already readable — its mail is not unread",
+      "grab.com": "already readable by two learned patterns"
+    },
+    "expectedLayouts": {
+      "swiftpay.co.id": 2
+    }
+  }
 }

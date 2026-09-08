@@ -60,11 +60,40 @@ nonisolated struct PipelineCase: Sendable, Codable {
     }
 }
 
+/// What the discovery pass must and must not pick, over out-of-vocabulary mail.
+///
+/// Selection only. Synthesis needs the model and is nondeterministic, but
+/// WHICH senders the loop spends a call on is pure, and it is the half that
+/// decides whether an agent is safe to leave running unattended.
+nonisolated struct DiscoveryExpectation: Sendable, Codable {
+    let note: String
+    let expectedCandidates: [String]
+
+    /// Domain → how many of its layouts must qualify.
+    ///
+    /// Selecting the sender is not enough. A sender that uses two subjects had
+    /// half its mail silently discarded by the old subject-first triage, and
+    /// the symptom was invisible: discovery still picked the sender, still
+    /// learned a pattern, and simply never saw the other layout. Counting is
+    /// what makes that visible.
+    let expectedLayouts: [String: Int]
+    /// Domain → why it must be refused. The reasons differ, and a single pass/
+    /// fail would hide that: a brochure, a sender with too few emails, and a
+    /// sender in another currency are rejected by three different tests.
+    let expectedNonCandidates: [String: String]
+}
+
 nonisolated struct PipelineFixture: Sendable, Codable {
     /// Learned patterns, pinned. Lets the fixture exercise
     /// `PatternDrivenParser` with no model, no device and no network.
     let patterns: [ExtractionPattern]
     let cases: [PipelineCase]
+
+    /// Mail from senders nothing can read — the only kind discovery is for.
+    /// Kept out of `cases` because per-email assertions are the wrong shape
+    /// here: what matters is which SENDER is chosen, not what each email does.
+    let discoveryCorpus: [CapturedEmail]
+    let discovery: DiscoveryExpectation
 
     static func load(
         resource: String = "pipeline-cases",

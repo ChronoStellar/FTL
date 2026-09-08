@@ -61,7 +61,7 @@ nonisolated struct PipelineCaseRunner: Sendable {
             uniquingKeysWith: { first, _ in first }
         )
 
-        let outcomes = fixture.cases.map { testCase -> Outcome in
+        var outcomes = fixture.cases.map { testCase -> Outcome in
             let differences = Self.diff(
                 testCase,
                 record: verdicts[testCase.email.id],
@@ -74,7 +74,74 @@ nonisolated struct PipelineCaseRunner: Sendable {
                 knownIssue: testCase.knownIssue
             )
         }
+        outcomes.append(contentsOf: try await discoveryOutcomes(fixture))
         return Report(outcomes: outcomes)
+    }
+
+    /// Discovery, over mail from senders nothing can read.
+    ///
+    /// Fetched through `PatternDiscovery.candidateMail` rather than handed the
+    /// array directly, so the FETCH is what is under test. Passing the corpus
+    /// in is exactly the shortcut that hid the bug: `EmailCorpus` returns every
+    /// sender, while the rail's query returns only senders it can already
+    /// parse, and discovery fed from the latter can never grow.
+    private func discoveryOutcomes(_ fixture: PipelineFixture) async throws -> [Outcome] {
+        // Nothing here is readable: no parser claims these senders, which is
+        // the definition of a discovery candidate.
+        let readable: [any ReceiptParser] = [BluReceiptParser()]
+            + fixture.patterns.map(PatternDrivenParser.init(pattern:))
+        let isRead: (CapturedEmail) -> Bool = { email in
+            guard let parser = readable.first(where: { $0.canParse(email) }) else { return false }
+            if case .parsed = parser.parse(email) { return true }
+            return false
+        }
+
+        let discovery = PatternDiscovery(learner: UncallableLearner())
+        let mail = try await discovery.candidateMail(
+            from: CorpusEmailSource(fixture.discoveryCorpus + fixture.cases.map(\.email))
+        )
+        let selected = discovery.candidates(in: mail, isRead: isRead)
+        let chosen = selected.map(\.senderDomain)
+
+        var outcomes: [Outcome] = []
+        for (domain, expected) in fixture.discovery.expectedLayouts.sorted(by: { $0.key < $1.key }) {
+            let actual = selected
+                .first { $0.senderDomain.hasSuffix(domain) }?
+                .transactionalLayouts.count ?? 0
+            outcomes.append(
+                Outcome(
+                    name: "discovery-layouts-\(domain)",
+                    passed: actual == expected,
+                    differences: actual == expected
+                        ? []
+                        : ["\(actual) qualifying layout(s), expected \(expected)"],
+                    knownIssue: nil
+                )
+            )
+        }
+        for domain in fixture.discovery.expectedCandidates {
+            let found = chosen.contains { $0.hasSuffix(domain) }
+            outcomes.append(
+                Outcome(
+                    name: "discovery-selects-\(domain)",
+                    passed: found,
+                    differences: found ? [] : ["not selected; chose \(chosen.isEmpty ? "nothing" : chosen.joined(separator: ", "))"],
+                    knownIssue: nil
+                )
+            )
+        }
+        for (domain, reason) in fixture.discovery.expectedNonCandidates.sorted(by: { $0.key < $1.key }) {
+            let found = chosen.contains { $0.hasSuffix(domain) }
+            outcomes.append(
+                Outcome(
+                    name: "discovery-refuses-\(domain)",
+                    passed: !found,
+                    differences: found ? ["selected, but should be refused: \(reason)"] : [],
+                    knownIssue: nil
+                )
+            )
+        }
+        return outcomes
     }
 
     /// Every disagreement, not the first. A case that got the amount AND the
@@ -88,10 +155,19 @@ nonisolated struct PipelineCaseRunner: Sendable {
         var differences: [String] = []
         let expected = testCase.expect
 
+        // `notFetched` is a verdict the rail cannot record, because a message
+        // it never asked Gmail for produces no log entry at all. It is still
+        // worth asserting: the difference between "fetched and rejected" and
+        // "never requested" is invisible in the queue and decides whether a
+        // sender can ever be discovered.
         guard let record else {
-            return ["never reached the rail — no capture-log record"]
+            return expected.verdict == "notFetched"
+                ? []
+                : ["never fetched — the sender query did not ask for it, expected \(expected.verdict)"]
         }
-        if record.verdict.rawValue != expected.verdict {
+        if expected.verdict == "notFetched" {
+            differences.append("verdict: \(record.verdict.rawValue), expected never to be fetched")
+        } else if record.verdict.rawValue != expected.verdict {
             differences.append("verdict: \(record.verdict.rawValue), expected \(expected.verdict)")
         }
 
@@ -130,6 +206,22 @@ nonisolated struct PipelineCaseRunner: Sendable {
             }
         }
         return differences
+    }
+}
+
+/// Fails loudly if selection ever reaches synthesis.
+///
+/// The fixture asserts WHICH senders get a model call, so a learner that could
+/// actually run would make the test nondeterministic and slow, and would hide
+/// the thing being measured behind whatever the model happened to say.
+nonisolated struct UncallableLearner: PatternLearner {
+    func learn(
+        senderDomain: String,
+        from corpus: [CapturedEmail],
+        policy: PatternSynthesisPolicy
+    ) async -> [TemplateOutcome] {
+        assertionFailure("Fixture discovery must not invoke the model — it asserts selection only.")
+        return []
     }
 }
 

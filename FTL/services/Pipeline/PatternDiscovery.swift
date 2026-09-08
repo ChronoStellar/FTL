@@ -75,6 +75,53 @@ nonisolated struct PatternDiscovery: Sendable {
         self.maxSendersPerRun = maxSendersPerRun
     }
 
+    /// Mail to look for candidates in — and the reason this exists at all.
+    ///
+    /// `GmailRail` asks Gmail for `from:(the domains it already parses)`, which
+    /// is right for capture: downloading a mailbox to discard most of it is
+    /// waste. But it means an unknown sender's mail never arrives, so selecting
+    /// candidates from what the rail fetched can only ever return senders the
+    /// app can already read. Discovery would find nothing, forever, by
+    /// construction — not because no sender qualifies but because none can
+    /// reach it.
+    ///
+    /// The recorded corpus hid this completely: `EmailCorpus` hands over all
+    /// 1,000 emails regardless of sender, so discovery looked like it worked.
+    /// It only surfaced once a fixture asked what the RAIL would have fetched.
+    ///
+    /// So discovery fetches for itself, unscoped by sender. That is a real
+    /// cost — it is the whole window, not a filtered slice — paid down three
+    /// ways: it runs rarely rather than every sync, `limit` caps it hard, and
+    /// the currency filter runs locally so nothing beyond the cap is kept.
+    ///
+    /// Filtering client-side rather than searching Gmail for `Rp` is
+    /// deliberate: a server-side term match depends on how Gmail tokenises
+    /// `Rp18.000,00`, and a receipt missed there is invisible — it looks
+    /// exactly like a sender that has no receipts.
+    static let discoveryQuery = "newer_than:180d"
+    /// One bounded sweep. Enough for a sender to clear the evidence floor
+    /// several times over, small enough to stay a single background fetch.
+    static let discoveryFetchLimit = 400
+
+    /// Money mail from anywhere, including senders nothing can read yet.
+    func candidateMail(
+        from source: any CapturedEmailSource,
+        limit: Int = discoveryFetchLimit
+    ) async throws -> [CapturedEmail] {
+        try await source
+            .fetchCaptured(query: Self.discoveryQuery, limit: limit)
+            .filter(\.hasCurrencyMarker)
+    }
+
+    /// Fetch, then select. The two-argument form exists so a caller with mail
+    /// already in hand — a fixture, the recorded corpus — can skip the network.
+    func run(
+        fetching source: any CapturedEmailSource,
+        isRead: (CapturedEmail) -> Bool
+    ) async throws -> [Finding] {
+        await run(over: try await candidateMail(from: source), isRead: isRead)
+    }
+
     /// Who to learn next, best first. No model call, safe to run on every sync.
     ///
     /// `isRead` is the app's current reach — pass the same parser list the rail

@@ -2,41 +2,40 @@
 //  SenderTriage.swift
 //  FTL — services/Pipeline · Stage 4 #10
 //
-//  Which of a sender's emails are the receipts, and how many LAYOUTS they come
-//  in.
+//  How many LAYOUTS a sender's mail comes in, and which emails share each one.
 //
-//  Two problems, one file.
+//  A layout is the thing a pattern can be written against: one document shape,
+//  reused. Senders have several, and the count is not guessable from the
+//  outside — Grab sends two receipt layouts plus a dozen campaign layouts under
+//  overlapping subjects, blu sends three.
 //
-//  1. A sender's marketing outnumbers its receipts, and the marketing usually
-//     wins on volume: 107 of Grab's 128 emails are promos. Handing a
-//     synthesizer five random emails from that sender teaches it the shape of a
-//     discount banner. Marketing subjects are written fresh each time — that is
-//     what makes them marketing — so the repeating subject is the template.
+//  ONE SUBJECT IS NOT ONE LAYOUT. This is what broke the first Grab run, and it
+//  was this file's fault, not the model's. All 21 of Grab's receipts share the
+//  subject "Your Grab E-Receipt", but they are two different documents:
 //
-//  2. ONE SUBJECT IS NOT ONE TEMPLATE. This is what broke the Grab run, and it
-//     was this file's fault, not the model's. All 21 of Grab's receipts share
-//     the subject "Your Grab E-Receipt", but they are two completely different
-//     documents underneath:
+//      food (10)   TOTAL Rp 44300 … Pesanan Dari: Rasapi - Sambikerep …
+//      ride (11)   Total Paid Rp9.000 … Receipt issued by the driver …
 //
-//         food (10)   TOTAL Rp 44300 … Pesanan Dari: Rasapi - Sambikerep …
-//         ride (11)   Total Paid Rp9.000 … Receipt issued by the driver …
+//  Handing the learner all 21 as one template produced a perfectly good RIDE
+//  pattern scored against a holdout that was half food: 0.52 coverage, under
+//  the bar, rejected. The same pattern scores 1.00 against rides alone.
 //
-//     Subject clustering handed the learner all 21 as if they were one
-//     template. The model saw four rides and one food order, proposed a
-//     perfectly good RIDE pattern, and the verifier scored it against a holdout
-//     that was half food. Measured: 0.52 coverage, under the 0.9 bar, rejected.
-//     The same pattern scored 1.00 against rides alone.
+//  AND ONE LAYOUT IS NOT ONE SUBJECT. The mirror case, found later. This file
+//  used to keep only the dominant subject cluster before looking at bodies, on
+//  the theory that a repeating subject is a template and marketing is written
+//  fresh each time. It cost data both ways: a sender using two subjects had
+//  half its mail discarded unseen, and blu's third layout — 12 real receipts —
+//  never reached the loop.
 //
-//     So the second pass clusters on the shape of the BODY. Subject was only
-//     ever a proxy for layout; for blu the proxy held, for Grab it doesn't.
+//  Both mistakes had the same root: subject was being used as a proxy for
+//  layout. So clustering reads the BODY, over all of the sender's mail, and
+//  marketing is refused by `Template.amountVariance` — a brochure repeats its
+//  prices, a receipt does not — rather than by guessing from the subject line.
 //
 //  Measured on the real export, no model, no labels, no network:
 //
-//      grab.com            21 templated → 11 ride + 10 food, 0 promos
-//      blubybcadigital.id  95 templated → 55 + 40, 0 promos
-//
-//  blu splits too — its receipts come in a plain layout and a `bluVirtual` card
-//  layout. `BluReceiptParser` handles both by hand; the loop no longer has to.
+//      grab   11 @ 0.91 ✓   10 @ 1.00 ✓   promos 0.41, 0.30, 0.11, 0.29 ✗
+//      blu    70 @ 0.86 ✓   34 @ 0.91 ✓   12 @ 0.75 ✓   fraud warnings ✗
 //
 
 import Foundation
@@ -89,9 +88,33 @@ nonisolated enum SenderTriage: Sendable {
         let amountVariance: Double
     }
 
-    /// The sender's receipt layouts, largest first, each newest-first inside.
+    /// The sender's layouts, largest first, each newest-first inside.
+    ///
+    /// Every layout, marketing included — judging them is not this type's job.
+    /// `Template.amountVariance` says which are transactional and the caller's
+    /// evidence floor says which are worth a model call, and those two together
+    /// do the filtering that a subject pre-pass used to attempt.
+    ///
+    /// It used to keep only the dominant SUBJECT cluster first, on the theory
+    /// that a repeating subject is a template and marketing is written fresh.
+    /// That was written before the variance test existed and it loses data two
+    /// ways: a sender with two subjects has half its mail discarded, and blu's
+    /// third layout — 12 real receipts — never reached the loop at all.
+    ///
+    /// Measured over the full corpora with the pre-pass removed:
+    ///
+    ///     grab  11 @ 0.91 ✓   10 @ 1.00 ✓   promos 0.41, 0.30, 0.11, 0.29 ✗
+    ///     blu   70 @ 0.86 ✓   34 @ 0.91 ✓   12 @ 0.75 ✓   warnings ✗
+    ///
+    /// Both receipt layouts kept, every promo refused, and blu's third layout
+    /// recovered. Note the margin narrowed: brochures scored 0.04–0.12 when
+    /// only subject-matched mail reached here, and Grab's largest promo cluster
+    /// now scores 0.41 against a 0.5 bar, because campaigns quote different
+    /// discounts to each other even while repeating within a campaign. Still a
+    /// clear separation — 0.41 to 0.75 — but no longer a chasm, and worth
+    /// re-measuring before that threshold is moved.
     static func templates(from emails: [CapturedEmail]) -> [Template] {
-        let receipts = templatedEmails(from: emails)
+        let receipts = emails
         guard !receipts.isEmpty else { return [] }
 
         let clusters = layoutClusters(in: receipts)
@@ -129,35 +152,6 @@ nonisolated enum SenderTriage: Sendable {
     }
 
     private static let amountScanLength = 1500
-
-    /// The sender's templated emails, newest first.
-    ///
-    /// Returns everything when no subject repeats: a sender whose subjects are
-    /// all unique has no template to learn, and saying so by returning the lot
-    /// lets the caller's evidence bar reject it rather than this guessing.
-    static func templatedEmails(from emails: [CapturedEmail]) -> [CapturedEmail] {
-        guard !emails.isEmpty else { return [] }
-
-        let clusters = Dictionary(grouping: emails) { normalize($0.subject) }
-        guard let dominant = clusters.max(by: { $0.value.count < $1.value.count }) else {
-            return emails
-        }
-        guard dominant.value.count > 1 else { return emails }
-
-        return dominant.value.sorted { $0.date > $1.date }
-    }
-
-    /// Digits and emoji collapsed, so "Order #123" and "Order #456" are one
-    /// template rather than two. Case folded for the same reason `CategoryID`
-    /// is: the same subject typed twice shouldn't be two things.
-    static func normalize(_ subject: String) -> String {
-        subject
-            .replacingOccurrences(of: #"\d+"#, with: "#", options: .regularExpression)
-            .replacingOccurrences(of: #"[\p{Emoji_Presentation}\p{Extended_Pictographic}]"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-    }
 
     // MARK: - Layout clustering
 
