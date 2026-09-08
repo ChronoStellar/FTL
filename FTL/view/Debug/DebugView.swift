@@ -261,10 +261,42 @@ private struct DebugHarness: View {
             if rawIDs.count != Set(rawIDs.map { CategoryID(rawValue: $0).rawValue }).count {
                 lines.append("⚠︎ duplicate ids once normalized — the tab has the same bucket spelled more than one way")
             }
+
+            // Where the transactions tab's data actually sits. `values.append`
+            // writes "starting with the first column of the table it finds", so
+            // a missing header or a row whose leading cells are blank moves
+            // every future append sideways.
+            lines.append("—")
+            let header = txRaw.first ?? []
+            lines.append(header.first?.lowercased() == SheetsSchema.transactionColumns.first
+                ? "transactions header: OK (\(header.count) cols)"
+                : "⚠︎ transactions header missing or shifted — first cell = '\(header.first ?? "—")'")
+
+            let txRows = Array(txRaw.dropFirst())
+            lines.append("transactions: \(txRows.count) data row(s)")
+            for (offset, row) in txRows.suffix(3).enumerated() {
+                let occupied = row.indices.filter { !row[$0].trimmingCharacters(in: .whitespaces).isEmpty }
+                let span = occupied.isEmpty
+                    ? "empty"
+                    : "\(Self.columnLetter(occupied.first!))–\(Self.columnLetter(occupied.last!))"
+                lines.append("row \(txRows.count - min(3, txRows.count) + offset + 1): \(row.count) cells, filled \(span)")
+            }
+            if let offender = txRows.firstIndex(where: { row in
+                let leadingEmpty = (row.first ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                let hasLater = row.dropFirst().contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                return leadingEmpty && hasLater
+            }) {
+                lines.append("⚠︎ row \(offender + 1) has an empty first cell but data further right — this is what drags an append off column A")
+            }
         } catch {
             lines = ["failed: \(error.localizedDescription)"]
         }
         budgetReport = lines
+    }
+
+    private static func columnLetter(_ index: Int) -> String {
+        guard index < 26 else { return "?\(index)" }
+        return String(UnicodeScalar(UInt8(65 + index)))
     }
 
     private func loadGmail() async {

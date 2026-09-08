@@ -213,6 +213,13 @@ struct SheetsService {
     }
 
     /// Appends rows after the last row of data in the range's table.
+    ///
+    /// Pass a range anchored at the table's FIRST CELL (`tab!A1`), not a column
+    /// span like `tab!A:P`. Sheets searches the range for a table and writes
+    /// "starting with the first column of the table it finds" — given a wide
+    /// span it can decide the table starts at some later column and put every
+    /// appended row there instead of at column A. An A1 anchor leaves it nothing
+    /// to misread.
     func append(range: String, values: [[String]], inputOption: String = "USER_ENTERED") async throws {
         var url = base.appending(path: "\(spreadsheetID)/values/\(range):append")
         url.append(queryItems: [

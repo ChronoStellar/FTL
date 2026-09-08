@@ -19,12 +19,21 @@ struct AddSpendSheet: View {
     let onCancel: () -> Void
     let onCommit: () -> Void
 
+    /// The note is edited in its own sheet, never inline. A TextField on this
+    /// screen raises the system keyboard ON TOP of the custom keypad — two
+    /// keyboards at once, the amount label clipped behind the nav bar, and the
+    /// keyboard's own toolbar landing over the backspace key. No amount of
+    /// dismiss-handling fixes that; the two inputs just can't share a screen.
+    @State private var isEditingNote = false
+    @State private var noteDraft = ""
+    @FocusState private var isNoteFocused: Bool
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 amount
-                tags
-                descriptionField
+                tagPicker
+                noteRow
                 Spacer(minLength: FTLSpacing.sm)
                 keypad
             }
@@ -34,6 +43,7 @@ struct AddSpendSheet: View {
             .navigationTitle("Add spend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
+            .sheet(isPresented: $isEditingNote) { noteSheet }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel", action: onCancel).tint(FTLColor.textTertiary)
@@ -84,41 +94,127 @@ struct AddSpendSheet: View {
         .padding(.vertical, 18)
     }
 
-    private var tags: some View {
-        VStack(alignment: .leading, spacing: FTLSpacing.labelGap) {
-            SectionLabel(text: viewModel.hasCategory ? "Tag" : "Tag · required")
-            FlowLayout(spacing: FTLSpacing.sm) {
-                ForEach(viewModel.categories) { category in
-                    SelectableChip(
-                        title: category.name,
-                        isSelected: viewModel.selectedCategoryID == category.id
-                    ) {
-                        Task { await viewModel.select(category.id) }
-                    }
-                }
-            }
-        }
-        .padding(.bottom, FTLSpacing.xs)
-    }
-
-    private var descriptionField: some View {
+    /// A menu rather than a row of chips: with seven-plus buckets the chips wrap
+    /// to three lines and shove the keypad down the screen, which is the part
+    /// you actually came here to use. One line, same information.
+    private var tagPicker: some View {
         HStack(spacing: 8) {
-            Image(systemName: "pencil")
+            Image(systemName: "tag")
                 .font(.system(size: 13))
                 .foregroundStyle(FTLColor.textTertiary)
-            TextField("Description · optional", text: $viewModel.merchantText)
+            Text("Tag")
                 .font(FTLTypography.caption)
-                .foregroundStyle(FTLColor.textPrimary)
-                .autocorrectionDisabled()
+                .foregroundStyle(FTLColor.textTertiary)
+            Spacer(minLength: FTLSpacing.sm)
+            Picker("Tag", selection: selectedCategory) {
+                ForEach(viewModel.categories) { category in
+                    Text(category.name).tag(CategoryID?.some(category.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(viewModel.hasCategory ? FTLColor.textPrimary : FTLColor.textDisabled)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 4)
         .background(FTLColor.controlFill, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous)
                 .strokeBorder(FTLColor.controlBorder, lineWidth: 0.5)
         }
+        .padding(.bottom, FTLSpacing.sm)
+    }
+
+    /// Routes through `select(_:)` rather than writing the property directly —
+    /// picking a bucket has to recompute the consequence line under the amount.
+    private var selectedCategory: Binding<CategoryID?> {
+        Binding(
+            get: { viewModel.selectedCategoryID },
+            set: { newValue in
+                guard let newValue else { return }
+                Task { await viewModel.select(newValue) }
+            }
+        )
+    }
+
+    /// Shows the note if there is one, invites one if there isn't. Tapping opens
+    /// the editor rather than focusing anything here, so this screen never has a
+    /// system keyboard on it.
+    private var noteRow: some View {
+        Button {
+            noteDraft = viewModel.merchantText
+            isEditingNote = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: viewModel.merchantText.isEmpty ? "square.and.pencil" : "text.alignleft")
+                    .font(.system(size: 13))
+                    .foregroundStyle(FTLColor.textTertiary)
+                Text(viewModel.merchantText.isEmpty ? "Add a note · optional" : viewModel.merchantText)
+                    .font(FTLTypography.caption)
+                    .foregroundStyle(viewModel.merchantText.isEmpty ? FTLColor.textTertiary : FTLColor.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: FTLSpacing.sm)
+                Chevron()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .background(FTLColor.controlFill, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous)
+                    .strokeBorder(FTLColor.controlBorder, lineWidth: 0.5)
+            }
+        }
+        .buttonStyle(.plain)
         .padding(.bottom, FTLSpacing.xs)
+    }
+
+    /// Its own sheet, sized to the keyboard it summons. Edits a draft so
+    /// backing out leaves the note as it was.
+    private var noteSheet: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextField("e.g. Coffee, groceries", text: $noteDraft, axis: .vertical)
+                    .lineLimit(1...4)
+                    .font(FTLTypography.body)
+                    .foregroundStyle(FTLColor.textPrimary)
+                    .autocorrectionDisabled()
+                    .focused($isNoteFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(FTLColor.controlFill, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous)
+                            .strokeBorder(FTLColor.controlBorder, lineWidth: 0.5)
+                    }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, FTLSpacing.screenMargin)
+            .padding(.top, FTLSpacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(FTLColor.sheetBackground)
+            .navigationTitle("Note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FTLColor.sheetBackground, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isEditingNote = false }
+                        .tint(FTLColor.textTertiary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        viewModel.merchantText = noteDraft
+                        isEditingNote = false
+                    }
+                    .font(FTLTypography.navTitle)
+                    .tint(FTLColor.textSecondary)
+                }
+            }
+            .task { isNoteFocused = true }
+        }
+        .presentationDetents([.height(200)])
+        .presentationBackground(FTLColor.ground)
+        .presentationCornerRadius(FTLRadius.sheet)
     }
 
     private var keypad: some View {

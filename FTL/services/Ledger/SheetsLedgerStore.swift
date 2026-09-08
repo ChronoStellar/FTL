@@ -91,7 +91,8 @@ actor SheetsLedgerStore: LedgerStore {
         guard !fresh.isEmpty else { return }
 
         try await sheets.append(
-            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange),
+            // Anchored at A1, not the A:P span — see SheetsService.append.
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, "A1"),
             values: fresh.map(SheetsSchema.row(from:)),
             inputOption: "RAW"
         )
@@ -255,7 +256,8 @@ actor SheetsLedgerStore: LedgerStore {
 
         guard !transactions.isEmpty else { return }
         try await sheets.append(
-            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange),
+            // Anchored at A1, not the A:P span — see SheetsService.append.
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, "A1"),
             values: transactions.map(SheetsSchema.row(from:)),
             inputOption: "RAW"
         )
