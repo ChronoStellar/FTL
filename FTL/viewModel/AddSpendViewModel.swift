@@ -105,44 +105,9 @@ final class AddSpendViewModel {
     func commit() async -> Bool {
         guard canCommit else { return false }
         phase = .loading
-        let now = Date.now
-        let money = amount
-        let merchantName = merchantText.trimmingCharacters(in: .whitespaces)
-        let rawMerchant = merchantName.isEmpty ? "Manual entry" : merchantName
-        let cleanMerchant = merchantName.isEmpty ? nil : MerchantID(rawValue: merchantName)
-
-        let transaction = NormalizedTransaction(
-            id: UUID(),
-            documentID: UUID(),
-            source: .manual,
-            date: now,
-            amount: money,
-            merchantRaw: rawMerchant,
-            merchant: cleanMerchant,
-            lineItems: [],
-            fingerprint: Fingerprint(amount: money, date: now)
-        )
-        let entry = ProvisionalEntry(
-            id: UUID(),
-            transaction: transaction,
-            resolution: ProvisionalEntry.Resolution(
-                kind: .spend,
-                nonSpendType: nil,
-                categoryID: selectedCategoryID,
-                merchantID: nil,
-                splits: [],
-                mergedFrom: []
-            ),
-            provenance: .manual,
-            flags: [],
-            status: .pending,
-            createdAt: now
-        )
         do {
-            try await provisional.insert([entry])
-            if let approvals {
-                _ = try await approvals.approve([entry.id])
-            }
+            try await ManualEntry(provisional: provisional, approvals: approvals)
+                .record(amount: amount, categoryID: selectedCategoryID, note: merchantText)
             phase = .loaded
             return true
         } catch {

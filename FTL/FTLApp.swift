@@ -15,7 +15,7 @@ struct FTLApp: App {
     /// The live environment reads and writes the user's own Google Sheet. The
     /// DEBUG skip-sign-in path swaps it for fixtures, because without a token
     /// every Sheets call would fail and the UI would be unworkable.
-    @State private var environment = AppEnvironment.live()
+    @State private var environment = AppEnvironment.shared
     @State private var isBypassActive = false
 
     var body: some Scene {

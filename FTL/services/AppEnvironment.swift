@@ -67,6 +67,15 @@ final class AppEnvironment {
         self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
     }
 
+    /// The one live environment for this process.
+    ///
+    /// App Intents run inside the app, so an intent that built its own
+    /// `live()` would open a SECOND SwiftData container on the same store
+    /// file — two writers, one SQLite file. Both the UI and the intents go
+    /// through this instead. `sample()` is unaffected: fixtures have no shared
+    /// file to contend over.
+    static let shared = live()
+
     /// The real app: the user's own Google Sheet is the ledger, and the
     /// provisional cache now survives a relaunch (SwiftData — Stage 0 #1).
     /// Approve before you quit is no longer load-bearing; it stays good practice.
