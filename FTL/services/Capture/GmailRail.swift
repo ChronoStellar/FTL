@@ -28,9 +28,13 @@ import Foundation
 
 nonisolated struct GmailRail: Sendable {
     private let exporter: GmailExporter
+    /// Hand-written reference parsers. These always take precedence — see
+    /// `activeParsers()`.
     private let parsers: [any ReceiptParser]
     private let provisional: ProvisionalStore
     private let log: CaptureLog
+    /// Patterns the loop has learned and promoted. Nil before Stage 4 is wired.
+    private let patterns: PatternStore?
 
     /// How far back a sync looks. Overlap is free — the capture log dedupes —
     /// so this is sized to survive a week of not opening the app rather than
@@ -42,12 +46,38 @@ nonisolated struct GmailRail: Sendable {
         exporter: GmailExporter,
         parsers: [any ReceiptParser],
         provisional: ProvisionalStore,
-        log: CaptureLog
+        log: CaptureLog,
+        patterns: PatternStore? = nil
     ) {
         self.exporter = exporter
         self.parsers = parsers
         self.provisional = provisional
         self.log = log
+        self.patterns = patterns
+    }
+
+    /// Hand-written parsers first, then promoted patterns.
+    ///
+    /// Order is the precedence rule, because the caller takes the FIRST parser
+    /// that claims an email. A synthesized pattern must never displace a
+    /// reference implementation: `BluReceiptParser` reads 112/112 where its
+    /// synthesized equivalent scores ~97%, and letting the learned one win would
+    /// trade real accuracy for the appearance of progress. The loop exists to
+    /// cover senders nobody has written a parser for — not to replace the ones
+    /// that set the bar.
+    ///
+    /// Loaded per sync rather than at init, so a pattern promoted while the app
+    /// is running is live on the next fetch.
+    private func activeParsers() async -> [any ReceiptParser] {
+        let learned = (try? await patterns?.active()) ?? []
+        // Most specific layout first. One sender can have several patterns now,
+        // and one of them may carry no `bodyContains` at all — the layout that
+        // is a subset of another is matched by subject alone, so it claims
+        // everything from that sender if it is asked first. Sorting by how many
+        // body markers a pattern requires makes "ride receipt" outrank "any blu
+        // email", without either pattern needing to know the other exists.
+        let specificFirst = learned.sorted { $0.bodyContains.count > $1.bodyContains.count }
+        return parsers + specificFirst.map(PatternDrivenParser.init(pattern:))
     }
 
     struct Result: Sendable {
@@ -73,7 +103,8 @@ nonisolated struct GmailRail: Sendable {
     func sync() async throws -> Result {
         var result = Result()
 
-        let query = ([window] + [senderQuery()]).joined(separator: " ")
+        let parsers = await activeParsers()
+        let query = ([window] + [Self.senderQuery(for: parsers)]).joined(separator: " ")
         let emails = try await exporter.fetchCaptured(query: query, limit: fetchLimit)
         result.fetched = emails.count
         guard !emails.isEmpty else { return result }
@@ -158,6 +189,20 @@ nonisolated struct GmailRail: Sendable {
             fingerprint: Fingerprint(amount: receipt.amount, date: receipt.date)
         )
 
+        // A pattern with no verification behind it says so on every row it
+        // produces. Coverage proved it fits the template's shape; nothing
+        // proved it read the right number, and the approval queue is where
+        // that gets decided.
+        var flags = receipt.flags
+        if let learned = parser as? PatternDrivenParser, learned.pattern.verifiedAgainst == 0 {
+            flags.append(
+                ReviewFlag(
+                    reason: .unverifiedPattern,
+                    detail: "learned from \(learned.pattern.senderDomain), never verified"
+                )
+            )
+        }
+
         return ProvisionalEntry(
             id: UUID(),
             transaction: transaction,
@@ -173,7 +218,7 @@ nonisolated struct GmailRail: Sendable {
                 mergedFrom: []
             ),
             provenance: .rule(parser.id),
-            flags: receipt.flags,
+            flags: flags,
             status: .pending,
             createdAt: .now
         )
@@ -181,7 +226,11 @@ nonisolated struct GmailRail: Sendable {
 
     /// `from:(a OR b)` over every parser's domain, so the fetch itself is
     /// narrow — model calls and bandwidth are never spent on LinkedIn.
-    private func senderQuery() -> String {
+    ///
+    /// Takes the ACTIVE parser list, not the hand-written one: a promoted
+    /// pattern that isn't in this query would never be sent an email to parse,
+    /// and the loop would look like it had learned nothing.
+    private static func senderQuery(for parsers: [any ReceiptParser]) -> String {
         let domains = parsers.compactMap { ($0 as? DomainScopedParser)?.domain }
         guard !domains.isEmpty else { return "" }
         return "from:(" + domains.joined(separator: " OR ") + ")"

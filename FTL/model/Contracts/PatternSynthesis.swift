@@ -45,9 +45,22 @@ import Foundation
 /// Anchors describe *where* a field sits relative to words in the text, which is
 /// tractable under guided generation and reads like an explanation.
 nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable {
-    var id: String { senderDomain + ":" + version.description }
+    /// Sender, layout, version. The layout is in here because one sender has
+    /// more than one — Grab's rides and its food orders are different documents
+    /// under an identical subject, and keying on the sender alone made the
+    /// second pattern overwrite the first.
+    var id: String {
+        template.isEmpty
+            ? senderDomain + ":" + version.description
+            : senderDomain + "/" + template + ":" + version.description
+    }
 
     let senderDomain: String
+
+    /// Which of the sender's layouts this reads. Empty for a sender with only
+    /// one, and for the layout that is a subset of another. See `SenderTriage`.
+    let template: String
+
     /// Applies to emails whose subject contains ANY of these. Empty means every
     /// email from the sender.
     ///
@@ -55,6 +68,20 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     /// say "Refund", and a pattern that can only name one silently disowns the
     /// other four emails.
     let subjectContains: [String]
+
+    /// Applies only to emails whose body contains ALL of these — the layout
+    /// discriminator, and the reason `subjectContains` isn't enough.
+    ///
+    /// Every one of Grab's 21 receipts has the subject "Your Grab E-Receipt",
+    /// and half of them are a ride receipt while half are a food order with no
+    /// field in common. Subject matching handed the verifier a holdout of two
+    /// different documents and scored a correct pattern at 0.52.
+    ///
+    /// Chosen deterministically by `SenderTriage`, not proposed by the model:
+    /// it is a fact about which emails cluster together, and the clustering
+    /// already computed it. It also turns out to filter marketing for free —
+    /// `compliments` selects 11 ride receipts out of Grab's 128 emails.
+    let bodyContains: [String]
 
     /// Tried in order; the first that yields a value wins.
     ///
@@ -127,6 +154,33 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     }
 }
 
+/// Hand-written so patterns stored before layouts existed still decode.
+///
+/// In an extension, not the struct body, so the memberwise initialiser survives.
+/// Synthesised decoding requires every key to be present regardless of property
+/// defaults, and a promoted pattern already on disk has neither `template` nor
+/// `bodyContains` — throwing on it would silently retire what the loop learned,
+/// which is the one thing persistence was added to prevent.
+extension ExtractionPattern {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            senderDomain: try container.decode(String.self, forKey: .senderDomain),
+            template: try container.decodeIfPresent(String.self, forKey: .template) ?? "",
+            subjectContains: try container.decode([String].self, forKey: .subjectContains),
+            bodyContains: try container.decodeIfPresent([String].self, forKey: .bodyContains) ?? [],
+            amount: try container.decode([Anchor].self, forKey: .amount),
+            merchant: try container.decode([Anchor].self, forKey: .merchant),
+            nonSpendMarkers: try container.decode([String].self, forKey: .nonSpendMarkers),
+            version: try container.decode(Int.self, forKey: .version),
+            proposedAt: try container.decode(Date.self, forKey: .proposedAt),
+            verifiedAgainst: try container.decode(Int.self, forKey: .verifiedAgainst),
+            accuracy: try container.decode(Double.self, forKey: .accuracy),
+            author: try container.decode(String.self, forKey: .author)
+        )
+    }
+}
+
 // MARK: - Propose (★ model)
 
 nonisolated protocol PatternSynthesizer: Sendable {
@@ -179,27 +233,103 @@ nonisolated struct PatternSynthesisPolicy: Sendable {
     /// Never promote off a handful of examples, however well it scored.
     var minimumEvidence = 20
 
+    /// A provisional pattern needs less evidence, precisely because it is not
+    /// trusted: every row it produces is flagged for a human.
+    ///
+    /// Lowered from 10 when the unit stopped being the sender and became the
+    /// LAYOUT. Grab's 21 receipts are two layouts of 11 and 10; holding out 5
+    /// examples from each leaves 6 and 5, so a per-sender bar of 10 makes every
+    /// multi-layout sender permanently unlearnable — the exact senders this
+    /// change exists to reach.
+    ///
+    /// Five is thinner than it looks: at `coverageThreshold` 0.9, five held-out
+    /// emails means all five must read, because four of five is 0.8.
+    var minimumProvisionalEvidence = 5
+    /// Share of the held-out emails a pattern must read SOMETHING plausible
+    /// from before it is worth a person's attention.
+    var coverageThreshold = 0.9
+
+    /// How much a layout's figures must move before it is worth a model call at
+    /// all. See `SenderTriage.Template.amountVariance`.
+    ///
+    /// Sits in the middle of a wide measured gap — receipt layouts score 0.88
+    /// to 1.00, brochures 0.04 to 0.12 — so it is a real separation rather than
+    /// a tuned number. This is the difference between an agent that goes at
+    /// unknown senders on its own and one that spends its call budget learning
+    /// to read Apple's storage-upgrade prices.
+    var minimumAmountVariance = 0.5
+
     static let `default` = PatternSynthesisPolicy()
 }
 
 nonisolated enum SynthesisOutcome: Sendable {
     case promoted(ExtractionPattern, PatternFeedback)
+
+    /// Cleared a COVERAGE bar, with no oracle able to say whether what it read
+    /// was right.
+    ///
+    /// For a sender with no reference parser and no labels there is nothing to
+    /// score against, and coverage is emphatically not correctness — a pattern
+    /// anchored on the wrong label reads a value from every email and scores
+    /// 100%. So this is not promotion: it means "worth showing a person". Rows
+    /// produced by such a pattern are flagged in the approval queue, and the
+    /// human gate that already exists does the verifying.
+    ///
+    /// This is the trust ladder working as designed — Assist, never Auto.
+    case provisional(ExtractionPattern, coverage: Double, evidence: Int)
     /// Tried, never cleared the bar. Carries the best attempt so a human can look.
-    case rejected(best: ExtractionPattern?, feedback: PatternFeedback?, attempts: Int)
+    ///
+    /// `lastError` is the last thing the model call itself threw, if any. A
+    /// proposal that scored badly and a call that never returned a proposal are
+    /// different failures with the same verdict, and reporting them identically
+    /// is how a framework-level refusal gets misread as a bad pattern.
+    case rejected(
+        best: ExtractionPattern?,
+        feedback: PatternFeedback?,
+        attempts: Int,
+        lastError: String?
+    )
     /// Not enough emails from this sender to verify anything. Wait, don't guess.
     case insufficientEvidence(available: Int)
+
+    /// The layout repeats the same figures in every email, so it is an
+    /// advertisement, a statement of prices, or a notification — not a record
+    /// of transactions. Refused BEFORE the model call, not after: this is the
+    /// check that lets the loop point itself at unknown senders without
+    /// spending its budget learning to read a discount banner.
+    case notTransactional(amountVariance: Double)
     case gated(GateDecision.Reason)
+}
+
+/// What one run produced for one of the sender's layouts.
+nonisolated struct TemplateOutcome: Sendable {
+    /// The layout's readable key, e.g. `compliments`. Empty for a sender with
+    /// one layout.
+    let template: String
+    /// What made this layout distinguishable — the pattern's `bodyContains`.
+    let discriminators: [String]
+    /// How many of the sender's emails are in this layout.
+    let emailCount: Int
+    /// A real subject line from it, so a person can tell which one this is.
+    let sampleSubject: String
+    let outcome: SynthesisOutcome
 }
 
 /// Where the loop is driven. The implementation owns the propose→verify→retry
 /// cycle and the call budget; it is deliberately not the model's job to decide
 /// when to stop.
 nonisolated protocol PatternLearner: Sendable {
+    /// One outcome PER LAYOUT, not per sender.
+    ///
+    /// This used to return a single outcome, and that was the bug behind Grab's
+    /// rejection: it forced two unrelated document shapes through one pattern
+    /// and scored the result against a holdout containing both. A sender has as
+    /// many templates as it has, and the loop has to be able to say so.
     func learn(
         senderDomain: String,
         from corpus: [CapturedEmail],
         policy: PatternSynthesisPolicy
-    ) async -> SynthesisOutcome
+    ) async -> [TemplateOutcome]
 }
 
 // MARK: - Which senders to look at

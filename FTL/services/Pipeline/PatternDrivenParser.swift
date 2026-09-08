@@ -13,7 +13,7 @@
 
 import Foundation
 
-nonisolated struct PatternDrivenParser: ReceiptParser {
+nonisolated struct PatternDrivenParser: ReceiptParser, DomainScopedParser {
     let pattern: ExtractionPattern
 
     init(pattern: ExtractionPattern) {
@@ -22,11 +22,26 @@ nonisolated struct PatternDrivenParser: ReceiptParser {
 
     var id: RuleID { RuleID(rawValue: pattern.id) }
 
+    /// So GmailRail's query covers senders that only a learned pattern
+    /// knows about — otherwise a promoted pattern is never sent any mail.
+    var domain: String { pattern.senderDomain }
+
     func canParse(_ email: CapturedEmail) -> Bool {
         guard email.senderDomain.hasSuffix(pattern.senderDomain) else { return false }
-        guard !pattern.subjectContains.isEmpty else { return true }
-        return pattern.subjectContains.contains { needle in
-            email.subject.range(of: needle, options: .caseInsensitive) != nil
+
+        if !pattern.subjectContains.isEmpty {
+            let subjectMatches = pattern.subjectContains.contains { needle in
+                email.subject.range(of: needle, options: .caseInsensitive) != nil
+            }
+            guard subjectMatches else { return false }
+        }
+
+        // ALL of them, where the subject needs only one. The subject list says
+        // "any of the sender's receipt types"; this says "this layout, not the
+        // other one it shares a subject with", so any missing word means a
+        // different document.
+        return pattern.bodyContains.allSatisfy { marker in
+            email.flatText.range(of: marker, options: .caseInsensitive) != nil
         }
     }
 

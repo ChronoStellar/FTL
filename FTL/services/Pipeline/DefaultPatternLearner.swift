@@ -24,18 +24,65 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
         self.oracle = oracle
     }
 
+    /// One pass per LAYOUT. See `SenderTriage` for why a sender is not one
+    /// template: Grab's rides and its food orders arrive under an identical
+    /// subject, and learning them together scored a correct pattern at 0.52.
     func learn(
         senderDomain: String,
         from corpus: [CapturedEmail],
         policy: PatternSynthesisPolicy
+    ) async -> [TemplateOutcome] {
+        // Triage first: a sender's marketing outnumbers its receipts, and five
+        // promos teach the model the shape of a discount banner.
+        let templates = SenderTriage.templates(
+            from: corpus.filter { $0.senderDomain.hasSuffix(senderDomain) }
+        )
+        guard !templates.isEmpty else {
+            return [
+                TemplateOutcome(
+                    template: "",
+                    discriminators: [],
+                    emailCount: 0,
+                    sampleSubject: "",
+                    outcome: .insufficientEvidence(available: 0)
+                )
+            ]
+        }
+
+        var outcomes: [TemplateOutcome] = []
+        for template in templates {
+            outcomes.append(
+                TemplateOutcome(
+                    template: template.key,
+                    discriminators: template.discriminators,
+                    emailCount: template.emails.count,
+                    sampleSubject: template.emails.first?.subject ?? "",
+                    outcome: await learn(template: template, policy: policy)
+                )
+            )
+        }
+        return outcomes
+    }
+
+    private func learn(
+        template: SenderTriage.Template,
+        policy: PatternSynthesisPolicy
     ) async -> SynthesisOutcome {
-        let fromSender = corpus
-            .filter { $0.senderDomain.hasSuffix(senderDomain) }
-            .sorted { $0.date > $1.date }
+        let fromSender = template.emails
+
+        // Cheapest refusal first, and the only one that costs nothing at all:
+        // if the layout's figures never change, it is a price list rather than
+        // a ledger. Checked before the evidence bar because a brochure with
+        // plenty of evidence is still a brochure.
+        guard template.amountVariance >= policy.minimumAmountVariance else {
+            return .notTransactional(amountVariance: template.amountVariance)
+        }
 
         // Enough to verify against, not merely enough to read. A pattern perfect
         // on three emails has told you nothing.
-        guard fromSender.count >= policy.minimumEvidence else {
+        // The floor is the provisional one; a sender that clears only that still
+        // has somewhere to go — the approval queue.
+        guard fromSender.count >= policy.maxExamples + policy.minimumProvisionalEvidence else {
             return .insufficientEvidence(available: fromSender.count)
         }
 
@@ -45,12 +92,13 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
         let examples = Array(fromSender.prefix(policy.maxExamples))
         let holdout = Array(fromSender.dropFirst(policy.maxExamples))
 
-        guard holdout.count >= policy.minimumEvidence else {
+        guard holdout.count >= policy.minimumProvisionalEvidence else {
             return .insufficientEvidence(available: holdout.count)
         }
 
         var feedback: PatternFeedback?
         var best: (pattern: ExtractionPattern, feedback: PatternFeedback)?
+        var lastError: String?
 
         for attempt in 1...policy.maxAttempts {
             let proposal: ExtractionPattern
@@ -61,6 +109,12 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
             } catch {
                 // A failed call is not a failed pattern — try again within the
                 // budget, and report the best real attempt if none succeed.
+                //
+                // Kept, not discarded: the framework has its own opinion about
+                // languages, separate from our gate, and a refusal from inside
+                // it looks exactly like a bad pattern from out here unless the
+                // error survives to the report.
+                lastError = String(describing: error)
                 continue
             }
 
@@ -71,37 +125,67 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
             }
 
             if verifier.clearsBar(scored, policy: policy) {
-                return .promoted(Self.stamped(proposal, with: scored, attempt: attempt), scored)
+                return .promoted(Self.stamped(proposal, as: template, with: scored, attempt: attempt), scored)
+            }
+
+            // Nothing could vouch for a single email — no reference parser for
+            // this sender, no labels. Fall back to coverage, which asks a
+            // weaker question ("does this fit the template's shape?") and
+            // answers it without an oracle. The result is provisional, and its
+            // rows go to a person.
+            if scored.attempted == 0 {
+                let measured = verifier.coverage(proposal, against: holdout)
+                if measured.rate >= policy.coverageThreshold,
+                   measured.evidence >= policy.minimumProvisionalEvidence {
+                    return .provisional(
+                        Self.stamped(proposal, as: template, with: nil, attempt: attempt),
+                        coverage: measured.rate,
+                        evidence: measured.evidence
+                    )
+                }
             }
 
             feedback = scored
         }
 
         return .rejected(
-            best: best.map { Self.stamped($0.pattern, with: $0.feedback, attempt: policy.maxAttempts) },
+            best: best.map { Self.stamped($0.pattern, as: template, with: $0.feedback, attempt: policy.maxAttempts) },
             feedback: best?.feedback,
-            attempts: policy.maxAttempts
+            attempts: policy.maxAttempts,
+            lastError: lastError
         )
     }
 
-    /// Writes the measured numbers onto the artifact. A pattern that says it was
-    /// verified against 111 emails at 0.99 is making a checkable claim, and the
-    /// UI can say "verified on 111" rather than implying all patterns are equal.
+    /// Writes the measured numbers and the layout onto the artifact.
+    ///
+    /// A pattern that says it was verified against 111 emails at 0.99 is making
+    /// a checkable claim, and the UI can say "verified on 111" rather than
+    /// implying all patterns are equal.
+    ///
+    /// The layout is stamped HERE rather than proposed, because it isn't the
+    /// model's to know: which emails cluster together is a fact about the
+    /// corpus that `SenderTriage` measured before the model was called.
     private static func stamped(
         _ pattern: ExtractionPattern,
-        with feedback: PatternFeedback,
+        as template: SenderTriage.Template,
+        with feedback: PatternFeedback?,
         attempt: Int
     ) -> ExtractionPattern {
         ExtractionPattern(
             senderDomain: pattern.senderDomain,
+            template: template.key,
             subjectContains: pattern.subjectContains,
+            bodyContains: template.discriminators,
             amount: pattern.amount,
             merchant: pattern.merchant,
             nonSpendMarkers: pattern.nonSpendMarkers,
             version: attempt,
             proposedAt: pattern.proposedAt,
-            verifiedAgainst: feedback.attempted,
-            accuracy: feedback.accuracy,
+            // Zero and zero for a provisional pattern, deliberately: it has
+            // been verified against nothing, and the UI should be able to say
+            // so rather than imply a measurement nobody made.
+            verifiedAgainst: feedback?.attempted ?? 0,
+            accuracy: feedback?.accuracy ?? 0,
             author: pattern.author
         )
     }

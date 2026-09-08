@@ -26,6 +26,10 @@ nonisolated struct ReviewFlag: Sendable, Hashable, Codable, Identifiable {
         case unparseable
         case languageUnsupported  // LanguageGate refused — see feasibility report
         case largeAmount          // statement lines can't split; flag if material
+        /// Read by a learned pattern whose correctness nothing has checked.
+        /// Coverage says it fits the template's shape; only a person can say
+        /// it read the right number.
+        case unverifiedPattern
 
         /// What the user reads. Stated as an observation, never as a question and
         /// never as an instruction — the flag says what was noticed, the person
@@ -40,6 +44,7 @@ nonisolated struct ReviewFlag: Sendable, Hashable, Codable, Identifiable {
             case .unparseable: return "Couldn't read"
             case .languageUnsupported: return "Not readable on-device"
             case .largeAmount: return "Large amount"
+            case .unverifiedPattern: return "Learned pattern"
             }
         }
     }

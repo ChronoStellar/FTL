@@ -294,20 +294,33 @@ A synthesized pattern cleared the bar set by the hand-written parser. Propose �
 verify → correct → promote, with the verdict decided deterministically and the
 model never grading its own work. That is the thesis, demonstrated.
 
-**What that does and does not prove.** It proves a small on-device model can read
-five receipts and describe a template well enough to survive scoring against 111
-emails it never saw. It does **not** yet mean the app learns anything: the
-promoted pattern is *printed and thrown away*. Nothing persists it, and
-`GmailRail` still holds `[BluReceiptParser()]` hard-coded, so no synthesized
-pattern has ever parsed a real email.
+It proves a small on-device model can read five receipts and describe a template
+well enough to survive scoring against 111 emails it never saw.
 
-**Next, in order:**
+**Promoted patterns now persist and the rail executes them.**
+`ExtractionPatternRecord` + `SwiftDataPatternStore` (same container as the queue
+and the capture log); `GmailRail` loads them at the start of each sync, so a
+pattern promoted while the app is running is live on the next fetch.
 
-1. **Persist promoted patterns** — they belong in the SwiftData store beside the
-   provisional queue, with their `verifiedAgainst`/`accuracy` provenance intact.
-2. **Let `GmailRail` load them**, ahead of the hand-written parsers. That is the
-   moment the app starts learning rather than demonstrating.
-3. **`SenderProfile` triage** (#10) — decide which sender is worth a run.
+Three rules worth keeping:
+
+- **Hand-written parsers take precedence.** The rail takes the first parser that
+  claims an email, and the list is `handWritten + learned`. `BluReceiptParser`
+  reads 112/112 where its synthesized equivalent scores ~97%; letting the learned
+  one win would trade real accuracy for the appearance of progress. The loop is
+  for senders nobody has written a parser for.
+- **Best per sender, not latest.** A later attempt can score worse, and shipping
+  a regression because it is newer is the loop making the app worse while looking
+  like it improved.
+- **Versions are kept, and revoking is a flag not a delete.** The case for
+  patterns over opinions is that the artifact can be read, diffed, versioned and
+  revoked; overwriting in place throws away three of the four.
+
+Still true: the learned pattern has never actually parsed a live email, because
+blu is covered by a hand-written parser that outranks it. **The first real test
+is a sender with no reference parser** — see the guardrail note below.
+
+**Next:** `SenderProfile` triage (#10) — decide which sender is worth a run.
 
 **The guardrail can be re-read now.** "Stop before parser #3" assumed a person
 writes the reference implementations. Grab was on the list to *shape* the schema

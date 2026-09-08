@@ -25,10 +25,20 @@ struct DefaultLanguageGate: LanguageGate {
     /// at runtime — a receipt's signal is in its first paragraph anyway.
     static let maxCharacters = 4_000
 
-    func canProcess(_ text: String) -> GateDecision {
+    func canProcess(_ text: String, for task: ModelTask) -> GateDecision {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .refuse(.emptyContent) }
         guard trimmed.count <= Self.maxCharacters else { return .refuse(.tooLong) }
+
+        // The two cheap physical limits above apply to every call — an empty
+        // prompt and a context overflow are failures whatever the task.
+        //
+        // The language check is not physical, it is a TRUST judgement, and it
+        // only earns its keep when the model's answer is taken on trust.
+        // Synthesis is verified against real emails before it can affect
+        // anything, so refusing it here doesn't prevent a wrong answer — it
+        // prevents finding out. See `ModelTask.anchorSynthesis`.
+        guard task == .classification else { return .allow }
 
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(trimmed)
@@ -37,6 +47,21 @@ struct DefaultLanguageGate: LanguageGate {
         // and let the schema catch a bad answer.
         guard let language = recognizer.dominantLanguage else { return .allow }
         return Self.supported.contains(language) ? .allow : .refuse(.unsupportedLanguage)
+    }
+
+    /// The recognizer's verdict on the exact strings a caller is about to gate.
+    ///
+    /// Exists so a debug run can print what the gate SAW rather than only what
+    /// it decided. Twice now a gate refusal has been diagnosed by reasoning
+    /// about which text it must have been reading; this makes that observable.
+    static func languageTally(of excerpts: [String]) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for excerpt in excerpts {
+            let recognizer = NLLanguageRecognizer()
+            recognizer.processString(excerpt)
+            counts[recognizer.dominantLanguage?.rawValue ?? "undetermined", default: 0] += 1
+        }
+        return counts
     }
 
     /// What language each email is in, no model involved. Feeds the "can the

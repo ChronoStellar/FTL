@@ -109,6 +109,32 @@ nonisolated struct PatternVerifier: Sendable {
         return PatternFeedback(attempted: attempted, succeeded: succeeded, failures: failures)
     }
 
+    /// How often the pattern reads SOMETHING plausible — an amount plus a
+    /// non-empty merchant — with no opinion on whether it read the right thing.
+    ///
+    /// This exists for senders with no oracle. It is a much weaker claim than
+    /// `verify`, and the difference matters: a pattern anchored on the wrong
+    /// label extracts a value from every email and scores 1.0 here. Coverage
+    /// says "this pattern fits the template's shape", never "this pattern is
+    /// correct". Callers must route the result to a human rather than trust it.
+    func coverage(_ pattern: ExtractionPattern, against emails: [CapturedEmail]) -> (rate: Double, evidence: Int) {
+        let candidate = PatternDrivenParser(pattern: pattern)
+        var read = 0
+        var considered = 0
+
+        for email in emails where candidate.canParse(email) {
+            considered += 1
+            if case .parsed(let receipt) = candidate.parse(email),
+               receipt.amount.minorUnits > 0,
+               !receipt.merchantRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                read += 1
+            }
+        }
+
+        guard considered > 0 else { return (0, 0) }
+        return (Double(read) / Double(considered), considered)
+    }
+
     /// Promotion is not just "scored well" — it is "scored well against enough
     /// mail to mean something". A pattern that is perfect on three emails has
     /// told you nothing, which is why `minimumEvidence` exists alongside the

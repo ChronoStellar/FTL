@@ -86,7 +86,7 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
         // That makes the gate a SELECTOR: keep what it passes, drop what it
         // doesn't, and every call still goes out gated.
         let usable = examples.filter { example in
-            if case .allow = languageGate.canProcess(Self.excerpt(example)) { return true }
+            if case .allow = languageGate.canProcess(Self.excerpt(example), for: .anchorSynthesis) { return true }
             return false
         }
         // Two is the floor for generalising: one example can't tell a label from
@@ -117,6 +117,11 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
 
     // MARK: - Prompt
 
+    /// Exposed so the debug probe can send the REAL instructions rather than a
+    /// paraphrase — an isolation test that changes two things at once isolates
+    /// nothing.
+    static var probeInstructions: String { instructions }
+
     private static let instructions = """
     You are given a few emails from ONE sender. They share a template. Your job \
     is to describe WHERE each field sits in that template, using exact literal \
@@ -139,14 +144,48 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
     5. Never do arithmetic and never invent a field that isn't there.
     """
 
+    /// Framed in English PROSE, deliberately, and this is not a style choice.
+    ///
+    /// The framework language-identifies the prompt and throws
+    /// `unsupportedLanguageOrLocale` when the answer is a language it does not
+    /// support. Indonesian is not on its list; Dutch is. Measured with
+    /// `NLLanguageRecognizer` over the real corpus, the previous shape —
+    /// terse `--- EXAMPLE 1 ---` / `SUBJECT:` / `TEXT:` headers wrapped around
+    /// receipt text — detected as:
+    ///
+    ///     blu   nl 0.49    → Dutch, supported, and blu synthesis worked
+    ///     ride  id 0.83    → refused
+    ///     food  id 1.00    → refused
+    ///
+    /// blu passing was the control that proved it: the difference between the
+    /// sender that learned and the two that didn't was never the template, the
+    /// examples or the model. It was which language a classifier guessed from
+    /// the shape of the scaffolding.
+    ///
+    /// The headers were carrying almost no English while sitting next to 2,000
+    /// characters of Indonesian, and — measured — the three-line header block
+    /// was itself enough to flip a single ride excerpt from `en 1.00` to
+    /// `id 0.83`. Replacing them with sentences puts real English in the prompt
+    /// and takes all three to `en 1.00`, the Indonesian food layout included.
+    ///
+    /// So: keep the framing in prose, and keep it proportional to the receipt
+    /// text it wraps. Compressing this back into terse labels will silently
+    /// un-learn every non-English sender.
     private static func prompt(examples: [CapturedEmail], feedback: PatternFeedback?) -> String {
-        var sections: [String] = []
+        var sections: [String] = [
+            """
+            These are emails from one sender that share a template. For each \
+            field, report the exact literal text that appears immediately \
+            before it and immediately after it in the emails below. The emails \
+            are shown one after another, each with its subject line and then \
+            its collapsed body text.
+            """
+        ]
 
         for (index, email) in examples.enumerated() {
             sections.append("""
-            --- EXAMPLE \(index + 1) ---
-            SUBJECT: \(email.subject)
-            TEXT: \(excerpt(email))
+            Email \(index + 1) of \(examples.count). Its subject line reads: \(email.subject)
+            Its body text reads: \(excerpt(email))
             """)
         }
 
@@ -154,18 +193,19 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
         // misses correct a small model far better than a score does.
         if let feedback, !feedback.failures.isEmpty {
             let misses = feedback.failures.prefix(6).map { failure in
-                "· field '\(failure.field)': you produced \(failure.extracted.map { "\"\($0)\"" } ?? "nothing"), expected \"\(failure.expected ?? "")\" in: \(failure.excerpt.prefix(160))"
-            }.joined(separator: "\n")
+                "The field '\(failure.field)' came back as \(failure.extracted.map { "\"\($0)\"" } ?? "nothing at all"), where the correct answer was \"\(failure.expected ?? "")\". That was read from this text: \(failure.excerpt.prefix(160))"
+            }.joined(separator: "\n\n")
 
             sections.append("""
-            --- YOUR PREVIOUS ATTEMPT WAS WRONG ---
-            It read \(feedback.succeeded) of \(feedback.attempted) emails correctly.
-            Concrete failures:
+            Your previous attempt was not correct. It read \(feedback.succeeded) \
+            of \(feedback.attempted) emails correctly, and here is exactly what \
+            went wrong on the ones it missed.
+
             \(misses)
 
-            Fix the anchors so these cases work too, WITHOUT breaking the ones \
-            that already worked. If a field ends differently in different \
-            emails, list every terminator.
+            Fix the anchors so that these cases work too, without breaking the \
+            ones that already worked. If a field ends differently in different \
+            emails, list every terminator you have seen.
             """)
         }
 
@@ -198,7 +238,12 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
     ) -> ExtractionPattern {
         ExtractionPattern(
             senderDomain: senderDomain,
+            // Layout is not the model's to know — `SenderTriage` measured which
+            // emails cluster together before this call, and the learner stamps
+            // both fields on the way out.
+            template: "",
             subjectContains: proposal.subjectContains,
+            bodyContains: [],
             amount: proposal.amountAfter.map {
                 ExtractionPattern.Anchor(after: $0, before: proposal.amountBefore)
             },

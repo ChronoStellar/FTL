@@ -33,6 +33,9 @@ final class AppEnvironment {
     /// have no mailbox to sync.
     let captureLog: CaptureLog?
 
+    /// Patterns the synthesis loop has promoted. Nil in `sample()`.
+    let patterns: PatternStore?
+
     /// False when the on-disk store couldn't be opened and the queue is running
     /// in memory for this session. Surfaced in Settings: a cache that silently
     /// stopped persisting looks identical to one that works, right up until a
@@ -67,6 +70,7 @@ final class AppEnvironment {
         goals: GoalStore,
         isLive: Bool,
         captureLog: CaptureLog? = nil,
+        patterns: PatternStore? = nil,
         isProvisionalStorePersistent: Bool = true
     ) {
         self.auth = auth
@@ -76,6 +80,7 @@ final class AppEnvironment {
         self.goals = goals
         self.isLive = isLive
         self.captureLog = captureLog
+        self.patterns = patterns
         self.isProvisionalStorePersistent = isProvisionalStorePersistent
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
         self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
@@ -106,6 +111,7 @@ final class AppEnvironment {
             goals: InMemoryGoalStore(empty: true),
             isLive: true,
             captureLog: SwiftDataCaptureLog(modelContainer: store.container),
+            patterns: SwiftDataPatternStore(modelContainer: store.container),
             isProvisionalStorePersistent: store.isPersistent
         )
     }
@@ -123,7 +129,7 @@ final class AppEnvironment {
     /// exists to prevent, arriving silently. Whoever holds this must be able to
     /// say so on screen.
     private static func makeProvisionalContainer() -> (container: ModelContainer, isPersistent: Bool) {
-        let schema = Schema([ProvisionalEntryRecord.self, CapturedEmailRecord.self])
+        let schema = Schema([ProvisionalEntryRecord.self, CapturedEmailRecord.self, ExtractionPatternRecord.self])
         do {
             return (try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]), true)
         } catch {
@@ -217,7 +223,8 @@ final class AppEnvironment {
             exporter: GmailExporter(auth: auth),
             parsers: [BluReceiptParser()],
             provisional: provisional,
-            log: captureLog
+            log: captureLog,
+            patterns: patterns
         )
     }
 
