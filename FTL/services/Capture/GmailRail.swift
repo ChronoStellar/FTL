@@ -27,7 +27,7 @@
 import Foundation
 
 nonisolated struct GmailRail: Sendable {
-    private let exporter: GmailExporter
+    private let exporter: any CapturedEmailSource
     /// Hand-written reference parsers. These always take precedence — see
     /// `activeParsers()`.
     private let parsers: [any ReceiptParser]
@@ -40,15 +40,17 @@ nonisolated struct GmailRail: Sendable {
     /// so this is sized to survive a week of not opening the app rather than
     /// tuned to the last run.
     private let window = "newer_than:14d"
-    private let fetchLimit = 50
+    private let fetchLimit: Int
 
     init(
-        exporter: GmailExporter,
+        exporter: any CapturedEmailSource,
         parsers: [any ReceiptParser],
         provisional: ProvisionalStore,
         log: CaptureLog,
-        patterns: PatternStore? = nil
+        patterns: PatternStore? = nil,
+        fetchLimit: Int = 50
     ) {
+        self.fetchLimit = fetchLimit
         self.exporter = exporter
         self.parsers = parsers
         self.provisional = provisional

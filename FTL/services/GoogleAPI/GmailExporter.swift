@@ -52,7 +52,7 @@ enum ExportProgress: Equatable, Sendable {
     }
 }
 
-actor GmailExporter {
+actor GmailExporter: CapturedEmailSource {
     private let client: GoogleAPIClient
     private let base = URL(string: "https://gmail.googleapis.com/gmail/v1/")!
 
@@ -67,6 +67,14 @@ actor GmailExporter {
     /// Shares this actor's ID paging and MIME/base64 extraction rather than
     /// GmailRail growing its own: two decoders for one wire format is how they
     /// drift, and the export is the thing the parsers were measured against.
+    /// `CapturedEmailSource`. Forwards to the real fetch with the default
+    /// concurrency — the protocol deliberately does not expose it, because how
+    /// many sockets the network path opens is not something a recorded source
+    /// has an opinion about.
+    func fetchCaptured(query: String, limit: Int) async throws -> [CapturedEmail] {
+        try await fetchCaptured(query: query, limit: limit, concurrency: 6)
+    }
+
     func fetchCaptured(query: String, limit: Int, concurrency: Int = 6) async throws -> [CapturedEmail] {
         let ids = try await fetchMessageIDs(targetCount: limit, query: query, progress: { _ in })
         guard !ids.isEmpty else { return [] }

@@ -54,6 +54,9 @@ private struct DebugHarness: View {
     @State private var probeReport: [String] = []
     @State private var isProbing = false
 
+    @State private var pipelineReport: [String] = []
+    @State private var isPiping = false
+
     @State private var coverageReport: [String] = []
     @State private var coverageFileURL: URL?
     @State private var isCovering = false
@@ -186,6 +189,23 @@ private struct DebugHarness: View {
                 }
             }
             .task { await loadMonth() }
+
+            // The pipeline as a pipeline. Everything else in this screen
+            // measures a component; this runs the real rail end to end and
+            // shows what lands in the queue.
+            Section("Pipeline · rail over the corpus") {
+                Button(isPiping ? "Running…" : "Run the rail over the corpus") {
+                    Task { await runPipeline() }
+                }
+                .disabled(isPiping)
+
+                ForEach(Array(pipelineReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
 
             // How much of the money mail the app can actually read, measured
             // with the REAL parsers and whatever patterns are stored on this
@@ -387,6 +407,108 @@ private struct DebugHarness: View {
     /// `BluReceiptParser` is the oracle, which is why this can run before
     /// `labels.json` exists — the truth for this sender is already in the
     /// codebase, and 116/116 is the bar its replacement has to clear.
+    /// The whole pipeline, end to end, over recorded mail.
+    ///
+    /// Real `GmailRail`, real parsers, real precedence, real dedup, real
+    /// patterns off this device — only the mailbox and the two stores are
+    /// swapped, and the stores are swapped so a test run cannot pollute the
+    /// actual approval queue.
+    ///
+    /// The counts matter less than the ROWS. A pipeline that queues 137 entries
+    /// and a pipeline that queues 137 correct entries look identical from the
+    /// summary line, and the second one is the only one worth shipping.
+    private func runPipeline() async {
+        isPiping = true
+        defer { isPiping = false }
+
+        var lines: [String] = []
+        do {
+            let corpus = try EmailCorpus.load()
+            // `empty: true` is load-bearing. The default seeds this store with
+            // SampleLedger's preview fixtures, and the first run of this
+            // harness reported them as pipeline output — placeholder rows dated
+            // today, so they sorted straight to the top of the sample. A test
+            // whose fixtures are indistinguishable from its results is worse
+            // than no test.
+            let provisional = InMemoryProvisionalStore(empty: true)
+            let before = try await provisional.pending().count
+
+            // Everything real except the mailbox and where rows land.
+            let rail = GmailRail(
+                exporter: CorpusEmailSource(corpus.emails),
+                parsers: [BluReceiptParser()],
+                provisional: provisional,
+                log: InMemoryCaptureLog(),
+                patterns: environment.patterns,
+                fetchLimit: corpus.emails.count
+            )
+
+            let started = Date.now
+            let result = try await rail.sync()
+            lines.append(String(format: "elapsed %.2fs", Date.now.timeIntervalSince(started)))
+            lines.append("fetched \(result.fetched) · queued \(result.queued) · flagged \(result.flagged)")
+            lines.append("not a purchase \(result.notAPurchase) · skipped \(result.skipped) · seen \(result.alreadySeen)")
+
+            // Second pass, same log: nothing should come through. Dedup is the
+            // thing standing between a re-sync and duplicate spending, and it
+            // has never been checked over more than a few emails.
+            let again = try await rail.sync()
+            lines.append("re-sync → queued \(again.queued) (expect 0), already seen \(again.alreadySeen)")
+
+            let pending = try await provisional.pending()
+            lines.append("")
+            // Stated, not assumed — this is the number that was silently wrong.
+            lines.append("queue \(before) before → \(pending.count) row(s) after")
+            if before != 0 {
+                lines.append("⚠︎ store was not empty — results are contaminated")
+            }
+
+            var bySource: [String: Int] = [:]
+            var flagged: [String: Int] = [:]
+            for entry in pending {
+                let source: String
+                switch entry.provenance {
+                case .rule(let id): source = id.rawValue
+                case .model(let confidence): source = "model \(confidence)"
+                case .manual: source = "manual"
+                }
+                bySource[source, default: 0] += 1
+                for flag in entry.flags { flagged[flag.reason.rawValue, default: 0] += 1 }
+            }
+            for (rule, count) in bySource.sorted(by: { $0.value > $1.value }) {
+                lines.append("  \(count)×  \(rule)")
+            }
+            if !flagged.isEmpty {
+                lines.append("flags: " + flagged.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
+            }
+
+            // The actual product. Read these — a wrong merchant or a
+            // thousandfold amount is obvious here and invisible in a count.
+            lines.append("")
+            lines.append("sample rows")
+            for entry in pending.sorted(by: { $0.transaction.date > $1.transaction.date }).prefix(8) {
+                let tx = entry.transaction
+                // Kind is printed because its absence cost a wrong reading:
+                // a transfer already labelled non-spend looked, in a dump of
+                // date/amount/merchant alone, exactly like a spend.
+                let kind = entry.resolution.kind == .spend
+                    ? "spend"
+                    : (entry.resolution.nonSpendType.map { "non-spend/\($0.rawValue)" } ?? "non-spend")
+                let marks = entry.flags.isEmpty ? "" : "  ⚑ " + entry.flags.map(\.reason.rawValue).joined(separator: ",")
+                lines.append("  \(Self.day.string(from: tx.date))  \(MoneyFormatter.rp(tx.amount))  \(kind)  \(tx.merchantRaw.prefix(30))\(marks)")
+            }
+        } catch {
+            lines.append("⚠︎ failed: \(error.localizedDescription)")
+        }
+        pipelineReport = lines
+    }
+
+    private static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMM"
+        return formatter
+    }()
+
     /// What share of the money mail the app can read today, and who is next.
     ///
     /// Restricted to emails carrying `Rp`/`IDR`, because those are the ones

@@ -80,6 +80,7 @@ private struct QueueEntryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            notes
             tags.padding(.top, FTLSpacing.md)
             actions.padding(.top, 13)
         }
@@ -105,6 +106,46 @@ private struct QueueEntryCard: View {
             Text(MoneyFormatter.rp(entry.transaction.amount))
                 .font(FTLTypography.amountEmphasis)
                 .foregroundStyle(FTLColor.textPrimary)
+        }
+    }
+
+    /// Flags, on their own line, at readable contrast, WITH their detail.
+    ///
+    /// They used to be joined onto the end of `provenanceLine`: quaternary
+    /// grey, 12pt, third item in a run-on string, visually identical whether
+    /// the app had noticed a new merchant or failed to read the amount. That
+    /// made the one signal meaning "I made a judgement, check it" the least
+    /// visible text on the card.
+    ///
+    /// Worse, `ReviewFlag.detail` was never rendered anywhere. "Read as a
+    /// transfer, not a purchase" existed in the data, was written to the store,
+    /// and reached nobody — the flag could only ever say "Spend unclear",
+    /// which states the problem and withholds the reason.
+    ///
+    /// One hue only, so emphasis is weight and contrast: label at
+    /// `textSecondary`, detail at `textTertiary`, both above the quaternary
+    /// provenance line rather than buried in it.
+    @ViewBuilder
+    private var notes: some View {
+        if !entry.flags.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(entry.flags) { flag in
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "exclamationmark.circle")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(FTLColor.textSecondary)
+                        Text(flag.reason.label)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(FTLColor.textSecondary)
+                        if let detail = flag.detail {
+                            Text(detail)
+                                .font(FTLTypography.caption)
+                                .foregroundStyle(FTLColor.textTertiary)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 9)
         }
     }
 
@@ -151,9 +192,13 @@ private struct QueueEntryCard: View {
         }
     }
 
-    /// "Email receipt · model · New merchant" — where it came from, whether a rule
-    /// or the model settled it, and anything flagged. Never collapsed into one
-    /// word: a rule-settled row and a model-tagged row are not the same claim.
+    /// "Email · blu-receipt" — where it came from and what settled it. Never
+    /// collapsed into one word: a rule-settled row and a model-tagged row are
+    /// not the same claim.
+    ///
+    /// Flags used to be appended here and now render in `notes`. Provenance is
+    /// background — true of every row, worth a glance. A flag is foreground —
+    /// true of this row, and the reason it is in front of you.
     private var provenanceLine: String {
         var parts = [entry.transaction.source.rawValue.capitalized]
         switch entry.provenance {
@@ -161,7 +206,6 @@ private struct QueueEntryCard: View {
         case .model: parts.append("model")
         case .manual: parts.append("you")
         }
-        parts.append(contentsOf: entry.flags.map(\.reason.label))
         return parts.joined(separator: " · ")
     }
 }

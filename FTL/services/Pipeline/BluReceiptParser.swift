@@ -58,6 +58,11 @@ struct BluReceiptParser: ReceiptParser, DomainScopedParser {
             return .incomplete(missing: "amount")
         }
 
+        // INFERRED, unlike the two below. Nothing in the email says "transfer";
+        // this parser concluded it from a bank name sitting next to an account
+        // number. That conclusion is usually right and it moves real money out
+        // of every ceiling, so it is the one judgement here that should not be
+        // made quietly — see the flag below.
         let isTransfer = Self.looksLikeAccountTransfer(counterparty: counterparty, text: text)
         let isRefund = subject.contains("refund")
         // "Incoming Transaction to Your blu" — money arriving, not leaving. It
@@ -77,7 +82,18 @@ struct BluReceiptParser: ReceiptParser, DomainScopedParser {
                 merchantRaw: counterparty,
                 kind: (isTransfer || isRefund || isIncoming) ? .nonSpend : .spend,
                 nonSpendType: isRefund ? .refund : ((isTransfer || isIncoming) ? .transfer : nil),
-                flags: []
+                // Only the inferred one is flagged. "Refund" and "Incoming" are
+                // words blu itself put in the subject — reporting those back as
+                // uncertain would cry wolf on the sender's own statement, and a
+                // flag that fires on everything is a flag nobody reads.
+                //
+                // Invariant 6 and Invariant 8: an observation, not a question.
+                // The row still lands, still counts as non-spend, still shows
+                // up. The flag only says which part of it the app worked out
+                // for itself.
+                flags: isTransfer && !isRefund && !isIncoming
+                    ? [ReviewFlag(reason: .ambiguousKind, detail: "Read as a transfer, not a purchase")]
+                    : []
             )
         )
     }
