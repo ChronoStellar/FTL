@@ -36,6 +36,12 @@ final class AppEnvironment {
     /// Patterns the synthesis loop has promoted. Nil in `sample()`.
     let patterns: PatternStore?
 
+    /// What you decided about each merchant — the second tool's only source of
+    /// truth, and the evidence the trust ladder's third rung is earned against
+    /// (Invariant 10). Nil in `sample()`: fixture approvals are not decisions
+    /// about anyone's real budget and must not accrue as if they were.
+    let tagMemory: TagMemory?
+
     /// False when the on-disk store couldn't be opened and the queue is running
     /// in memory for this session. Surfaced in Settings: a cache that silently
     /// stopped persisting looks identical to one that works, right up until a
@@ -71,6 +77,7 @@ final class AppEnvironment {
         isLive: Bool,
         captureLog: CaptureLog? = nil,
         patterns: PatternStore? = nil,
+        tagMemory: TagMemory? = nil,
         isProvisionalStorePersistent: Bool = true
     ) {
         self.auth = auth
@@ -81,9 +88,10 @@ final class AppEnvironment {
         self.isLive = isLive
         self.captureLog = captureLog
         self.patterns = patterns
+        self.tagMemory = tagMemory
         self.isProvisionalStorePersistent = isProvisionalStorePersistent
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
-        self.approvals = DefaultApprovalService(store: provisional, ledger: ledger)
+        self.approvals = DefaultApprovalService(store: provisional, ledger: ledger, tags: tagMemory)
     }
 
     /// The one live environment for this process.
@@ -112,6 +120,7 @@ final class AppEnvironment {
             isLive: true,
             captureLog: SwiftDataCaptureLog(modelContainer: store.container),
             patterns: SwiftDataPatternStore(modelContainer: store.container),
+            tagMemory: SwiftDataTagMemory(modelContainer: store.container),
             isProvisionalStorePersistent: store.isPersistent
         )
     }
@@ -129,7 +138,16 @@ final class AppEnvironment {
     /// exists to prevent, arriving silently. Whoever holds this must be able to
     /// say so on screen.
     private static func makeProvisionalContainer() -> (container: ModelContainer, isPersistent: Bool) {
-        let schema = Schema([ProvisionalEntryRecord.self, CapturedEmailRecord.self, ExtractionPatternRecord.self])
+        let schema = Schema([
+            ProvisionalEntryRecord.self,
+            CapturedEmailRecord.self,
+            ExtractionPatternRecord.self,
+            // The one table here with no upstream copy — the ledger can be
+            // re-read from the Sheet and the queue re-approved, but a lost
+            // decision history is everything the tagger learned about your
+            // buckets, gone. See SwiftDataTagMemory.
+            TagDecisionRecord.self,
+        ])
         do {
             return (try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]), true)
         } catch {
@@ -198,7 +216,15 @@ final class AppEnvironment {
     }
 
     func makeApprovalQueueViewModel() -> ApprovalQueueViewModel {
-        ApprovalQueueViewModel(store: provisional, approvals: approvals, ledger: ledger)
+        ApprovalQueueViewModel(
+            store: provisional,
+            approvals: approvals,
+            ledger: ledger,
+            // The queue is where the tagger earns its keep: every load
+            // re-derives what you have settled, so a decision made on one row
+            // is visible on the next one down. See `PurchaseTagger`.
+            tagger: makePurchaseTagger()
+        )
     }
 
     func makeAddSpendViewModel(interval: DateInterval) -> AddSpendViewModel {
@@ -224,7 +250,23 @@ final class AppEnvironment {
             parsers: [BluReceiptParser()],
             provisional: provisional,
             log: captureLog,
-            patterns: patterns
+            patterns: patterns,
+            tagger: makePurchaseTagger()
+        )
+    }
+
+    /// The second tool, or nil when there is nothing for it to remember with.
+    ///
+    /// The model half is passed only when the device actually has a model, so a
+    /// machine without one still gets the deterministic lookup — which is the
+    /// wide path anyway, and the half that is right about the merchants you
+    /// have actually settled.
+    func makePurchaseTagger() -> (any PurchaseTagger)? {
+        guard let tagMemory else { return nil }
+        return DefaultPurchaseTagger(
+            memory: tagMemory,
+            proposer: FoundationModelTagger.isAvailable ? FoundationModelTagger() : nil,
+            ledger: ledger
         )
     }
 

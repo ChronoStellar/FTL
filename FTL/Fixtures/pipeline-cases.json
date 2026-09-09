@@ -65,6 +65,50 @@
       "verifiedAgainst": 0,
       "accuracy": 0,
       "author": "on-device-foundation-model"
+    },
+    {
+      "senderDomain": "zenpay.example.com",
+      "template": "",
+      "subjectContains": [
+        "ZenPay"
+      ],
+      "bodyContains": [],
+      "amount": [
+        {
+          "after": "Total",
+          "before": [
+            "Reference"
+          ],
+          "occurrence": 1
+        }
+      ],
+      "merchant": [
+        {
+          "after": "Counterparty",
+          "before": [
+            "Total"
+          ],
+          "occurrence": 1
+        }
+      ],
+      "nonSpendMarkers": [
+        {
+          "contains": "Refund Processed",
+          "type": "refund"
+        },
+        {
+          "contains": "Money Received",
+          "type": "incoming"
+        },
+        {
+          "contains": "Admin Fee"
+        }
+      ],
+      "version": 1,
+      "proposedAt": "2026-09-09T08:00:00Z",
+      "verifiedAgainst": 0,
+      "accuracy": 0,
+      "author": "on-device-foundation-model"
     }
   ],
   "cases": [
@@ -179,7 +223,7 @@
     },
     {
       "name": "blu-incoming-not-flagged",
-      "note": "Money arriving. Non-spend because blu says Incoming in the subject, so the app is repeating the sender rather than inferring — no flag. A flag here would cry wolf and teach people to approve past flags.",
+      "note": "Money arriving. Non-spend because blu says Incoming in the subject, so the app is repeating the sender rather than inferring — no flag. A flag here would cry wolf and teach people to approve past flags. Typed `incoming`, not `transfer`: a transfer is money you moved between your own accounts, and this came from somewhere else. Neither counts against a ceiling, so no total moves — but the oracle has to be right about the label before a learned pattern can be graded on reproducing it.",
       "email": {
         "id": "fx-006",
         "from": "no-reply@blubybcadigital.id",
@@ -193,7 +237,7 @@
         "amount": 3000000,
         "merchantRaw": "PT SUMBER REJEKI",
         "kind": "nonSpend",
-        "nonSpendType": "transfer",
+        "nonSpendType": "incoming",
         "flags": []
       },
       "knownIssue": null
@@ -530,6 +574,99 @@
         "flags": null
       },
       "knownIssue": "PatternDiscovery cannot reach a sender the rail never fetches."
+    },
+    {
+      "name": "learned-pattern-purchase",
+      "note": "The control for the three below. Nothing in it matches a non-spend marker, so it is spending — which is what makes the other three assertions mean something.",
+      "email": {
+        "id": "fx-022",
+        "from": "notifikasi@zenpay.example.com",
+        "subject": "ZenPay Payment Successful",
+        "snippet": "ZenPay Payment Successful",
+        "internalDate": "1789862400000",
+        "bodyPlain": "Payment Successful\nCounterparty TOKO ROTI MANIS\nTotal Rp 42.500\nReference ZP-88213"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 42500,
+        "merchantRaw": "TOKO ROTI MANIS",
+        "kind": "spend",
+        "nonSpendType": null,
+        "flags": [
+          "unverifiedPattern"
+        ]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "learned-pattern-refund",
+      "note": "A refund read by a LEARNED pattern rather than a hand-written parser. Before markers carried a type this could only ever come out as `nonSpend` with no subtype, or — if the model proposed no marker at all — as spending, which adds a reversal to the total it reverses. No flag, for the same reason blu's refunds carry none: 'Refund Processed' is the sender's own words, not the app's inference.",
+      "email": {
+        "id": "fx-023",
+        "from": "notifikasi@zenpay.example.com",
+        "subject": "ZenPay Refund Processed",
+        "snippet": "ZenPay Refund Processed",
+        "internalDate": "1789948800000",
+        "bodyPlain": "Refund Processed\nCounterparty TOKO ROTI MANIS\nTotal Rp 42.500\nReference ZP-88214"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 42500,
+        "merchantRaw": "TOKO ROTI MANIS",
+        "kind": "nonSpend",
+        "nonSpendType": "refund",
+        "flags": [
+          "unverifiedPattern"
+        ]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "learned-pattern-money-received",
+      "note": "Money arriving, read by a learned pattern. The failure this prevents is the one the Gmail rail already hit once for real: 3 of 122 blu emails were incoming transactions counted as spending, pushing buckets over their ceilings by the user's own income. That was fixed by hand for one sender; this is the same fix available to every sender the loop learns.",
+      "email": {
+        "id": "fx-024",
+        "from": "notifikasi@zenpay.example.com",
+        "subject": "ZenPay Money Received",
+        "snippet": "ZenPay Money Received",
+        "internalDate": "1790035200000",
+        "bodyPlain": "Money Received\nCounterparty RIZKY PRATAMA\nTotal Rp 150.000\nReference ZP-88215"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 150000,
+        "merchantRaw": "RIZKY PRATAMA",
+        "kind": "nonSpend",
+        "nonSpendType": "incoming",
+        "flags": [
+          "unverifiedPattern"
+        ]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "learned-pattern-untyped-marker-flags",
+      "note": "An UNTYPED marker: 'Admin Fee' says a bank was involved and says nothing about what the movement was. The row is non-spend with no subtype AND carries ambiguousKind — the one case that flags, because it is the one where the app reached a conclusion the sender never stated. Picking a subtype off a substring here would be inventing one.",
+      "email": {
+        "id": "fx-025",
+        "from": "notifikasi@zenpay.example.com",
+        "subject": "ZenPay Transfer Out",
+        "snippet": "ZenPay Transfer Out",
+        "internalDate": "1790121600000",
+        "bodyPlain": "Transfer Out\nCounterparty BANK MANDIRI 1370 0099 21\nTotal Rp 100.000\nReference ZP-88216\nAdmin Fee Rp 2.500"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 100000,
+        "merchantRaw": "BANK MANDIRI 1370 0099 21",
+        "kind": "nonSpend",
+        "nonSpendType": null,
+        "flags": [
+          "unverifiedPattern",
+          "ambiguousKind"
+        ]
+      },
+      "knownIssue": null
     }
   ],
   "discoveryCorpus": [
@@ -776,7 +913,8 @@
       "tinyshop.example.com": "genuine receipts, only three of them — below the evidence floor, so it waits rather than guessing",
       "northwind.example.com": "no Rp or IDR anywhere, so the currency filter drops it before selection",
       "blubybcadigital.id": "already readable — its mail is not unread",
-      "grab.com": "already readable by two learned patterns"
+      "grab.com": "already readable by two learned patterns",
+      "zenpay.example.com": "already readable by a learned pattern — the one that carries typed non-spend markers"
     },
     "expectedLayouts": {
       "swiftpay.co.id": 1

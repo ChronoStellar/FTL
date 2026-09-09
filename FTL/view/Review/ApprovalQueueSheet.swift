@@ -81,6 +81,7 @@ private struct QueueEntryCard: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             notes
+            suggestion
             tags.padding(.top, FTLSpacing.md)
             actions.padding(.top, 13)
         }
@@ -146,6 +147,23 @@ private struct QueueEntryCard: View {
                 }
             }
             .padding(.top, 9)
+        }
+    }
+
+    /// Where the pre-selected chip came from, stated as an observation.
+    ///
+    /// No hue and no icon: a suggestion is not a signal, and the app has exactly
+    /// one signal colour reserved for over-ceiling, flagged and destructive. It
+    /// reads at tertiary contrast, one line, above the chips it is talking about
+    /// — visible enough that approving is still a decision, quiet enough that it
+    /// never competes with a flag.
+    @ViewBuilder
+    private var suggestion: some View {
+        if let note = viewModel.suggestionNote(for: entry) {
+            Text(note)
+                .font(FTLTypography.caption)
+                .foregroundStyle(FTLColor.textTertiary)
+                .padding(.top, 9)
         }
     }
 

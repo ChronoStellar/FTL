@@ -63,21 +63,37 @@ nonisolated struct PatternDrivenParser: ReceiptParser, DomainScopedParser {
             return .incomplete(missing: "amount")
         }
 
-        let isNonSpend = pattern.nonSpendMarkers.contains { marker in
-            text.range(of: marker, options: .caseInsensitive) != nil
-        }
+        // First marker present wins, list order deciding — the same precedence
+        // rule the anchors use, and the same reason: the synthesizer emits the
+        // specific markers (a refund, money arriving) ahead of the generic ones,
+        // so a receipt carrying both a bank's "Admin Fee" and its own word
+        // "Refund" is read as the refund it is.
+        let marker = pattern.nonSpendMarkers.first { $0.matches(text) }
 
         return .parsed(
             ParsedReceipt(
                 date: email.date,
                 amount: amount,
                 merchantRaw: merchantRaw,
-                kind: isNonSpend ? .nonSpend : .spend,
-                // Which KIND of non-spend needs more than a substring match, and
-                // guessing between transfer/topup/refund would be inventing.
-                // Flagged as non-spend and left for the approver to narrow.
-                nonSpendType: nil,
-                flags: []
+                kind: marker == nil ? .spend : .nonSpend,
+                // The marker's own type, when it has one. A pattern that says
+                // "the word Refund means a refund" is making a checkable claim
+                // and `PatternVerifier` checks it; a pattern that only knows
+                // "Admin Fee means not spending" is not, and gets nil.
+                nonSpendType: marker?.type,
+                // Untyped is the honest uncertainty, so it is the one that
+                // flags: the row is money that moved without being a purchase,
+                // and which sort is a question only a person can close. Naming
+                // a subtype would be inventing one from a substring.
+                //
+                // A TYPED marker is not flagged, for the same reason
+                // `BluReceiptParser` does not flag its refunds: the word came
+                // from the sender's own email, and a flag that fires on the
+                // sender's own statement is a flag nobody reads.
+                flags: marker.map { $0.type == nil
+                    ? [ReviewFlag(reason: .ambiguousKind, detail: "Read as non-spend from \"\($0.contains)\"")]
+                    : []
+                } ?? []
             )
         )
     }

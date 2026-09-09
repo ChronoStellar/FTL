@@ -15,10 +15,14 @@ import Foundation
 actor DefaultApprovalService: ApprovalService {
     private let store: ProvisionalStore
     private let ledger: LedgerStore
+    /// Where the tagger's accuracy accrues. Nil in `sample()`; a nil memory
+    /// changes nothing except that nothing is learned.
+    private let tags: TagMemory?
 
-    init(store: ProvisionalStore, ledger: LedgerStore) {
+    init(store: ProvisionalStore, ledger: LedgerStore, tags: TagMemory? = nil) {
         self.store = store
         self.ledger = ledger
+        self.tags = tags
     }
 
     func approve(_ ids: [ProvisionalEntry.ID]) async throws -> ApprovalResult {
@@ -46,6 +50,7 @@ actor DefaultApprovalService: ApprovalService {
         }
         try await ledger.append(written)
         try await store.markPromoted(written.map(\.id))
+        await recordDecisions(from: pending)
         return ApprovalResult(written: written, failed: [])
     }
 
@@ -57,9 +62,57 @@ actor DefaultApprovalService: ApprovalService {
         }
     }
 
+    /// The gate is the right place for this and the only one.
+    ///
+    /// Every promotion passes through here, exactly once, by Invariant 1 — so a
+    /// decision recorded here is recorded for every route into the ledger with
+    /// no second call site to keep in step. Recording it in the queue's view
+    /// model instead would miss anything approved from an intent, and recording
+    /// it in the rail would count a suggestion nobody had looked at yet.
+    ///
+    /// AFTER the ledger write, deliberately. The record says "this is what you
+    /// decided", and until the append succeeds you have not decided anything
+    /// that survived. Best-effort for the same reason: a memory write that
+    /// fails must not fail an approval that already reached the sheet, because
+    /// the row would then be promoted, unmarked, and offered again.
+    ///
+    /// Only approvals. A dropped row is not a tagging decision — you rejected
+    /// the transaction, not the bucket — and scoring the tagger on rows that
+    /// never became spending would measure the parser's mistakes as the
+    /// tagger's.
+    ///
+    /// A useful consequence of putting this at the gate rather than in the
+    /// queue: `ManualEntry` promotes through here too, so every spend you type
+    /// in by hand seeds the merchant memory with a decision that had no
+    /// suggestion to be right or wrong about. The tagger therefore starts
+    /// knowing your regular shops before it has ever suggested anything, and
+    /// those rows do not touch the hit rate.
+    private func recordDecisions(from entries: [ProvisionalEntry]) async {
+        guard let tags, !entries.isEmpty else { return }
+        let decisions = entries.map { entry in
+            TagDecision(
+                id: entry.id,
+                merchant: MerchantID(normalizing: entry.transaction.merchantRaw),
+                merchantRaw: entry.transaction.merchantRaw,
+                suggested: entry.resolution.suggestedTag,
+                chosen: entry.resolution.categoryID,
+                chosenKind: entry.resolution.kind,
+                decidedAt: .now
+            )
+        }
+        try? await tags.record(decisions)
+    }
+
     func amend(_ id: ProvisionalEntry.ID, to resolution: ProvisionalEntry.Resolution) async throws {
         guard var entry = try await store.entries(withStatus: .pending).first(where: { $0.id == id }) else { return }
+        let suggestion = entry.resolution.suggestedTag
         entry.resolution = resolution
+        // A retag is the most valuable event the tagger has — it is the only
+        // place the app finds out it was wrong — so what was SUGGESTED survives
+        // being corrected. A caller that builds a fresh resolution rather than
+        // editing the existing one would otherwise erase the miss and leave the
+        // hit rate measuring only the rows nobody had to fix.
+        entry.resolution.suggestedTag = resolution.suggestedTag ?? suggestion
         entry.provenance = .manual  // a corrected row is no longer the model's verdict
         try await store.update(entry)
     }

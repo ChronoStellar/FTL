@@ -46,6 +46,11 @@ nonisolated struct PatternVerifier: Sendable {
     /// Runs `pattern` over every email the oracle can vouch for, and reports
     /// what it got wrong.
     ///
+    /// Three fields decide pass or fail — amount, merchant, and the SPEND
+    /// DIRECTION — and a fourth, the non-spend subtype, is reported without
+    /// deciding anything. See the notes at each comparison for why the fourth
+    /// one is advisory.
+    ///
     /// Emails the oracle can't read are EXCLUDED, not counted as failures: they
     /// are cases where nobody knows the right answer, and scoring a candidate
     /// against an unknown would make accuracy a measure of the oracle's gaps
@@ -102,8 +107,56 @@ nonisolated struct PatternVerifier: Sendable {
                     )
                 )
             }
+            // Scored, from here on, because it moves a number. A refund or an
+            // arriving payment read as `.spend` is added to what you spent —
+            // the same failure that made blu's incoming transactions inflate
+            // every bucket by the user's own income, arriving this time through
+            // a pattern nobody wrote.
+            //
+            // Until now `verify` compared the amount and the merchant only, so
+            // a pattern could get the direction of the money wrong on every
+            // email and still score 1.00. That is the one thing coverage was
+            // never able to catch either, and the reason the loop could not
+            // learn a sender's refunds however many it saw.
+            if got.kind != truth.kind {
+                wrong.append(
+                    .init(
+                        emailID: email.id,
+                        excerpt: Self.excerpt(email),
+                        field: "kind",
+                        extracted: got.kind.rawValue,
+                        expected: truth.kind.rawValue
+                    )
+                )
+            }
 
             if wrong.isEmpty { succeeded += 1 } else { failures.append(contentsOf: wrong) }
+
+            // ADVISORY, and deliberately outside the pass/fail above: which
+            // sort of non-spend a row is cannot change a total, because every
+            // non-spend row is already excluded from every ceiling
+            // (Invariant 5). It is a label on a row a person will read.
+            //
+            // So a wrong subtype teaches without blocking. It reaches the
+            // model as a concrete miss on the next attempt — which is how the
+            // loop learns to say "Refund" rather than merely "not spending" —
+            // and it does not sink an otherwise correct pattern over a
+            // distinction the oracle itself often INFERS. `BluReceiptParser`
+            // concludes `.transfer` from a bank name sitting beside an account
+            // number; no literal marker can be expected to reproduce that, and
+            // failing a pattern for not reproducing it would be scoring the
+            // oracle's reasoning rather than the pattern's reading.
+            if got.nonSpendType != truth.nonSpendType, got.kind == truth.kind {
+                failures.append(
+                    .init(
+                        emailID: email.id,
+                        excerpt: Self.excerpt(email),
+                        field: "nonSpendType",
+                        extracted: got.nonSpendType?.rawValue ?? "unspecified",
+                        expected: truth.nonSpendType?.rawValue ?? "unspecified"
+                    )
+                )
+            }
         }
 
         return PatternFeedback(attempted: attempted, succeeded: succeeded, failures: failures)

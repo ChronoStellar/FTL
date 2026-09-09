@@ -58,4 +58,15 @@ nonisolated enum NonSpendType: String, Sendable, Hashable, Codable, CaseIterable
     case creditCardPayment
     case cashback
     case refund
+    /// Money ARRIVING that is not a refund — a salary, a repayment, a top-up
+    /// from someone else. Its own case rather than folded into `.transfer`,
+    /// which was where blu's "Incoming Transaction to Your blu" used to land.
+    ///
+    /// A transfer is money you moved between your own accounts; an inflow is
+    /// money that came from somewhere else. Both are excluded from every
+    /// ceiling (Invariant 5), so this changes no arithmetic today — but it is
+    /// the difference between "I moved this" and "I received this", and a
+    /// learned pattern cannot describe a sender's inbound receipts at all if
+    /// the only word available for them is one that means something else.
+    case incoming
 }

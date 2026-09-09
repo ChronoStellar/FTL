@@ -90,8 +90,29 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     /// fallback is worth ~3 points of accuracy on its own.
     let amount: [Anchor]
     let merchant: [Anchor]
-    /// Substrings that mark the movement as non-spend — "Admin Fee", a bank name.
-    let nonSpendMarkers: [String]
+
+    /// Text that marks the movement as non-spend, each carrying WHICH kind of
+    /// non-spend it marks. Tried in order; the first one present wins, the same
+    /// rule as `Anchor`.
+    ///
+    /// This used to be a bare `[String]`, and a pattern could therefore say
+    /// "not spending" and nothing more. That covered a transfer adequately and
+    /// covered the two cases that actually change what a person sees not at
+    /// all:
+    ///
+    /// · a **refund**, which is the sender undoing a purchase you already have
+    ///   a row for;
+    /// · **money received**, which is not a purchase in either direction.
+    ///
+    /// Both were reachable only by hand — `BluReceiptParser` reads its own
+    /// subject line for "Refund" and "Incoming" — so every sender the loop
+    /// learns instead of a person writing it lost the distinction. A learned
+    /// pattern could label a refund `nonSpend` if the model happened to guess a
+    /// marker, and could never say what it was.
+    ///
+    /// The lesson from the anchors applies unchanged: the loop can only correct
+    /// what the schema lets it say.
+    let nonSpendMarkers: [NonSpendMarker]
 
     // MARK: Provenance — how far this can be trusted, and why
 
@@ -103,6 +124,33 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
     let accuracy: Double
     /// Which model produced it, or "hand-written" for the reference parsers.
     let author: String
+
+    /// "If the text contains the word Refund, this is a refund."
+    nonisolated struct NonSpendMarker: Sendable, Hashable, Codable {
+        /// Literal text, matched case-insensitively against `flatText` — which
+        /// includes the SUBJECT line, and that is where senders usually say it.
+        /// blu's refunds are announced in the subject and nowhere else.
+        let contains: String
+
+        /// Which kind of non-spend this marker means, or nil for "not spending,
+        /// and the pattern cannot say what it is".
+        ///
+        /// Nil is a real and honest answer — "Admin Fee" tells you a bank was
+        /// involved, not what the movement was — and `PatternDrivenParser`
+        /// flags a row it settles that way rather than picking a type. Inventing
+        /// a subtype from a substring is exactly the guessing Invariant 6 exists
+        /// to prevent.
+        let type: NonSpendType?
+
+        init(contains: String, type: NonSpendType? = nil) {
+            self.contains = contains
+            self.type = type
+        }
+
+        func matches(_ text: String) -> Bool {
+            !contains.isEmpty && text.range(of: contains, options: .caseInsensitive) != nil
+        }
+    }
 
     /// "The value after the word Total, up to the word Amount."
     nonisolated struct Anchor: Sendable, Hashable, Codable {
@@ -171,12 +219,34 @@ extension ExtractionPattern {
             bodyContains: try container.decodeIfPresent([String].self, forKey: .bodyContains) ?? [],
             amount: try container.decode([Anchor].self, forKey: .amount),
             merchant: try container.decode([Anchor].self, forKey: .merchant),
-            nonSpendMarkers: try container.decode([String].self, forKey: .nonSpendMarkers),
+            nonSpendMarkers: try container.decodeIfPresent([NonSpendMarker].self, forKey: .nonSpendMarkers) ?? [],
             version: try container.decode(Int.self, forKey: .version),
             proposedAt: try container.decode(Date.self, forKey: .proposedAt),
             verifiedAgainst: try container.decode(Int.self, forKey: .verifiedAgainst),
             accuracy: try container.decode(Double.self, forKey: .accuracy),
             author: try container.decode(String.self, forKey: .author)
+        )
+    }
+}
+
+/// Decodes from a bare string as well as an object, so every pattern promoted
+/// before markers carried a type still loads — as an untyped marker, which is
+/// exactly what it was.
+///
+/// The same argument as `ExtractionPattern.init(from:)` above: throwing here
+/// would silently retire what the loop learned, and persistence exists to stop
+/// precisely that.
+extension ExtractionPattern.NonSpendMarker {
+    init(from decoder: any Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let legacy = try? single.decode(String.self) {
+            self.init(contains: legacy)
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            contains: try container.decode(String.self, forKey: .contains),
+            type: try container.decodeIfPresent(NonSpendType.self, forKey: .type)
         )
     }
 }

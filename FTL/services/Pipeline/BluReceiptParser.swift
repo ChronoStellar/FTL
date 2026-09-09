@@ -81,7 +81,14 @@ struct BluReceiptParser: ReceiptParser, DomainScopedParser {
                 amount: amount,
                 merchantRaw: counterparty,
                 kind: (isTransfer || isRefund || isIncoming) ? .nonSpend : .spend,
-                nonSpendType: isRefund ? .refund : ((isTransfer || isIncoming) ? .transfer : nil),
+                // `.incoming` rather than `.transfer` for arriving money. Both
+                // are excluded from every ceiling, so no total moves — but a
+                // transfer is money you moved between your own accounts and an
+                // inflow is money that came from somewhere else, and the row
+                // said the wrong one of those. It is also the label a learned
+                // pattern now has to reproduce, so the oracle has to be right
+                // about it before it can grade anything.
+                nonSpendType: isRefund ? .refund : (isIncoming ? .incoming : (isTransfer ? .transfer : nil)),
                 // Only the inferred one is flagged. "Refund" and "Incoming" are
                 // words blu itself put in the subject — reporting those back as
                 // uncertain would cry wolf on the sender's own statement, and a

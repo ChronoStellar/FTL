@@ -6,6 +6,12 @@
 //  "the amount follows the word Total; the merchant follows bluAccount and ends
 //  at Amount or bluVirtual". That is the whole job.
 //
+//  It also says which words mean the money went the OTHER WAY — a refund, or a
+//  payment arriving. Three separate lists rather than one, because a small model
+//  copying literals into three named buckets is a different and much easier task
+//  than choosing an enum case per string, and because the previous single list
+//  could only ever produce "not spending" with no way to say which kind.
+//
 //  Why this is a safe place for a model when the ledger is not:
 //
 //  · It proposes a RULE, not a value. Nothing it says reaches a row until
@@ -49,8 +55,14 @@ struct ProposedPattern: Sendable {
     @Guide(description: "Literal text that can appear immediately AFTER the merchant name and ends it, e.g. ['Amount', 'bluVirtual', 'Admin Fee']. List EVERY variant seen — different receipts from the same sender often end the name differently, and missing one loses those emails entirely.")
     var merchantBefore: [String]
 
-    @Guide(description: "Text that marks the movement as NOT spending — an internal transfer, top-up or refund. For example ['Admin Fee', 'Incoming']. Empty if this sender only ever sends purchase receipts.")
-    var nonSpendMarkers: [String]
+    @Guide(description: "Literal text that appears ONLY in this sender's REFUND or money-back emails — a purchase being reversed. For example ['Refund', 'Dana Dikembalikan', 'Reversal']. Look at the subject lines as well as the bodies. Empty if none of the examples is a refund.")
+    var refundMarkers: [String]
+
+    @Guide(description: "Literal text that appears ONLY when money is ARRIVING rather than being spent — an incoming payment, someone paying you, a salary. For example ['Incoming', 'Dana Masuk', 'You received']. Empty if none of the examples is money arriving.")
+    var incomingMarkers: [String]
+
+    @Guide(description: "Literal text that marks the movement as an internal transfer, top-up or bank movement rather than a purchase — for example ['Admin Fee', 'Transfer', 'Top Up']. Do NOT repeat anything already listed as a refund or an incoming marker. Empty if this sender only ever sends purchase receipts.")
+    var transferMarkers: [String]
 }
 
 nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
@@ -142,6 +154,12 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
     4. The text you are given has had its whitespace collapsed, so fields sit \
     directly beside each other on one line.
     5. Never do arithmetic and never invent a field that isn't there.
+    6. Some of these emails may not be purchases. A sender that takes money \
+    also sends refunds, and often reports money arriving. Say which literal \
+    words tell those apart — usually one word in the subject line — and put \
+    each word under the right heading. Leave a heading empty rather than \
+    guessing: a word that appears on ordinary receipts too would label every \
+    purchase as a refund.
     """
 
     /// Framed in English PROSE, deliberately, and this is not a style choice.
@@ -250,7 +268,14 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
             merchant: proposal.merchantAfter.map {
                 ExtractionPattern.Anchor(after: $0, before: proposal.merchantBefore)
             },
-            nonSpendMarkers: proposal.nonSpendMarkers,
+            // Order is precedence — `PatternDrivenParser` takes the first
+            // marker present — so the two specific directions go ahead of the
+            // catch-all. A refund email that also carries a bank's "Admin Fee"
+            // is a refund; read the other way round it would be filed as a
+            // transfer and the word the sender actually used would be lost.
+            nonSpendMarkers: proposal.refundMarkers.map { .init(contains: $0, type: .refund) }
+                + proposal.incomingMarkers.map { .init(contains: $0, type: .incoming) }
+                + proposal.transferMarkers.map { .init(contains: $0, type: .transfer) },
             version: version,
             proposedAt: .now,
             verifiedAgainst: 0,

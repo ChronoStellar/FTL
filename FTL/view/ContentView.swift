@@ -151,8 +151,22 @@ struct ContentView: View {
             )
 
         case .queue:
-            ApprovalQueueScreen(environment: environment, onDone: { sheet = nil })
-                .onDisappear { Task { await home.load(forceReload: true) } }
+            // Two refreshes, and they are not redundant.
+            //
+            // `onSettled` fires per approval while the sheet is still open, so
+            // the hero total and the bucket meters behind it are already right
+            // when it closes. It is the cheap one: `append` invalidates the
+            // ledger cache, so the next read is fresh without forcing anything.
+            //
+            // `onDisappear` still forces a reload on the way out, which covers
+            // everything that changed the sheet from somewhere else — a fetch
+            // that ran while the queue was up, an amend, a failed write.
+            ApprovalQueueScreen(
+                environment: environment,
+                onDone: { sheet = nil },
+                onSettled: { Task { await home.load() } }
+            )
+            .onDisappear { Task { await home.load(forceReload: true) } }
 
         case .add:
             AddSpendScreen(

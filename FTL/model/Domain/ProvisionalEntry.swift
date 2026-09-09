@@ -34,6 +34,22 @@ nonisolated struct ProvisionalEntry: Sendable, Hashable, Identifiable, Codable {
         var splits: [Split]
         /// Other entries this one folds in, making a merge reversible.
         var mergedFrom: [ProvisionalEntry.ID]
+
+        /// What the tagger proposed, kept even after a retag has overwritten
+        /// `categoryID`. Nil means nothing proposed anything — the status quo
+        /// for every row before the second tool existed, and still the answer
+        /// for a row the tagger had nothing to say about.
+        ///
+        /// Deliberately NOT folded into `provenance`. That field says how the
+        /// row was EXTRACTED — which parser read the email — and a row read by
+        /// a deterministic rule and tagged by the model has two different
+        /// answers to two different questions. Collapsing them would make a
+        /// suggested tag look like a model-extracted amount, which is the one
+        /// distinction Invariant 1 rests on.
+        ///
+        /// Optional, so every row already in the on-disk cache decodes
+        /// unchanged.
+        var suggestedTag: TagSuggestion?
     }
 
     /// How this row got its resolution. A rule and the model are never confused

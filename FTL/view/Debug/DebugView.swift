@@ -65,6 +65,10 @@ private struct DebugHarness: View {
     @State private var coverageFileURL: URL?
     @State private var isCovering = false
 
+    // Tagging, in shadow (Stage 4.5)
+    @State private var tagReport: [String] = []
+    @State private var isScoring = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -258,6 +262,29 @@ private struct DebugHarness: View {
                 }
             }
 
+            // The shadow run for the second tool, and the only thing that can
+            // decide the auto-commit threshold.
+            //
+            // Roadmap #14 is explicit that the number is a measurement rather
+            // than a preference: run the tagger for a month without acting on
+            // it, then count how often it would have matched you — per
+            // merchant, because per merchant is the scope the evidence has.
+            // Nothing here routes on the overall figure; it is printed to be
+            // argued with.
+            Section("Tagging · shadow scoreboard") {
+                Button(isScoring ? "Counting…" : "Score the tagger against your approvals") {
+                    Task { await runTagScoreboard() }
+                }
+                .disabled(isScoring)
+
+                ForEach(Array(tagReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             // Isolates ONE variable at a time. `unsupportedLanguageOrLocale`
             // arrived on a prompt whose examples the recognizer called English,
             // so the refusal is not about the receipt's language — and every
@@ -442,6 +469,68 @@ private struct DebugHarness: View {
         let value = try await work()
         lines.append(String(format: "  %.2fs  %@", Date.now.timeIntervalSince(started), label))
         return value
+    }
+
+    /// How often the tagger's suggestion matched what you actually approved.
+    ///
+    /// Per merchant first and overall second, because that is the order the
+    /// numbers are usable in. Invariant 10 scopes trust "per merchant, per
+    /// sender, per tool — never a global switch", so the aggregate is context
+    /// for reading the rows rather than a figure anything could be gated on.
+    ///
+    /// It also prints, for every merchant, what the threshold would COST there:
+    /// at 80%, one row in five is wrong and lands unseen, and that sentence is
+    /// only meaningful next to how many rows the merchant actually produces.
+    private func runTagScoreboard() async {
+        isScoring = true
+        defer { isScoring = false }
+
+        guard let memory = environment.tagMemory else {
+            tagReport = ["⚠︎ no tag memory in this environment (sample fixtures don't accrue)"]
+            return
+        }
+
+        var lines: [String] = []
+        do {
+            let board = try await memory.scoreboard()
+            guard board.decisions > 0 else {
+                tagReport = [
+                    "Nothing decided yet.",
+                    "",
+                    "The scoreboard fills from the approval queue: every row you",
+                    "approve records what was suggested against what you chose.",
+                    "Approve a few and come back.",
+                ]
+                return
+            }
+
+            lines.append("\(board.decisions) decision(s) · \(board.suggested) carried a suggestion")
+            if board.suggested > 0 {
+                lines.append(String(format: "overall agreement %d/%d (%.1f%%)", board.agreed, board.suggested, board.hitRate * 100))
+                lines.append("⚠︎ overall is for reading only — auto is scoped per merchant")
+            } else {
+                lines.append("nothing to score yet: no row has arrived pre-tagged")
+            }
+            lines.append("")
+            lines.append("merchant                          n   agreed   settled")
+
+            for history in board.byMerchant.prefix(40) {
+                let name = String(history.merchantRaw.prefix(30)).padding(toLength: 30, withPad: " ", startingAt: 0)
+                let agreement = history.suggested == 0
+                    ? "  —   "
+                    : String(format: "%2d/%-2d ", history.agreed, history.suggested)
+                let settled = history.settled().map { outcome in
+                    "\(outcome.categoryID?.rawValue ?? "not a spend") \(outcome.agreed)/\(outcome.of)"
+                } ?? "—"
+                lines.append("\(name) \(String(format: "%3d", history.total))  \(agreement)  \(settled)")
+            }
+            if board.byMerchant.count > 40 {
+                lines.append("… \(board.byMerchant.count - 40) more")
+            }
+        } catch {
+            lines = ["⚠︎ \(error)"]
+        }
+        tagReport = lines
     }
 
     /// The fixture suite. Deterministic, so this is the one thing in this
@@ -997,7 +1086,7 @@ private struct DebugHarness: View {
             "  body:    \(pattern.bodyContains.isEmpty ? "(any)" : pattern.bodyContains.joined(separator: " + "))",
             "  amount:  \(anchors(pattern.amount))",
             "  merchant:\(anchors(pattern.merchant))",
-            "  nonSpend:\(pattern.nonSpendMarkers.isEmpty ? " (none)" : " " + pattern.nonSpendMarkers.joined(separator: " | "))",
+            "  nonSpend:\(pattern.nonSpendMarkers.isEmpty ? " (none)" : " " + pattern.nonSpendMarkers.map { "\($0.contains) → \($0.type?.rawValue ?? "unspecified")" }.joined(separator: " | "))",
             "  verified on \(pattern.verifiedAgainst) · v\(pattern.version) · \(pattern.author)",
         ]
     }

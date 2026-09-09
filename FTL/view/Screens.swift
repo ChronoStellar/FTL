@@ -81,14 +81,24 @@ struct GoalScreen: View {
 struct ApprovalQueueScreen: View {
     @State private var viewModel: ApprovalQueueViewModel
     let onDone: () -> Void
+    /// Fires each time a row leaves the queue, so Home behind this sheet keeps
+    /// up. Assigned in `body` rather than `init` because the view model is
+    /// owned by `@State` and must not be mutated while it is being constructed.
+    let onSettled: () -> Void
 
-    init(environment: AppEnvironment, onDone: @escaping () -> Void) {
+    init(
+        environment: AppEnvironment,
+        onDone: @escaping () -> Void,
+        onSettled: @escaping () -> Void = {}
+    ) {
         self.onDone = onDone
+        self.onSettled = onSettled
         _viewModel = State(wrappedValue: environment.makeApprovalQueueViewModel())
     }
 
     var body: some View {
         ApprovalQueueSheet(viewModel: viewModel, onDone: onDone)
+            .onAppear { viewModel.onSettled = onSettled }
     }
 }
 

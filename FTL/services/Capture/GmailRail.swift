@@ -10,8 +10,14 @@
 //    typed the number; nothing here was typed by anyone, so every row lands
 //    `.pending` and waits for the human gate. Invariant 1, and the reason the
 //    trust ladder is pinned to Assist.
-//  · It does not call the model. A parser either recognises its template or it
-//    doesn't. `PurchaseClassifier` is Phase 2 and is not wired here.
+//  · It does not call the model TO READ AN EMAIL. A parser either recognises its
+//    template or it doesn't. `PurchaseClassifier` is Phase 2 and is not wired
+//    here. What it now does do is ask the tagger which BUCKET a row belongs in,
+//    once the reading is finished and only for rows a parser already understood
+//    — a different question, answered after the fact, and answered by a lookup
+//    rather than a model for every merchant you have settled before. See
+//    `PurchaseTagger`; the suggestion lands on a `.pending` row and changes
+//    nothing about the gate.
 //  · It does not drop mail it can't read. A recognised template with a missing
 //    field becomes a FLAGGED row, not a silent skip (Invariant 6).
 //
@@ -36,6 +42,12 @@ nonisolated struct GmailRail: Sendable {
     /// Patterns the loop has learned and promoted. Nil before Stage 4 is wired.
     private let patterns: PatternStore?
 
+    /// The second tool. Nil leaves every row untagged for the approver to
+    /// settle, which is what the rail did before it existed and remains the
+    /// correct behaviour for a fixture run — a suggestion is the one part of
+    /// this pipeline that has no deterministic answer to assert against.
+    private let tagger: (any PurchaseTagger)?
+
     /// How far back a sync looks. Overlap is free — the capture log dedupes —
     /// so this is sized to survive a week of not opening the app rather than
     /// tuned to the last run.
@@ -48,6 +60,7 @@ nonisolated struct GmailRail: Sendable {
         provisional: ProvisionalStore,
         log: CaptureLog,
         patterns: PatternStore? = nil,
+        tagger: (any PurchaseTagger)? = nil,
         fetchLimit: Int = 50
     ) {
         self.fetchLimit = fetchLimit
@@ -56,6 +69,7 @@ nonisolated struct GmailRail: Sendable {
         self.provisional = provisional
         self.log = log
         self.patterns = patterns
+        self.tagger = tagger
     }
 
     /// Hand-written parsers first, then promoted patterns.
@@ -89,12 +103,17 @@ nonisolated struct GmailRail: Sendable {
         var flagged = 0
         /// Rows that look like the other rail's copy of the same purchase.
         var duplicates = 0
+        /// Rows that arrived with a bucket already suggested. Reported because
+        /// the difference between "the tagger is off" and "the tagger had
+        /// nothing to say" is otherwise invisible from the queue.
+        var tagged = 0
         var notAPurchase = 0
         var skipped = 0
 
         var summary: String {
             if fetched == 0 { return "No new mail in the window." }
             var parts = ["\(queued) queued"]
+            if tagged > 0 { parts.append("\(tagged) pre-tagged") }
             if flagged > 0 { parts.append("\(flagged) flagged") }
             if duplicates > 0 { parts.append("\(duplicates) possible duplicates") }
             if skipped + notAPurchase > 0 { parts.append("\(skipped + notAPurchase) not receipts") }
@@ -171,6 +190,17 @@ nonisolated struct GmailRail: Sendable {
             result.duplicates = entries.filter { entry in
                 entry.flags.contains { $0.reason == .possibleDuplicate }
             }.count
+            // Last, after duplicates are flagged and before anything is stored.
+            //
+            // After, because a row about to be dropped as somebody else's copy
+            // of the same purchase is not worth a model call. Before the write,
+            // because a suggestion added afterwards would be a second pass over
+            // the store and a window in which the queue shows a row untagged
+            // and then changes it under the reader.
+            if let tagger {
+                entries = await tagger.tag(entries)
+                result.tagged = entries.filter { $0.resolution.suggestedTag != nil }.count
+            }
             try await provisional.insert(entries)
         }
         try await log.record(logEntries)

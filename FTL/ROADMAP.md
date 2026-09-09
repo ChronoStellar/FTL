@@ -22,6 +22,56 @@ That is the product. Everything below exists to make that loop **safe**,
 **measurable**, and **fed with real data** — those three words are the whole
 ordering principle.
 
+### The agent has tools, and the tools are the loop
+
+The agent is not a thing that reads your email. It is a small, bounded loop that
+**calls tools**, and each tool's answer is checked by code before it counts.
+
+| tool | what it proposes | what checks it | today |
+|---|---|---|---|
+| **learn a pattern** | where the fields sit in a sender's template, **and which way the money went** | `PatternVerifier`, against emails the model never saw | ✅ built |
+| **tag a purchase** | which bucket a transaction belongs in | the user's own approvals, accrued per merchant | ✅ built, ⚠️ never run against real mail |
+
+The two are deliberately different, and the difference is the whole design.
+
+**A pattern can be checked without you.** "The amount follows the word Total" is
+either true of the next fifty emails or it isn't, and code can find out. That is
+why synthesis is allowed to run unattended.
+
+**A tag cannot.** Whether `HOKKY SUPERMARKET` is *groceries* or *shopping* is not
+a fact in the email — it is your decision about your own budget. No verifier can
+settle it, so the only honest source of truth is what you approved last time.
+**The approval queue is the tagger's training signal**, which is also why the
+queue must stay pleasant to use: it is not overhead around the loop, it is the
+loop's other half.
+
+### Auto-commit is the third rung
+
+Once a tool has been right often enough, its rows stop needing a tap and are
+written straight to the ledger.
+
+Three properties keep that from being a licence to be wrong:
+
+- **Earned against your decisions**, never self-reported confidence. A model
+  claiming 90% certainty has said nothing; a tagger that matched you on nine of
+  its last ten identical merchants has said something checkable.
+- **Scoped as narrowly as the evidence.** Per merchant, per sender, per tool.
+  Trusting `HOKKY SUPERMARKET` implies nothing about a shop seen once.
+- **Marked and reversible.** Silence is not agreement. Every auto-committed row
+  says it was auto-committed, so a threshold set too low is recoverable rather
+  than a mystery six weeks later.
+
+The number is a decision, not a default. At **>80%**, one row in five is wrong
+and lands unseen — while the *promotion* bar for a pattern is currently 95% over
+≥20 verified emails. Those two gates should be argued about together before
+either ships, and the honest way to pick is to run the tagger in shadow for a
+month and count how often it would have matched you.
+
+**The shadow run is now buildable.** Every approval records what was suggested
+against what you chose (`TagMemory`, Settings → Developer → *Score the tagger
+against your approvals*). Nothing routes on it and nothing is auto-committed;
+the point is to have the number before the argument, not after.
+
 > **Guardrail.** If you find yourself hand-writing parser #3, stop. Two reference
 > implementations is enough to know what good looks like. A third is the signal
 > that the loop should already exist — you are doing the model's job by hand.
@@ -88,7 +138,7 @@ Fixed:
   blank Buckets section that survived three earlier speculative fixes.
 - **Appends landing at column N.** `values.append` was given the `A:P` span; it
   searches a range for a "table" and writes "starting with the first column of
-  the table it finds". Now anchored at `A1`.
+  the table it finds". Now anchored at `A1`. 
 - **The total taking a share of itself.** A root row with a non-empty parent
   comes back from `categories()` looking like an ordinary bucket, so the income
   split gave it a percentage and wrote that over the income.
@@ -401,6 +451,61 @@ have expressed both?"* — reached by running the schema against sender #1 rathe
 than hand-writing parser #2. Worth doing Grab anyway, but the schema is no longer
 shaped by a single template's assumptions.
 
+**And it was still wrong about the direction of the money.** `nonSpendMarkers`
+was a bare `[String]`, so a learned pattern could say "not spending" and nothing
+more. That covers a transfer adequately and covers the two cases that actually
+change what a person sees not at all: a **refund**, and **money arriving**. Both
+were reachable only by hand — `BluReceiptParser` reads its own subject for
+"Refund" and "Incoming" — so every sender the loop learns instead of a person
+writing it lost the distinction.
+
+Worse, **the verifier never looked.** `verify` compared the amount and the
+merchant, so a pattern could get the direction wrong on every email and still
+score 1.00, and coverage can't see it either. The loop could not have learned a
+sender's refunds however many it saw, because nothing it did was ever marked
+wrong.
+
+Three changes, all of them the same lesson as the anchors — *the loop can only
+correct what the schema lets it say*:
+
+- `NonSpendMarker` carries a `NonSpendType`, and the synthesizer proposes
+  refund / incoming / transfer as three separate literal lists. Three plain
+  string lists rather than one list of typed objects, because copying words into
+  three named buckets is a much easier task for a small model than choosing an
+  enum case per string.
+- `PatternVerifier` **scores `kind`**, which moves a number, and reports a wrong
+  `nonSpendType` as advisory feedback, which does not. The subtype is a label on
+  a row already excluded from every ceiling, and the oracle often *infers* it —
+  blu concludes `.transfer` from a bank name beside an account number — so
+  failing a pattern for not reproducing that would score the oracle's reasoning
+  rather than the pattern's reading. It still reaches the retry as a concrete
+  miss, which is how the loop learns to say "Refund" rather than merely "not
+  spending".
+- `NonSpendType` gained `.incoming`. blu's arriving money was labelled
+  `.transfer`, which is a different fact — a transfer is money you moved between
+  your own accounts. Nothing about any total changes; both are non-spend.
+
+Measured over the fixture's blu subset, with only the markers differing:
+
+| | |
+|---|---|
+| no direction markers | 7/12 · 58% |
+| + refund / incoming / transfer markers | **11/12 · 92%** |
+
+The four-email gap is the whole point: before this change both patterns scored
+the same, because the four the first one got wrong were never checked. (The
+twelfth is a merchant anchor missing on one layout — the same in both runs, and
+not what is being measured here.)
+
+Also added: a pinned learned pattern with typed markers and four fixture cases
+(`learned-pattern-refund`, `-money-received`, `-untyped-marker-flags`, and the
+spending control). An untyped marker is the one case that flags `ambiguousKind`
+— "Admin Fee" says a bank was involved and nothing about what the movement was,
+so the app reached a conclusion the sender never stated. A typed marker doesn't
+flag, for the same reason blu's refunds don't: the word came from the sender's
+own email, and a flag that fires on the sender's own statement is a flag nobody
+reads.
+
 ### 10. Sender discovery · **M** — ✅ selection built, ⚠️ never run end-to-end
 `PatternDiscovery` picks its own targets from unread money mail. Naming the
 sender was the last hand-conditioned step in the loop; nothing types a domain
@@ -516,6 +621,132 @@ Ordered by what actually blocks something.
 6. **Smaller, real:** a refund is non-spend so it never offsets the card hold it
    reverses; a duplicate split across two bank charges (5.000 + 46.500 vs 51.500)
    cannot be caught by exact matching and is pinned unflagged.
+
+   The first half of that is now a **decision for you, not an oversight.** A
+   refund is labelled `nonSpend`/`.refund` and excluded from every ceiling,
+   which is Invariant 5 working exactly as written — and it means a Rp 42.500
+   purchase you were refunded still reads as Rp 42.500 of spending, with the
+   reversal sitting in its own row saying so. Making it offset would mean a
+   non-spend row moving a spend total, which contradicts the invariant rather
+   than extending it, and it needs a rule for *which* purchase it reverses that
+   nothing currently has. Labelled and visible is the honest state; netting is a
+   change to what a ceiling means and should be argued for on its own.
+
+---
+
+## Stage 4.5 — The second tool
+
+### 13. `tag_purchase` · **L** — ✅ built, ⚠️ never run against real mail
+The agent's second tool. Given a transaction — merchant, amount, date, sender —
+propose which bucket it belongs to.
+
+**Built:** `PurchaseTagger` + `TagMemory` (contracts), `DefaultPurchaseTagger`
+(the memory-first layering), `FoundationModelTagger` (★ the model call),
+`SwiftDataTagMemory` (the decision history, same container as the queue), and
+the queue line that says where a suggestion came from. `GmailRail` tags a batch
+after dedup and before the write; `DefaultApprovalService` records the decision
+after the ledger append.
+
+What it does NOT do, and why:
+
+- **Never decides.** A suggestion pre-selects a chip on a `.pending` row. The
+  gate is unchanged and Invariant 1 with it.
+- **Never tags a row that isn't spending.** A refund, an arriving payment or a
+  transfer has no bucket, and asking a model to pick one produces a confident
+  answer to a question nobody asked. Neither does it tag a row a parser failed
+  to read — that merchant is a subject line.
+- **Never calls the model for a merchant you have settled.** That is a lookup.
+  The model half is bounded at 8 calls per sync, because the feasibility run
+  already produced one unbounded loop at 30.
+- **Never accepts a bucket that isn't yours.** The model picks from the sheet's
+  own category list, matched by exact name; anything else is a refusal and the
+  row arrives untagged. No fuzzy matching — "Transport" against "Ride &
+  Transport" *and* "Travel" is a bucket you didn't pick chosen by a rule nobody
+  can read.
+
+Four things worth knowing that only came out of building it:
+
+- **A suggestion must never be free to be right.** The first cut let memory
+  suggest "not a spend" for a merchant you consistently mark that way. But an
+  untagged row already *displays* as "Not a spend", so approving one unchanged
+  would record an agreement nobody made — the hit rate measuring its own output,
+  which is the exact failure mode the shadow run exists to avoid. A suggestion
+  is now always a real bucket; a merchant you settle as non-spend gets no
+  suggestion at all, and is not handed to the model either.
+
+- **Manual entry seeds the memory for free.** `ManualEntry` promotes through the
+  same gate, so every spend you type by hand records a decision with no
+  suggestion attached — the tagger learns your regular shops before it has ever
+  guessed at one, and those rows never touch the hit rate.
+- **A retag has to survive the retag.** `amend` replaces the whole resolution,
+  so the suggestion is re-attached explicitly. Without that the queue records
+  what you chose and forgets what was offered, and the hit rate quietly becomes
+  a measure of the rows nobody had to fix.
+- **The suggestion has to be visible as one.** A pre-selected chip a person
+  can't tell from their own decision gets approved as if it were, the app
+  records agreement, and the scoreboard measures its own output. The queue says
+  "you chose it 4 of the last 4 times here" — a count, not a confidence.
+
+⚠️ **Unrun.** The whole path is wired and builds; nothing has watched a
+suggestion arrive from real mail, and the scoreboard has no rows in it. Same
+status as Stage 0 #1 was, and worth the same suspicion.
+
+It is a genuinely different problem from pattern synthesis and must not be built
+by copying it. Synthesis has an oracle: run the rule over held-out mail and see.
+Tagging has none — whether `KAYABOYS1 SURABAYA` is *food* or *entertainment* is
+your call about your own budget, and no amount of reading the email settles it.
+
+So the design is inverted. Instead of *propose → verify → promote*, it is
+**propose → you decide → accrue**:
+
+1. The tool suggests a bucket; the row lands in the queue pre-tagged.
+2. You approve, or you retag. Either way the app records what you chose against
+   the normalized merchant.
+3. Over time each merchant accumulates a hit rate — how often the suggestion
+   matched your decision.
+
+The four notes this was written against, and how each landed:
+
+- **Deterministic first, model second.** Held. `DefaultPurchaseTagger` looks up
+  before it asks. A merchant is "settled" at ≥2 decisions with ≥60% going one
+  way — two bars, because one past decision is an anecdote and a merchant split
+  evenly between two buckets is a merchant you have *not* settled. Suggesting
+  the marginal winner there would be the app inventing a preference you don't
+  have (Invariant 8).
+- **`merchantRaw` is not the key.** Held, as `MerchantID(normalizing:)`. It
+  folds case, collapses punctuation, and drops a trailing payment reference —
+  `Grab* A-9MVBRDUGW7GDAV` and `Grab* A-7QQZZBBXX1PLMN` both key to `grab`, where
+  before they were two merchants each seen once. Deliberately nothing else: no
+  city stripping, no corporate suffixes. A rule that fires on a real name merges
+  two shops invisibly, and shows up later as a tagger confidently wrong about a
+  merchant you never actually settled. `7ELEVEN KEMANG` is why "mixes letters
+  and digits" was not the rule.
+- **Retagging is signal, not correction noise.** Held, and it needed explicit
+  work: `amend` replaces the whole resolution, so the suggestion is re-attached
+  by hand or the miss is erased.
+- **Categories come from the sheet**, not a fixed list. Held — one read per
+  batch, and a suggestion pointing at a bucket you have since deleted falls
+  through to the model rather than proposing a row that would land nowhere.
+
+### 14. Auto-commit · **M**, after #13 has run in shadow
+Rows above the accrued-accuracy threshold skip the queue.
+
+Do not build this before there is a month of shadow data. The entire question is
+what the threshold costs, and that is measurable: run the tagger for a month
+without acting on it, then count how often it would have matched you, per
+merchant and overall. Only then pick a number.
+
+**The shadow run is now recording**, which is the only part of this that was
+blocking. `TagScoreboard` reports per-merchant agreement and an overall figure,
+and the overall figure is printed with a warning next to it: auto is scoped per
+merchant precisely because one number over every merchant hides the only
+distinction that matters. Nothing routes on either. Come back when there is a
+month of rows.
+
+Everything else here is bookkeeping the trust ladder already implies —
+`ApprovalService` promoting without a tap (Invariant 1 unchanged), a marker on
+the row, an easy way to see and undo what was auto-committed, and a per-merchant
+scope rather than a global switch.
 
 ---
 
