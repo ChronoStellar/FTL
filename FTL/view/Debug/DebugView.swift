@@ -69,6 +69,10 @@ private struct DebugHarness: View {
     @State private var tagReport: [String] = []
     @State private var isScoring = false
 
+    // What the queue has said about each learned pattern (Stage 4.5)
+    @State private var patternReport: [String] = []
+    @State private var isScoringPatterns = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -278,6 +282,24 @@ private struct DebugHarness: View {
                 .disabled(isScoring)
 
                 ForEach(Array(tagReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            // The loop's own scoreboard, and on a mailbox with no hand-written
+            // parser the only one it has. Nothing is verified at synthesis
+            // there — `verify` has no oracle — so this is where a pattern's
+            // accuracy actually comes from.
+            Section("Patterns · what the queue said") {
+                Button(isScoringPatterns ? "Counting…" : "Score the learned patterns") {
+                    Task { await runPatternScoreboard() }
+                }
+                .disabled(isScoringPatterns)
+
+                ForEach(Array(patternReport.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
@@ -531,6 +553,59 @@ private struct DebugHarness: View {
             lines = ["⚠︎ \(error)"]
         }
         tagReport = lines
+    }
+
+    /// How the queue has voted on each learned pattern's rows.
+    ///
+    /// Reported as an ACCEPTANCE rate, not an accuracy, and the distinction is
+    /// not pedantry: the queue cannot edit an amount or a merchant, so
+    /// approving a row is a vote that it looked right rather than a check that
+    /// it was. Dropped rows are counted apart for the same reason — a drop may
+    /// be a misread or a perfectly-read email you did not want, and from here
+    /// those are indistinguishable.
+    private func runPatternScoreboard() async {
+        isScoringPatterns = true
+        defer { isScoringPatterns = false }
+
+        guard let memory = environment.patternMemory else {
+            patternReport = ["⚠︎ no pattern memory in this environment"]
+            return
+        }
+        var lines: [String] = []
+        do {
+            let board = try await memory.scoreboard()
+            guard board.settled > 0 else {
+                patternReport = [
+                    "No settled rows from a learned pattern yet.",
+                    "",
+                    "This fills from the approval queue: every row you approve or",
+                    "drop is a verdict on the pattern that read it. Nothing here",
+                    "until a learned pattern has produced rows AND you have",
+                    "settled some — which today needs a sender blu doesn't cover.",
+                ]
+                return
+            }
+            let policy = PatternTrustPolicy.default
+            lines.append("\(board.settled) settled row(s) across \(board.byPattern.count) pattern(s)")
+            lines.append(String(format: "vouched at ≥%.0f%% over ≥%d rows", policy.acceptanceThreshold * 100, policy.minimumSettled))
+            lines.append("")
+            lines.append("pattern                              kept  fixed  dropped  accept  vouched")
+            for record in board.byPattern {
+                let name = String(record.patternID.prefix(34)).padding(toLength: 34, withPad: " ", startingAt: 0)
+                lines.append(String(
+                    format: "%@ %5d %6d %8d %6.0f%%  %@",
+                    name, record.accepted, record.correctedKind, record.dropped,
+                    record.acceptanceRate * 100,
+                    policy.isVouchedFor(record) ? "yes" : "not yet"
+                ))
+            }
+            lines.append("")
+            lines.append("kept = approved as read · fixed = you flipped spend/non-spend")
+            lines.append("⚠︎ acceptance, not accuracy — the queue can't correct a figure yet")
+        } catch {
+            lines = ["⚠︎ \(error)"]
+        }
+        patternReport = lines
     }
 
     /// The fixture suite. Deterministic, so this is the one thing in this

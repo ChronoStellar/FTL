@@ -1,0 +1,32 @@
+{
+  "note": "Patterns that ship with the app. Same artifact the loop produces, same executor, same everything — the only difference is that a person wrote this one and its provenance says so. Presets exist so a sender can be covered before synthesis has ever run, WITHOUT a hand-written parser sitting in front of the loop and shutting it out of the runtime path.",
+  "patterns": [
+    {
+      "senderDomain": "blubybcadigital.id",
+      "template": "",
+      "subjectContains": ["Transaction", "Refund"],
+      "bodyContains": [],
+      "amount": [
+        { "after": "Total", "before": [], "occurrence": 1 },
+        { "after": "Amount", "before": [], "occurrence": 1 }
+      ],
+      "merchant": [
+        {
+          "after": "bluAccount",
+          "before": ["Amount", "bluVirtual", "Admin Fee", "Transaction Date", "Transaction ID"],
+          "occurrence": 1
+        }
+      ],
+      "nonSpendMarkers": [
+        { "contains": "Refund", "type": "refund" },
+        { "contains": "Incoming", "type": "incoming" },
+        { "contains": "Admin Fee", "type": "transfer" }
+      ],
+      "version": 1,
+      "proposedAt": "2026-09-09T00:00:00Z",
+      "verifiedAgainst": 116,
+      "accuracy": 1.0,
+      "author": "hand-written-preset"
+    }
+  ]
+}

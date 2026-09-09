@@ -55,6 +55,23 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
             : senderDomain + "/" + template + ":" + version.description
     }
 
+    /// Whether a `RuleID` names a learned pattern rather than a hand-written
+    /// parser.
+    ///
+    /// The two are deliberately indistinguishable to the rail — that is the
+    /// whole point of `PatternDrivenParser` — but `PatternMemory` has to tell
+    /// them apart, because queue evidence about `blu-receipt` would be evidence
+    /// about a person's Swift, not about anything the loop learned.
+    ///
+    /// Keyed on the shape `id` builds: a trailing `:version`. A hand-written
+    /// parser's id is a slug (`blu-receipt`) and has no colon, so this is a
+    /// property of the format rather than a naming convention anyone has to
+    /// remember.
+    static func namesPattern(_ ruleID: RuleID) -> Bool {
+        guard let colon = ruleID.rawValue.lastIndex(of: ":") else { return false }
+        return Int(ruleID.rawValue[ruleID.rawValue.index(after: colon)...]) != nil
+    }
+
     let senderDomain: String
 
     /// Which of the sender's layouts this reads. Empty for a sender with only

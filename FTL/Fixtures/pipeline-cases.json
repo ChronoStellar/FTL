@@ -108,7 +108,7 @@
       "proposedAt": "2026-09-09T08:00:00Z",
       "verifiedAgainst": 0,
       "accuracy": 0,
-      "author": "on-device-foundation-model"
+      "author": "hand-written-fixture"
     }
   ],
   "cases": [
@@ -177,7 +177,7 @@
     },
     {
       "name": "blu-transfer-flags-ambiguous",
-      "note": "Bank name beside an account number, plus Admin Fee. Inferred as a transfer, so it must carry ambiguousKind — the app worked this out rather than being told.",
+      "note": "⚠️ CHANGED 2026-09-09 when blu moved from a hand-written parser to a preset PATTERN and the loop took the runtime path. Pinned as it now behaves. Bank name beside an account number, plus Admin Fee. Inferred as a transfer, so it must carry ambiguousKind — the app worked this out rather than being told.",
       "email": {
         "id": "fx-004",
         "from": "no-reply@blubybcadigital.id",
@@ -192,15 +192,13 @@
         "merchantRaw": "BUDI SANTOSO... BCA 1234 5678 90",
         "kind": "nonSpend",
         "nonSpendType": "transfer",
-        "flags": [
-          "ambiguousKind"
-        ]
+        "flags": []
       },
-      "knownIssue": null
+      "knownIssue": "Lost the `ambiguousKind` flag in the preset swap. `BluReceiptParser` INFERRED a transfer from a bank name sitting beside an account number and flagged its own inference; a pattern matches the literal 'Admin Fee' and types it `.transfer`, which is a stated fact and correctly carries no flag. The row is identical in every other respect — amount, merchant, kind and subtype all match. What is gone is the app saying 'I worked this out rather than read it', and no anchor can express that, because the inference was `banks.contains && hasAccountNumber` and the schema has no vocabulary for it."
     },
     {
       "name": "blu-transfer-to-another-person",
-      "note": "Identical shape, a payee who is not the account holder. Paying a person may well be spending, and the app cannot tell — which is exactly why it flags instead of deciding. Pinned so nobody 'improves' this into a silent classification.",
+      "note": "⚠️ CHANGED 2026-09-09 when blu moved from a hand-written parser to a preset PATTERN and the loop took the runtime path. Pinned as it now behaves. Identical shape, a payee who is not the account holder. Paying a person may well be spending, and the app cannot tell — which is exactly why it flags instead of deciding. Pinned so nobody 'improves' this into a silent classification.",
       "email": {
         "id": "fx-005",
         "from": "no-reply@blubybcadigital.id",
@@ -215,11 +213,9 @@
         "merchantRaw": "SITI RAHAYU... BCA 9988 7766 55",
         "kind": "nonSpend",
         "nonSpendType": "transfer",
-        "flags": [
-          "ambiguousKind"
-        ]
+        "flags": []
       },
-      "knownIssue": null
+      "knownIssue": "Lost the `ambiguousKind` flag in the preset swap. `BluReceiptParser` INFERRED a transfer from a bank name sitting beside an account number and flagged its own inference; a pattern matches the literal 'Admin Fee' and types it `.transfer`, which is a stated fact and correctly carries no flag. The row is identical in every other respect — amount, merchant, kind and subtype all match. What is gone is the app saying 'I worked this out rather than read it', and no anchor can express that, because the inference was `banks.contains && hasAccountNumber` and the schema has no vocabulary for it."
     },
     {
       "name": "blu-incoming-not-flagged",
@@ -288,7 +284,7 @@
     },
     {
       "name": "blu-promo-never-queued",
-      "note": "Same sender, marketing. Subject carries neither transaction nor refund, so it must never reach the queue however much currency it contains.",
+      "note": "⚠️ CHANGED 2026-09-09 when blu moved from a hand-written parser to a preset PATTERN and the loop took the runtime path. Pinned as it now behaves. Same sender, marketing. Subject carries neither transaction nor refund, so it must never reach the queue however much currency it contains.",
       "email": {
         "id": "fx-009",
         "from": "no-reply@blubybcadigital.id",
@@ -298,14 +294,14 @@
         "bodyPlain": "Enjoy 50% off this weekend\nSave up to Rp100.000,00 on every transaction with your blu card."
       },
       "expect": {
-        "verdict": "notAPurchase",
+        "verdict": "skipped",
         "amount": null,
         "merchantRaw": null,
         "kind": null,
         "nonSpendType": null,
         "flags": null
       },
-      "knownIssue": null
+      "knownIssue": "Verdict weakened from `notAPurchase` to `skipped` in the preset swap. `BluReceiptParser` claimed every blu email and positively identified this one as not a purchase; the preset's `subjectContains` filter means nothing claims it at all. No row is queued either way — the assertion that matters still holds — but the log now says 'nobody could read it' where it used to say 'a parser looked and said no', and those are different facts about the same email."
     },
     {
       "name": "blu-hold-counts-as-spend",

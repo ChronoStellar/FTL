@@ -42,6 +42,11 @@ final class AppEnvironment {
     /// about anyone's real budget and must not accrue as if they were.
     let tagMemory: TagMemory?
 
+    /// What the queue has said about the rows each learned pattern produced —
+    /// and on a mailbox with no hand-written parser, the only oracle tool 1
+    /// has. See `PatternMemory`.
+    let patternMemory: PatternMemory?
+
     /// False when the on-disk store couldn't be opened and the queue is running
     /// in memory for this session. Surfaced in Settings: a cache that silently
     /// stopped persisting looks identical to one that works, right up until a
@@ -78,6 +83,7 @@ final class AppEnvironment {
         captureLog: CaptureLog? = nil,
         patterns: PatternStore? = nil,
         tagMemory: TagMemory? = nil,
+        patternMemory: PatternMemory? = nil,
         isProvisionalStorePersistent: Bool = true
     ) {
         self.auth = auth
@@ -89,9 +95,15 @@ final class AppEnvironment {
         self.captureLog = captureLog
         self.patterns = patterns
         self.tagMemory = tagMemory
+        self.patternMemory = patternMemory
         self.isProvisionalStorePersistent = isProvisionalStorePersistent
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
-        self.approvals = DefaultApprovalService(store: provisional, ledger: ledger, tags: tagMemory)
+        self.approvals = DefaultApprovalService(
+            store: provisional,
+            ledger: ledger,
+            tags: tagMemory,
+            patterns: patternMemory
+        )
     }
 
     /// The one live environment for this process.
@@ -121,6 +133,7 @@ final class AppEnvironment {
             captureLog: SwiftDataCaptureLog(modelContainer: store.container),
             patterns: SwiftDataPatternStore(modelContainer: store.container),
             tagMemory: SwiftDataTagMemory(modelContainer: store.container),
+            patternMemory: SwiftDataPatternMemory(modelContainer: store.container),
             isProvisionalStorePersistent: store.isPersistent
         )
     }
@@ -147,6 +160,7 @@ final class AppEnvironment {
             // decision history is everything the tagger learned about your
             // buckets, gone. See SwiftDataTagMemory.
             TagDecisionRecord.self,
+            PatternObservationRecord.self,
         ])
         do {
             return (try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]), true)
@@ -247,11 +261,18 @@ final class AppEnvironment {
         guard isLive, let captureLog else { return nil }
         return GmailRail(
             exporter: GmailExporter(auth: auth),
-            parsers: [BluReceiptParser()],
+            // Empty, deliberately. `BluReceiptParser` is the ORACLE the
+            // verifier scores proposals against, not a reader that sits in
+            // front of the loop — see `GmailRail.activeParsers`. blu is covered
+            // by a preset pattern instead, which the audit measured as an exact
+            // reproduction (116/116).
+            parsers: [],
             provisional: provisional,
             log: captureLog,
             patterns: patterns,
-            tagger: makePurchaseTagger()
+            presets: PresetPatterns.load(),
+            tagger: makePurchaseTagger(),
+            trust: patternMemory
         )
     }
 

@@ -84,13 +84,14 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         for (context, index) in zip(contexts, taggable) {
             var suggestion = Self.remembered(context.merchant, in: known, valid: valid)
 
-            // The model is asked ONLY when memory has nothing, and only within
-            // the call budget. `settledAsNonSpend` is a separate check from
-            // "memory produced no suggestion": a merchant you repeatedly mark
-            // as not-a-spend must not be handed to a model and asked which
-            // bucket it belongs in.
+            // The model is asked ONLY for a merchant you have no opinion about,
+            // and only within the call budget.
+            //
+            // "No suggestion" and "nothing known" are different states, and
+            // conflating them is what made the most-used merchant the most
+            // expensive one — see `MerchantTagHistory.hasOpinion`.
             if suggestion == nil,
-               !Self.settledAsNonSpend(context.merchant, in: known),
+               Self.worthAsking(context.merchant, in: known),
                let proposer, modelCalls < maxModelCalls {
                 modelCalls += 1
                 if let proposed = await proposer.propose(for: context, among: categories) {
@@ -147,10 +148,11 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         guard let settled = known[merchant]?.settled(),
               let category = settled.categoryID,
               // A bucket you have since deleted from the sheet is not a
-              // suggestion — it is a row that would land nowhere. At capture
-              // this falls through to the model, correctly: as far as the
-              // current taxonomy is concerned, this is a merchant you have
-              // never tagged.
+              // suggestion — it is a row that would land nowhere. The row then
+              // arrives untagged and no model call is spent on it, because you
+              // DO have an opinion about this merchant; it just points at a
+              // bucket you removed, and a model that has never seen your budget
+              // cannot recover what you meant by it.
               valid.contains(category)
         else { return nil }
         return TagSuggestion(
@@ -159,12 +161,24 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         )
     }
 
-    private static func settledAsNonSpend(
+    /// A merchant the model might be able to help with: one you have not
+    /// settled often enough to have an opinion about.
+    ///
+    /// Two histories produce no suggestion and mean opposite things:
+    ///
+    /// · **never seen** — the model is the only thing that can say anything,
+    ///   and this is what it is for;
+    /// · **seen and unsettled** — 22 decisions split across two buckets, or
+    ///   repeatedly marked not-a-spend. Your own history is the most
+    ///   informative thing in the system here and it does not point one way.
+    ///   A model that has never seen your budget will not resolve that; it will
+    ///   just spend the call budget guessing, every sync, forever.
+    private static func worthAsking(
         _ merchant: MerchantID,
         in known: [MerchantID: MerchantTagHistory]
     ) -> Bool {
-        guard let settled = known[merchant]?.settled() else { return false }
-        return settled.categoryID == nil
+        guard let history = known[merchant] else { return true }
+        return !history.hasOpinion
     }
 
     private static func apply(_ suggestion: TagSuggestion, to entry: inout ProvisionalEntry) {

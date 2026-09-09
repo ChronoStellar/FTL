@@ -185,28 +185,36 @@ nonisolated struct PatternVerifier: Sendable {
     /// a liveness check.
     func coverage(_ pattern: ExtractionPattern, against emails: [CapturedEmail]) -> Coverage {
         let candidate = PatternDrivenParser(pattern: pattern)
-        var read = 0
         var considered = 0
-        var failures: [PatternFeedback.Failure] = []
+        var reads: [(email: CapturedEmail, merchantRaw: String)] = []
 
+        // First pass: what did it actually read? The second check below is
+        // about the SET of values, not any one of them, so nothing can be
+        // judged until they have all been seen.
         for email in emails where candidate.canParse(email) {
             considered += 1
             guard case .parsed(let receipt) = candidate.parse(email) else { continue }
             guard receipt.amount.minorUnits > 0 else { continue }
+            reads.append((email, receipt.merchantRaw))
+        }
 
-            if let complaint = Self.implausibility(of: receipt.merchantRaw) {
-                failures.append(
-                    .init(
-                        emailID: email.id,
-                        excerpt: Self.excerpt(email),
-                        field: "merchant",
-                        extracted: receipt.merchantRaw,
-                        expected: complaint
-                    )
+        let constant = Self.constantMerchant(among: reads.map(\.merchantRaw))
+
+        var read = 0
+        var failures: [PatternFeedback.Failure] = []
+        for (email, merchantRaw) in reads {
+            let complaint = Self.implausibility(of: merchantRaw)
+                ?? Self.constantComplaint(merchantRaw, constant: constant, of: reads.count)
+            guard let complaint else { read += 1; continue }
+            failures.append(
+                .init(
+                    emailID: email.id,
+                    excerpt: Self.excerpt(email),
+                    field: "merchant",
+                    extracted: merchantRaw,
+                    expected: complaint
                 )
-                continue
-            }
-            read += 1
+            )
         }
 
         guard considered > 0 else { return Coverage(rate: 0, evidence: 0, failures: []) }
@@ -216,6 +224,80 @@ nonisolated struct PatternVerifier: Sendable {
             failures: failures
         )
     }
+
+    // MARK: - The constant-merchant check
+
+    /// The value a pattern returns for most of a sender's mail, and how often —
+    /// or nil when it never repeats enough to matter.
+    static func constantMerchant(among values: [String]) -> (value: String, share: Double)? {
+        guard values.count >= minimumReadsForConstantCheck else { return nil }
+        var counts: [String: Int] = [:]
+        for value in values {
+            counts[value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), default: 0] += 1
+        }
+        guard let modal = counts.max(by: { $0.value < $1.value }) else { return nil }
+        return (modal.key, Double(modal.value) / Double(values.count))
+    }
+
+    /// Why a read that looks fine on its own is not a merchant after all.
+    ///
+    /// **The one thing coverage could not see.** `implausibility` judges a value
+    /// in isolation and catches an anchor with no terminator — the value ran to
+    /// the window edge. It cannot catch an anchor pointed at a LABEL, because a
+    /// label is short, well-formed and perfectly plausible; it is only wrong
+    /// once you notice it is the same on every email.
+    ///
+    /// Measured over the real corpus, and the separation is wider than the
+    /// amount-variance gap the discovery funnel already stands on:
+    ///
+    /// | pattern | reads | distinct values | modal share |
+    /// |---|---|---|---|
+    /// | blu, correct | 116 | 66 | 0.08 |
+    /// | blu, the model's real proposal | 109 | 64 | 0.08 |
+    /// | grab ride / food, learned | 11 / 10 | 11 / 10 | 0.09 / 0.10 |
+    /// | **blu, anchored on a label** | 95 | **1** | **1.00** |
+    ///
+    /// That last pattern scored **81.9% coverage at 0% accuracy** and was
+    /// refused only by an 8-point margin against the 0.90 bar. This closes it
+    /// with a 5× margin instead of luck.
+    ///
+    /// The two checks are complementary and neither subsumes the other: the
+    /// window-edge rule catches Grab (no terminator, values vary), this catches
+    /// the label reader (values do not vary).
+    ///
+    /// **What it costs, stated rather than discovered later.** A sender whose
+    /// counterparty genuinely never changes — a top-up that always reads
+    /// "GoPay" — is refused by this, and refused means no pattern rather than a
+    /// flagged one. That is accepted deliberately: a merchant field that is
+    /// constant carries no information the sender's own name doesn't, so the
+    /// schema has nothing to say about that sender. Most such senders never
+    /// reach here anyway, because a fixed counterparty usually comes with fixed
+    /// amounts and `minimumAmountVariance` refuses them first.
+    ///
+    /// It also reaches the retry loop as a concrete miss, which is the point:
+    /// "you returned the same value for every email" is exactly the kind of
+    /// feedback that corrected blu twice.
+    static func constantComplaint(
+        _ merchantRaw: String,
+        constant: (value: String, share: Double)?,
+        of reads: Int
+    ) -> String? {
+        guard let constant, constant.share >= constantMerchantShare else { return nil }
+        guard merchantRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == constant.value
+        else { return nil }
+        return "a merchant name that DIFFERS between emails — this anchor returned "
+            + "\"\(constant.value)\" for \(Int((constant.share * Double(reads)).rounded())) of \(reads), "
+            + "so it is pointing at a label rather than at the counterparty"
+    }
+
+    /// 5× above every real pattern measured (0.08–0.10) and half of the failure
+    /// it exists to catch (1.00). Sits in a gap, not on a tuned edge.
+    static let constantMerchantShare = 0.5
+
+    /// Below this there is no "usually" to speak of. Matches
+    /// `PatternSynthesisPolicy.minimumProvisionalEvidence` — the floor at which
+    /// a holdout says anything at all.
+    static let minimumReadsForConstantCheck = 5
 
     /// Why a read cannot be a merchant name, or nil if nothing is obviously
     /// wrong with it.

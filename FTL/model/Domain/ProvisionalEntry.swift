@@ -21,6 +21,25 @@ nonisolated struct ProvisionalEntry: Sendable, Hashable, Identifiable, Codable {
     var status: Status
     let createdAt: Date
 
+    /// Which parser produced this row. Written once at capture, never mutated.
+    ///
+    /// `provenance` cannot answer this, and the difference is load-bearing:
+    /// `amend` sets provenance to `.manual` the moment a person retags, so the
+    /// row forgets which parser read the email exactly when it becomes evidence
+    /// about that parser. Splitting the two questions — *who extracted this*
+    /// against *who decided the resolution* — is what lets the approval queue
+    /// be an oracle for the pattern that produced the row (`PatternMemory`).
+    ///
+    /// Optional so every row already in the on-disk cache decodes unchanged.
+    var readBy: RuleID?
+
+    /// What that parser concluded about direction, kept for the same reason
+    /// `Resolution.suggestedTag` is kept: so an agreement can be told apart
+    /// from a correction. Without it, approving a row a person had already
+    /// flipped from spend to non-spend is indistinguishable from approving one
+    /// the parser got right.
+    var readAs: TransactionKind?
+
     var needsAttention: Bool { !flags.isEmpty }
 
     /// What the pipeline concluded about this transaction.

@@ -83,9 +83,35 @@ nonisolated struct MerchantTagHistory: Sendable, Hashable {
     /// Non-spend competes on the same terms: if you have marked this merchant
     /// a transfer three times out of four, the honest suggestion is "not a
     /// spend", not the one bucket it went to once.
+    /// One past decision is an anecdote. Two is the floor at which "you have
+    /// settled this before" is even a sentence.
+    static let minimumDecisions = 2
+    /// A merchant you split evenly between two buckets is a merchant you have
+    /// NOT settled.
+    static let dominance = 0.6
+
+    /// Whether there is enough history here to have an opinion at all —
+    /// separate from whether that opinion is settled.
+    ///
+    /// The distinction is what stops the most-used merchant costing the most
+    /// model calls. Measured on the real corpus: `MerchantID(normalizing:)`
+    /// folds 22 spellings of `Grab* A-…` into one key, which is what makes 72%
+    /// of tagging a lookup — and also puts rides and food under one merchant.
+    /// Tag those differently and `settled()` correctly returns nil, and the
+    /// caller used to read that as "nothing known, ask the model", so a
+    /// merchant with 22 decisions on it got a model call every single sync,
+    /// forever.
+    ///
+    /// A merchant you have tagged 22 times inconsistently is not one a model
+    /// that has never seen your budget can help with. Asking is worse than
+    /// useless: it spends the call budget on the case where your own history is
+    /// the most informative thing in the system and simply does not point one
+    /// way.
+    var hasOpinion: Bool { total >= Self.minimumDecisions }
+
     func settled(
-        minimumDecisions: Int = 2,
-        dominance: Double = 0.6
+        minimumDecisions: Int = MerchantTagHistory.minimumDecisions,
+        dominance: Double = MerchantTagHistory.dominance
     ) -> (categoryID: CategoryID?, agreed: Int, of: Int)? {
         let all = total
         guard all >= minimumDecisions else { return nil }

@@ -38,16 +38,22 @@ nonisolated struct PipelineCaseRunner: Sendable {
         var passed: Int { outcomes.filter(\.passed).count }
     }
 
-    func run(_ fixture: PipelineFixture) async throws -> Report {
+    func run(_ fixture: PipelineFixture, bundle: Bundle = .main) async throws -> Report {
         let provisional = InMemoryProvisionalStore(empty: true)
         let log = InMemoryCaptureLog()
 
+        // The SHIPPING configuration: no hand-written parser in front, blu
+        // covered by its preset pattern. A fixture that ran the old precedence
+        // would be measuring a code path the app no longer takes — which is how
+        // the three `knownIssue` entries below stayed invisible until the swap
+        // was actually run end to end.
         let rail = GmailRail(
             exporter: CorpusEmailSource(fixture.cases.map(\.email)),
-            parsers: [BluReceiptParser()],
+            parsers: [],
             provisional: provisional,
             log: log,
             patterns: FixedPatternStore(fixture.patterns),
+            presets: PresetPatterns.load(bundle: bundle),
             fetchLimit: fixture.cases.count
         )
         _ = try await rail.sync()
@@ -88,8 +94,8 @@ nonisolated struct PipelineCaseRunner: Sendable {
     private func discoveryOutcomes(_ fixture: PipelineFixture) async throws -> [Outcome] {
         // Nothing here is readable: no parser claims these senders, which is
         // the definition of a discovery candidate.
-        let readable: [any ReceiptParser] = [BluReceiptParser()]
-            + fixture.patterns.map(PatternDrivenParser.init(pattern:))
+        let readable: [any ReceiptParser] =
+            (fixture.patterns + PresetPatterns.load()).map(PatternDrivenParser.init(pattern:))
         let isRead: (CapturedEmail) -> Bool = { email in
             guard let parser = readable.first(where: { $0.canParse(email) }) else { return false }
             if case .parsed = parser.parse(email) { return true }

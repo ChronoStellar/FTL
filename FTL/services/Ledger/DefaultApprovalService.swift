@@ -18,11 +18,20 @@ actor DefaultApprovalService: ApprovalService {
     /// Where the tagger's accuracy accrues. Nil in `sample()`; a nil memory
     /// changes nothing except that nothing is learned.
     private let tags: TagMemory?
+    /// Where the LOOP's accuracy accrues, and on an unseen mailbox the only
+    /// oracle it has. See `PatternMemory`.
+    private let patterns: PatternMemory?
 
-    init(store: ProvisionalStore, ledger: LedgerStore, tags: TagMemory? = nil) {
+    init(
+        store: ProvisionalStore,
+        ledger: LedgerStore,
+        tags: TagMemory? = nil,
+        patterns: PatternMemory? = nil
+    ) {
         self.store = store
         self.ledger = ledger
         self.tags = tags
+        self.patterns = patterns
     }
 
     func approve(_ ids: [ProvisionalEntry.ID]) async throws -> ApprovalResult {
@@ -51,15 +60,55 @@ actor DefaultApprovalService: ApprovalService {
         try await ledger.append(written)
         try await store.markPromoted(written.map(\.id))
         await recordDecisions(from: pending)
+        await observePatterns(pending) { entry in
+            // The parser's reading survived, or the person flipped the
+            // direction on the way through. Either is a verdict about how the
+            // email was READ — unlike a category change, which is a verdict
+            // about a budget and belongs to the other tool.
+            entry.resolution.kind == (entry.readAs ?? entry.resolution.kind)
+                ? .accepted
+                : .correctedKind
+        }
         return ApprovalResult(written: written, failed: [])
     }
 
     func reject(_ ids: [ProvisionalEntry.ID]) async throws {
+        var rejected: [ProvisionalEntry] = []
         for id in ids {
             guard var entry = try await store.entries(withStatus: .pending).first(where: { $0.id == id }) else { continue }
             entry.status = .rejected  // kept, never deleted — this is the accuracy record
             try await store.update(entry)
+            rejected.append(entry)
         }
+        await observePatterns(rejected) { _ in .dropped }
+    }
+
+    /// Attributes a settled row to the learned pattern that produced it.
+    ///
+    /// Only learned patterns. Queue evidence about `blu-receipt` is evidence
+    /// about somebody's Swift, not about anything the loop did, and mixing the
+    /// two would let a hand-written parser's rows inflate the number the loop
+    /// is judged on — see `ExtractionPattern.namesPattern`.
+    ///
+    /// Best-effort and after the fact, for the same reason `recordDecisions` is:
+    /// a memory write that fails must never fail an approval that already
+    /// reached the sheet.
+    private func observePatterns(
+        _ entries: [ProvisionalEntry],
+        verdict: (ProvisionalEntry) -> PatternObservation.Verdict
+    ) async {
+        guard let patterns, !entries.isEmpty else { return }
+        let observations = entries.compactMap { entry -> PatternObservation? in
+            guard let readBy = entry.readBy, ExtractionPattern.namesPattern(readBy) else { return nil }
+            return PatternObservation(
+                id: entry.id,
+                patternID: readBy.rawValue,
+                verdict: verdict(entry),
+                settledAt: .now
+            )
+        }
+        guard !observations.isEmpty else { return }
+        try? await patterns.record(observations)
     }
 
     /// The gate is the right place for this and the only one.

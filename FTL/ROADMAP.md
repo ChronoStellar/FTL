@@ -22,6 +22,22 @@ That is the product. Everything below exists to make that loop **safe**,
 **measurable**, and **fed with real data** — those three words are the whole
 ordering principle.
 
+### The target is an UNSEEN mailbox
+
+Decided 2026-09-09, and it reorders most of what follows.
+
+This is my mailbox, but the version being built is one that works on a mailbox
+nobody has looked at: other banks, other merchants, other currencies, no
+hand-written parser for any sender.
+
+That is not a stretch goal, it is a different set of load-bearing assumptions,
+and the audit below measures which of them hold. The short version: **the
+deterministic funnel generalises and the verification does not.** Every
+promotion path currently in the code runs through an oracle that an unseen
+mailbox does not have.
+
+Read every number recorded before this date as a number about *this* corpus.
+
 ### The agent has tools, and the tools are the loop
 
 The agent is not a thing that reads your email. It is a small, bounded loop that
@@ -29,8 +45,14 @@ The agent is not a thing that reads your email. It is a small, bounded loop that
 
 | tool | what it proposes | what checks it | today |
 |---|---|---|---|
-| **learn a pattern** | where the fields sit in a sender's template, **and which way the money went** | `PatternVerifier`, against emails the model never saw | ✅ built |
+| **learn a pattern** | where the fields sit in a sender's template, **and which way the money went** | `PatternVerifier` where an oracle exists; **coverage everywhere else** | ✅ built, ⚠️ shut out of the runtime path |
 | **tag a purchase** | which bucket a transaction belongs in | the user's own approvals, accrued per merchant | ✅ built, ⚠️ never run against real mail |
+
+⚠️ Read the first row's middle column carefully — the audit below put a number
+on it. "Against emails the model never saw" is true, but *scored against what?*
+On an unseen mailbox there is no oracle, so it is coverage, and coverage is
+shape-fitting. A pattern that is 100% correct and one that reads a label instead
+of a merchant are separated by eight points there.
 
 The two are deliberately different, and the difference is the whole design.
 
@@ -72,9 +94,17 @@ against what you chose (`TagMemory`, Settings → Developer → *Score the tagge
 against your approvals*). Nothing routes on it and nothing is auto-committed;
 the point is to have the number before the argument, not after.
 
-> **Guardrail.** If you find yourself hand-writing parser #3, stop. Two reference
-> implementations is enough to know what good looks like. A third is the signal
-> that the loop should already exist — you are doing the model's job by hand.
+> **Guardrail, revised 2026-09-09.** The original read: *if you find yourself
+> hand-writing parser #3, stop — you are doing the model's job by hand.* That
+> treated hand-written parsers as competing with the loop. They are its scarce
+> INPUT: each one is an oracle, and oracles are the thing an unseen mailbox
+> cannot produce. Two is a thin base to have calibrated a synthesizer on.
+>
+> So: a third parser is worth writing precisely when it would **disagree** with
+> what the loop produced for that sender — as a test of the process, not as
+> coverage. Writing one to make a sender work is still the wrong move; writing
+> one to find out whether the loop can be trusted on a sender it has never seen
+> is the whole point.
 
 The deterministic spine is not a lesser version of the app you build while
 waiting. It is the **verifier**. Its correctness is what makes the model's
@@ -599,60 +629,280 @@ Process failures worth not repeating, all mine:
 
 ### What's next
 
-Ordered by what actually blocks something.
+**Reordered 2026-09-09** by the audit, under the unseen-mailbox target. The old
+order optimised the loop for *this* corpus; the first four items below are the
+ones that decide whether it works on anyone else's.
 
-1. **Re-learn Grab under the plausibility bar, then fill a month and compare
+#### Agent first — the decision, and what it takes
+
+The runtime path has a hand-written parser in front of the loop, and the
+precedence rule (`handWritten + learned`) means a learned pattern never reads a
+blu email. The loop is therefore shut out of exactly the sender it can be
+verified against. **The agent reads the mail; hand-written parsers become
+oracles.**
+
+What makes that safe is not the reference parser winning — it is the approval
+queue, which every row passes through anyway (Invariant 1). A misread amount
+costs a person seeing a wrong number in a queue built for that. The reference
+parser in front is belt-and-braces on a system that already has a belt, and it
+is the reason nothing ever accrues.
+
+1. ✅ **The queue becomes tool 1's oracle.** Done — `PatternMemory`,
+   `PatternObservation`, `SwiftDataPatternMemory`, recorded at the gate beside
+   `TagMemory`, with a scoreboard at Settings → Developer → *Score the learned
+   patterns*. `unverifiedPattern` is now a ladder rather than a permanent label:
+   once the queue has kept ≥95% of a pattern's rows over ≥20 settled ones
+   (`PatternTrustPolicy`), its rows stop being flagged — and drops take it back
+   down, which is what makes it reversible. Verified: 20 approvals → vouched;
+   2 drops → 91%, un-vouched.
+
+   ⚠️ **It is an ACCEPTANCE rate, not an accuracy**, and the scoreboard says so
+   on screen. The queue cannot edit an amount or a merchant, so approving a row
+   is a vote that it looked right, not a check that it was. Letting a person
+   correct a figure in the queue is what turns this into the real thing — and
+   the moment it does, `labels.json` stops being anything anyone needs.
+
+   The original description of the work: The only thing that lifts a pattern
+   off `.provisional` on an unseen mailbox, and it retires `labels.json` as a
+   blocker. Approve → the pattern read right. Correct the amount or merchant →
+   a labelled failure with the answer attached. Same mechanism `TagMemory`
+   already uses; the pattern gets a hit rate that keeps moving instead of a
+   number frozen at synthesis. It also makes template drift detectable, which
+   it currently is not: `verifiedAgainst: 111` is a claim about one Tuesday.
+2. ✅ **The constant-merchant check.** Done — measured first: real patterns read
+   64–66 distinct merchants at 0.08–0.10 modal share; the label-reader reads
+   **one** value at 1.00. The threshold sits at 0.5, 5× clear of every real
+   pattern and half of the failure. It takes the label-reader from **81.9%
+   coverage to 0.0%** and leaves blu-correct at 100% and the model's proposal at
+   94% untouched. It also reaches the retry loop as a concrete miss.
+
+   The two plausibility rules are complementary and neither subsumes the other:
+   the window-edge rule catches Grab (no terminator, values vary), this catches
+   the label reader (values do not vary). Cost, stated rather than discovered
+   later: a sender whose counterparty genuinely never changes is refused, and
+   refused means no pattern rather than a flagged one.
+
+   The original description of the work: Closes the measured blind spot — 81.9%
+   coverage at 0% correctness — and it is what makes a provisional row safe to
+   act on. Deterministic, one pass, no model.
+3. **Currency generalisation.** `IndonesianMoney` is the only money parser, so
+   an unseen non-Indonesian mailbox reads nothing. Needs a locale-aware money
+   parser and minor units that are not assumed to be zero. Literally required
+   for the target.
+4. ✅ **Retire the hand-written parser from the runtime path.** Done. blu ships
+   as a preset *pattern* (`Fixtures/preset-patterns.json`), `parsers: []` in
+   `makeGmailRail`, and `BluReceiptParser` keeps the one job only it can do —
+   being the oracle. Precedence is now `learned + presets`, then hand-written;
+   see `GmailRail.activeParsers` for why the old order had quietly become the
+   reason nothing could improve.
+
+   ⚠️ **The backfill problem was misdiagnosed and is still open.** It was
+   written up as "unfamiliar mail is logged `.skipped` and never revisited".
+   That is wrong: the rail queries `from:(domains it can parse)`, so an unknown
+   sender's mail is never fetched and therefore never logged at all. The real
+   gap is the **14-day window** — when a pattern is promoted for a new sender,
+   the rail only ever asks for that sender's last two weeks, and everything
+   older is invisible forever. Fix is a wider window on a sender's first sync,
+   which needs the capture log to know which domains it has seen before.
+5. **Widen `LanguageGate` on measurement.** It refuses 36% of money mail at the
+   strict setting, and `[.english]` is known to be narrower than the model's 21
+   locales. Measure, then widen — not the other way round.
+
+#### Still true, still queued
+
+6. **Re-learn Grab under the plausibility bar, then fill a month and compare
    against the sheet.** The check should take the ride pattern to 0/11 and the
    food pattern to 5/10, forcing a retry that is now fed concrete failures.
-2. **Grab's merchant anchors are still wrong** — 5 known issues in the fixture,
+7. **Grab's merchant anchors are still wrong** — 5 known issues in the fixture,
    pinned as they actually behave. They turn green when the anchors do.
-3. **`flatText` is recomputed on every access outside `SenderTriage`** — every
+8. **`flatText` is recomputed on every access outside `SenderTriage`** — every
    `canParse`, every `parse`, every gate excerpt strips the whole HTML body
    again. `Prepared` fixed the one hot spot; the real fix is flattening once on
    entry, which changes `CapturedEmail`'s shape and touches every parser. Do it
    on the timings, not on a hunch.
-4. **The subject pass costs blu a third layout of 12 real receipts.** Removing it
+9. **The subject pass costs blu a third layout of 12 real receipts.** Removing it
    works and is measured — but takes Grab to 24 clusters and narrows the promo
    margin from 0.04–0.12 vs 0.88 to 0.41 vs 0.75. A live trade, worth taking on
    its own merits.
-5. **Ship blockers, unchanged:** the whole capture pipeline is `#if DEBUG`, 82 MB
-   of real mail ships in the bundle (Stage 0 #3), and there is still no test
-   target — the fixtures run from a debug screen, not CI (Stage 2 #5).
-6. **Smaller, real:** a refund is non-spend so it never offsets the card hold it
-   reverses; a duplicate split across two bank charges (5.000 + 46.500 vs 51.500)
-   cannot be caught by exact matching and is pinned unflagged.
+10. **Ship blockers, unchanged:** the whole capture pipeline is `#if DEBUG`, 82 MB
+    of real mail ships in the bundle (Stage 0 #3), and there is still no test
+    target — the fixtures run from a debug screen, not CI (Stage 2 #5).
+11. **Smaller, real:** a duplicate split across two bank charges (5.000 + 46.500
+    vs 51.500) cannot be caught by exact matching and is pinned unflagged.
 
-   ✅ **A refund is a dedup problem, and is now handled as one.** One purchase,
-   two rows, arriving weeks apart instead of a day apart — so it is found by the
-   same fingerprint buckets `possibleDuplicate` uses and settled the same way:
-   flagged as a pair, never merged. A refund now arrives saying *"Undoes TOKO
-   ROTI MANIS on 20 Sep"*.
+#### Done: refunds
 
-   The reason it needed its own pass rather than a widened duplicate check is
-   the window. `Fingerprint.adjacent` is ±1 bucket, which is ±3 days — right for
-   two rails reporting one purchase, useless for a reversal that takes a
-   fortnight. Widening `dateWindowDays` for everyone would flood every duplicate
-   check, so `Fingerprint.lookingBack(days:)` lets a caller that needs a longer
-   reach say so and pay for it in fetches. Refunds are rare enough that it is
-   cheap, and rare enough that only rows already read as `.refund` trigger it.
+✅ **A refund is a dedup problem, and is now handled as one.** One purchase,
+two rows, arriving weeks apart instead of a day apart — so it is found by the
+same fingerprint buckets `possibleDuplicate` uses and settled the same way:
+flagged as a pair, never merged. A refund now arrives saying *"Undoes TOKO
+ROTI MANIS on 20 Sep"*.
 
-   Three tests, each stopping a specific wrong pairing: **exact amount** (same
-   choice as `isSameCharge` — a tolerance wide enough for partials is wide
-   enough to pair unrelated purchases), **same normalized merchant** (the test
-   duplicates don't need and this one does: two Rp 50.000 charges a fortnight
-   apart are ordinary, and the merchant is what says which one), and **the
-   charge came first** (without it, two refunds in a window pair with each
-   other).
+The reason it needed its own pass rather than a widened duplicate check is
+the window. `Fingerprint.adjacent` is ±1 bucket, which is ±3 days — right for
+two rails reporting one purchase, useless for a reversal that takes a
+fortnight. Widening `dateWindowDays` for everyone would flood every duplicate
+check, so `Fingerprint.lookingBack(days:)` lets a caller that needs a longer
+reach say so and pay for it in fetches. Refunds are rare enough that it is
+cheap, and rare enough that only rows already read as `.refund` trigger it.
 
-   Still not netted, and that stays deliberate: the refund is non-spend, the
-   purchase is spend, and a Rp 42.500 purchase you were refunded still reads as
-   Rp 42.500 with its reversal beside it. Netting would be a non-spend row
-   moving a spend total — a change to what a ceiling means, and the person
-   holding the pair can now see it and decide.
+Three tests, each stopping a specific wrong pairing: **exact amount** (same
+choice as `isSameCharge` — a tolerance wide enough for partials is wide
+enough to pair unrelated purchases), **same normalized merchant** (the test
+duplicates don't need and this one does: two Rp 50.000 charges a fortnight
+apart are ordinary, and the merchant is what says which one), and **the
+charge came first** (without it, two refunds in a window pair with each
+other).
 
-   `reversalWindowDays` is 30 and is **unmeasured**, unlike `dateSlackDays`.
-   There are 4 refunds in the corpus and not one of them has its original charge
-   in it. Revisit on real pairs.
+Still not netted, and that stays deliberate: the refund is non-spend, the
+purchase is spend, and a Rp 42.500 purchase you were refunded still reads as
+Rp 42.500 with its reversal beside it. Netting would be a non-spend row
+moving a spend total — a change to what a ceiling means, and the person
+holding the pair can now see it and decide.
+
+`reversalWindowDays` is 30 and is **unmeasured**, unlike `dateSlackDays`.
+There are 4 refunds in the corpus and not one of them has its original charge
+in it. Revisit on real pairs.
+
+---
+
+## Audit — 2026-09-09 · the loop with the oracle taken away
+
+Run over the real 1,000-email export, against the shipping sources. The question
+was not "does the loop work on my mail" — that was answered — but **what an
+unseen mailbox would experience**, where no hand-written parser exists for any
+sender.
+
+### The ceiling: without an oracle, nothing is ever promoted
+
+| candidate pattern | true accuracy | coverage — what the loop SEES | verdict |
+|---|---|---|---|
+| correct (the parser expressed as a pattern) | 100.0% | 100.0% | **provisional** |
+| the model's real proposal | 94.0% | 94.0% | **provisional** |
+| wrong anchor, right shape | 0.0% | 0.0% | rejected |
+| merchant reads a label, not a name | **0.0%** | **81.9%** | rejected |
+
+A **perfect** pattern — 100% correct over 116 emails — still only reaches
+`.provisional`, because promotion runs through `verify`, and `verify` needs an
+oracle. On a mailbox with no reference parser, `attempted == 0` for every
+sender, forever.
+
+So on unseen mail, **every row from every learned pattern arrives flagged.** Not
+sometimes. The 0.95-over-≥20 bar is unreachable by construction, and the honest
+description of what the loop delivers there is *a shape that fits, for a person
+to check* — not a trusted rule.
+
+This is the circularity the design has always had, now with a number on it:
+`ParserOracle` makes the loop rigorously verifiable exactly where a hand-written
+parser already covers the sender, i.e. exactly where the pattern is redundant.
+
+**The queue is the only oracle an unseen mailbox generates.** Approving a
+learned-pattern row is a vote that it read correctly; correcting the amount or
+the merchant is a labelled failure with the right answer attached. That is the
+same mechanism tool 2 already uses, pointed at tool 1 — and it retires
+`labels.json` as a blocker, because the app produces labels as it is used.
+
+### Coverage's blind spot, measured
+
+The last row of that table is the one to worry about. It reads the **same string
+out of every email** — a label, not a merchant — and scores 81.9% coverage at 0%
+correctness. It was refused by an 8-point margin against a 0.90 threshold. That
+is luck, not a safety margin.
+
+> Coverage catches an anchor that reads NOTHING. It cannot catch an anchor that
+> reads the SAME WRONG THING every time.
+
+Cheap deterministic fix, and it belongs before the loop runs unattended: a
+merchant that is identical across a sender's mail is a label. One pass, no
+model, and it covers the case the existing plausibility rule (*runs to the
+window edge*) does not.
+
+### What generalises, and it is the half that was doubted
+
+The discovery funnel is entirely deterministic and it holds up. Judged with no
+oracle anywhere, and with blu treated as just another unknown sender:
+
+| sender | Rp mail | layouts | qualifying | variance |
+|---|---|---|---|---|
+| blubybcadigital.id | 116 | 2 | **2** | 0.91, 0.88 |
+| grab.com | 65 | 2 | **2** | 0.91, 1.00 |
+| email.apple.com | 21 | 1 | 0 | 0.08 |
+| your.traveloka.com | 16 | 2 | 0 | 0.08, 0.33 |
+
+blu discovers itself. The two brochure senders are refused on variance, exactly
+as designed. The executor, the schema, the queue and the tagger's accrual are
+all sender-agnostic.
+
+### What is hard-coded to THIS mailbox
+
+- **`IndonesianMoney` is the only money parser.** 32 emails in this corpus carry
+  `$`/USD that nothing can read, 2 carry `€`. On a non-Indonesian mailbox the
+  pipeline reads **zero**. `Money` also assumes no minor units, which is right
+  for IDR and wrong for almost everything else — USD and EUR need cents before
+  they would even be right.
+- **`LanguageGate` refuses 36% of money mail** (93 of 258) at the strict
+  `.classification` setting the tagger uses. `supported = [.english]` was
+  already documented as narrower than the model's 21 locales; this is the bill.
+
+### Two things recorded earlier that the audit corrected
+
+- **Replacing `BluReceiptParser` is nearly free — and "nearly" was itself a
+  correction.** It was first written up as a trade (112/112 for ~99%); that
+  figure belonged to a different anchor configuration. Expressed with its own
+  terminator list and its own `Total`/`Amount` fallback, the parser is **exactly
+  reproducible as a pattern on the four extracted fields** — 116/116, zero
+  disagreement on amount, merchant, kind or subtype.
+
+  Then the swap was run through the whole rail, and the audit's own blind spot
+  showed up: comparing four fields cannot see a difference in the fifth thing.
+  **Three fixture cases moved**, none of them losing a row or a number:
+
+  | case | before | after | why |
+  |---|---|---|---|
+  | `blu-transfer-flags-ambiguous` | `ambiguousKind` | no flag | the parser INFERRED a transfer from a bank name beside an account number and flagged its own inference; a pattern matches the literal `Admin Fee` and types it, which is a stated fact |
+  | `blu-transfer-to-another-person` | `ambiguousKind` | no flag | same |
+  | `blu-promo-never-queued` | `notAPurchase` | `skipped` | the parser claimed every blu email and said no; the preset's `subjectContains` means nothing claims it at all |
+
+  Both losses are of SIGNAL, not of correctness, and neither is recoverable
+  inside the schema: the inference was `banks.contains && hasAccountNumber` and
+  an anchor has no vocabulary for it. Pinned as `knownIssue` rather than quietly
+  re-baselined, and `PipelineCaseRunner` now runs the SHIPPING configuration —
+  a fixture on the old precedence would have been measuring a code path the app
+  no longer takes, which is exactly how these three stayed invisible.
+- **The direction markers were necessary and not sufficient.** Adding them to
+  the model's real proposal changed nothing: 109/116 → 109/116. All seven
+  failures are `unread`, not mislabelled — blu's refunds and incoming transfers
+  never produce a row at all, because the proposal's merchant terminators
+  (`Amount | bluVirtual | Admin Fee`) do not appear in those layouts. Add
+  `Transaction Date` / `Transaction ID` and it goes **94.0% → 97.4%**, clearing
+  the bar. The markers fix labelling; the reading was failing one step earlier.
+  Good news: that is a retry, not a schema gap — the feedback reads
+  `merchant: got nothing, expected "004502609698"`, the same concrete-miss form
+  that corrected blu twice already.
+
+### Tool 2, on the same mail
+
+94 blu spend rows across 38 distinct merchants. The 12 merchants seen twice or
+more cover 68 rows — **72% of tagging is eventually a lookup**; the other 26 are
+one-offs needing a model call.
+
+`MerchantID(normalizing:)` is doing the heavy lifting: it folds **22 distinct
+spellings of `Grab* A-…` into one key**, plus the `bigA bakehouse` /
+`BIGA BAKEHOUSE` case the design was written against. Without it those are 22
+merchants seen once each — a model call every time. With it, one merchant seen
+22 times, settled after two.
+
+**And that same fold found a flaw.** All Grab spending collapses to `grab`,
+rides and food together. Tag those into different buckets and `settled()`
+correctly refuses to suggest — no bucket holds 60% — and then `tag` falls
+through to the model, every sync, forever. **The most-seen merchant gets the
+most model calls.** Two ways out:
+
+- *cheap:* distinguish "no history" from "history that will not settle". 22
+  decisions split 12/10 is not a merchant a model can help with; skip it rather
+  than ask. Three lines, and clearly right under an unseen-mailbox target.
+- *structural:* key on merchant AND layout, so `grab/ride` and `grab/food`
+  accrue separately. Bigger, and the tag key stops being just the merchant.
 
 ---
 
@@ -661,6 +911,15 @@ Ordered by what actually blocks something.
 ### 13. `tag_purchase` · **L** — ✅ built, ⚠️ never run against real mail
 The agent's second tool. Given a transaction — merchant, amount, date, sender —
 propose which bucket it belongs to.
+
+**Scope, settled 2026-09-09:** the agent learns which *spending* belongs to each
+tag. It does **not** invent tags. Assigning a purchase to a bucket you already
+set up is a description of what you did; creating a bucket drags in a ceiling
+the app would have to pick, which is Invariant 8, and a write to the canonical
+budgets tab, which is Stage 0.5's whole cautionary tale. `unallocated` already
+exists as the answer to "no bucket fits". If agent-proposed categories ever
+happen, they take the shape Settings already uses for missing categories —
+listed, one-tap add, ceiling from the person.
 
 **Built:** `PurchaseTagger` + `TagMemory` (contracts), `DefaultPurchaseTagger`
 (the memory-first layering), `FoundationModelTagger` (★ the model call),
@@ -785,6 +1044,21 @@ The four notes this was written against, and how each landed:
   batch, and a suggestion pointing at a bucket you have since deleted falls
   through to the model rather than proposing a row that would land nowhere.
 
+⚠️ **And the normalization found a flaw the design didn't anticipate.** Measured
+over the real corpus: 72% of blu's spend rows are eventually answerable by
+lookup, and `MerchantID(normalizing:)` is what buys that — it folds 22 spellings
+of `Grab* A-…` into one key. But all Grab spending then collapses to `grab`,
+rides and food together. Tag those into different buckets and `settled()`
+correctly refuses to suggest (no bucket holds 60%), and `tag` falls through to
+the model **every sync, forever**. The most-seen merchant gets the most model
+calls. Fix is open — see the audit section for the two options.
+
+⚠️ **The model half is gated out of 36% of money mail.** `FoundationModelTagger`
+runs at `.classification`, the strict setting, and `DefaultLanguageGate` refuses
+93 of 258 money emails in the corpus. That is the right strictness for an answer
+nothing verifies, and it is also a measured ceiling on how much of the queue the
+model half can ever reach.
+
 ### 14. Auto-commit · **M**, after #13 has run in shadow
 Rows above the accrued-accuracy threshold skip the queue.
 
@@ -841,6 +1115,17 @@ the loop is the better bet.
 ---
 
 ## Decisions I need from you
+
+**The Grab merchant key.** `MerchantID(normalizing:)` folds 22 spellings of
+`Grab* A-…` into `grab`, which is what makes 72% of tagging a lookup — and also
+collapses rides and food into one key. Tag those differently and the merchant
+never settles, so the most-seen merchant gets a model call every sync forever.
+Cheap fix: treat "history that will not settle" as a stop, not as "ask the
+model" (three lines). Structural fix: key on merchant AND layout, so
+`grab/ride` and `grab/food` accrue separately — bigger, and the tag key stops
+being just the merchant. Cheap looks right under the unseen-mailbox target, but
+it is your call.
+
 
 **Where synthesis runs.** This is the one job a larger model would help most with,
 and it touches five examples rather than your mailbox. On-device keeps v0.6's

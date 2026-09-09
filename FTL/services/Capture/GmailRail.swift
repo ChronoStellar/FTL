@@ -34,9 +34,16 @@ import Foundation
 
 nonisolated struct GmailRail: Sendable {
     private let exporter: any CapturedEmailSource
-    /// Hand-written reference parsers. These always take precedence — see
-    /// `activeParsers()`.
+    /// Hand-written reference parsers.
+    ///
+    /// Empty in the live app as of 2026-09-09 — see `activeParsers()`. A
+    /// reference parser's job is to be the ORACLE the verifier scores proposals
+    /// against, not to read mail in front of the loop.
     private let parsers: [any ReceiptParser]
+
+    /// Patterns that ship with the app, merged with whatever the loop has
+    /// learned. Same artifact, same executor — see `PresetPatterns`.
+    private let presets: [ExtractionPattern]
     private let provisional: ProvisionalStore
     private let log: CaptureLog
     /// Patterns the loop has learned and promoted. Nil before Stage 4 is wired.
@@ -47,6 +54,11 @@ nonisolated struct GmailRail: Sendable {
     /// correct behaviour for a fixture run — a suggestion is the one part of
     /// this pipeline that has no deterministic answer to assert against.
     private let tagger: (any PurchaseTagger)?
+
+    /// What the queue has said about each learned pattern's rows. Nil leaves
+    /// every unverified pattern permanently flagged, which is the behaviour
+    /// before this existed and the right default for a fixture run.
+    private let trust: PatternMemory?
 
     /// How far back a sync looks. Overlap is free — the capture log dedupes —
     /// so this is sized to survive a week of not opening the app rather than
@@ -60,7 +72,9 @@ nonisolated struct GmailRail: Sendable {
         provisional: ProvisionalStore,
         log: CaptureLog,
         patterns: PatternStore? = nil,
+        presets: [ExtractionPattern] = [],
         tagger: (any PurchaseTagger)? = nil,
+        trust: PatternMemory? = nil,
         fetchLimit: Int = 50
     ) {
         self.fetchLimit = fetchLimit
@@ -69,31 +83,50 @@ nonisolated struct GmailRail: Sendable {
         self.provisional = provisional
         self.log = log
         self.patterns = patterns
+        self.presets = presets
         self.tagger = tagger
+        self.trust = trust
     }
 
-    /// Hand-written parsers first, then promoted patterns.
+    /// Patterns read the mail. Hand-written parsers, if any are passed, sit
+    /// behind them.
     ///
-    /// Order is the precedence rule, because the caller takes the FIRST parser
-    /// that claims an email. A synthesized pattern must never displace a
-    /// reference implementation: `BluReceiptParser` reads 112/112 where its
-    /// synthesized equivalent scores ~97%, and letting the learned one win would
-    /// trade real accuracy for the appearance of progress. The loop exists to
-    /// cover senders nobody has written a parser for — not to replace the ones
-    /// that set the bar.
+    /// **This order was reversed on 2026-09-09, and the reversal is the point.**
+    /// It used to be `handWritten + learned`, justified as protecting real
+    /// accuracy from the appearance of progress — `BluReceiptParser` reads
+    /// 112/112 where its synthesized equivalent scored ~97%. The justification
+    /// was sound and the consequence was fatal: the caller takes the FIRST
+    /// parser that claims an email, so a learned pattern never read a blu email,
+    /// so the loop was shut out of the one sender it could be verified against
+    /// and no evidence ever accrued. The safety argument had quietly become the
+    /// reason nothing could improve.
+    ///
+    /// What makes agent-first safe is not a reference parser winning — it is the
+    /// approval queue, which every row passes through anyway (Invariant 1). A
+    /// misread amount costs a person seeing a wrong number in a queue built
+    /// for exactly that. And the accuracy argument turned out to be moot: a
+    /// preset reproduces the hand-written parser EXACTLY (116/116), so nothing
+    /// was traded away to get here.
     ///
     /// Loaded per sync rather than at init, so a pattern promoted while the app
     /// is running is live on the next fetch.
     private func activeParsers() async -> [any ReceiptParser] {
         let learned = (try? await patterns?.active()) ?? []
-        // Most specific layout first. One sender can have several patterns now,
-        // and one of them may carry no `bodyContains` at all — the layout that
-        // is a subset of another is matched by subject alone, so it claims
-        // everything from that sender if it is asked first. Sorting by how many
-        // body markers a pattern requires makes "ride receipt" outrank "any blu
+        // A learned pattern outranks a preset for the same sender and layout:
+        // the preset is a starting point, and something measured against real
+        // mail should be able to replace it.
+        let learnedKeys = Set(learned.map { [$0.senderDomain, $0.template] })
+        let survivingPresets = presets.filter { !learnedKeys.contains([$0.senderDomain, $0.template]) }
+
+        // Most specific layout first. One sender can have several patterns, and
+        // one of them may carry no `bodyContains` at all — the layout that is a
+        // subset of another is matched by subject alone, so it claims everything
+        // from that sender if it is asked first. Sorting by how many body
+        // markers a pattern requires makes "ride receipt" outrank "any blu
         // email", without either pattern needing to know the other exists.
-        let specificFirst = learned.sorted { $0.bodyContains.count > $1.bodyContains.count }
-        return parsers + specificFirst.map(PatternDrivenParser.init(pattern:))
+        let specificFirst = (learned + survivingPresets)
+            .sorted { $0.bodyContains.count > $1.bodyContains.count }
+        return specificFirst.map(PatternDrivenParser.init(pattern:)) + parsers
     }
 
     struct Result: Sendable {
@@ -139,6 +172,10 @@ nonisolated struct GmailRail: Sendable {
         let unseen = try await log.unseen(from: emails.map(\.id))
         result.alreadySeen = emails.count - unseen.count
 
+        // One read for the batch: which learned patterns the queue has already
+        // stood behind often enough to stop flagging.
+        let vouched = await Self.vouchedPatterns(among: parsers, using: trust)
+
         var entries: [ProvisionalEntry] = []
         var logEntries: [CaptureLogEntry] = []
 
@@ -151,7 +188,7 @@ nonisolated struct GmailRail: Sendable {
 
             switch parser.parse(email) {
             case .parsed(let receipt):
-                let entry = Self.entry(from: receipt, email: email, parser: parser)
+                let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
                 entries.append(entry)
                 logEntries.append(.init(messageID: email.id, verdict: .queued, entryID: entry.id, parserID: parser.id.rawValue))
                 result.queued += 1
@@ -168,7 +205,7 @@ nonisolated struct GmailRail: Sendable {
                     nonSpendType: nil,
                     flags: [ReviewFlag(reason: .unparseable, detail: "missing \(missing)")]
                 )
-                let entry = Self.entry(from: receipt, email: email, parser: parser)
+                let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
                 entries.append(entry)
                 logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: parser.id.rawValue))
                 result.flagged += 1
@@ -215,6 +252,19 @@ nonisolated struct GmailRail: Sendable {
         try await log.record(logEntries)
 
         return result
+    }
+
+    /// Learned patterns whose rows the queue has accepted often enough to stop
+    /// flagging. See `PatternTrustPolicy` and `PatternMemory`.
+    private static func vouchedPatterns(
+        among parsers: [any ReceiptParser],
+        using trust: PatternMemory?
+    ) async -> Set<String> {
+        guard let trust else { return [] }
+        let ids = parsers.compactMap { ($0 as? PatternDrivenParser)?.pattern.id }
+        guard !ids.isEmpty, let records = try? await trust.records(for: ids) else { return [] }
+        let policy = PatternTrustPolicy.default
+        return Set(records.filter { policy.isVouchedFor($0.value) }.keys)
     }
 
     // MARK: - Duplicates
@@ -402,7 +452,8 @@ nonisolated struct GmailRail: Sendable {
     private static func entry(
         from receipt: ParsedReceipt,
         email: CapturedEmail,
-        parser: any ReceiptParser
+        parser: any ReceiptParser,
+        vouched: Set<String>
     ) -> ProvisionalEntry {
         let transaction = NormalizedTransaction(
             id: UUID(),
@@ -421,8 +472,17 @@ nonisolated struct GmailRail: Sendable {
         // produces. Coverage proved it fits the template's shape; nothing
         // proved it read the right number, and the approval queue is where
         // that gets decided.
+        //
+        // `vouched` is what makes that a ladder rather than a permanent label.
+        // On a mailbox with no hand-written parser NOTHING is ever verified at
+        // synthesis — `verify` has no oracle, so `verifiedAgainst` is 0 for
+        // every pattern, forever — and a flag that fires on every row of every
+        // sender is a flag nobody reads. Once the queue itself has vouched for
+        // enough of a pattern's rows (see `PatternTrustPolicy`), it stops.
         var flags = receipt.flags
-        if let learned = parser as? PatternDrivenParser, learned.pattern.verifiedAgainst == 0 {
+        if let learned = parser as? PatternDrivenParser,
+           learned.pattern.verifiedAgainst == 0,
+           !vouched.contains(learned.pattern.id) {
             flags.append(
                 ReviewFlag(
                     reason: .unverifiedPattern,
@@ -448,7 +508,12 @@ nonisolated struct GmailRail: Sendable {
             provenance: .rule(parser.id),
             flags: flags,
             status: .pending,
-            createdAt: .now
+            createdAt: .now,
+            // Kept apart from `provenance`, which a retag overwrites. These two
+            // are what let the approval queue vouch for the parser that read
+            // the email — see `PatternMemory`.
+            readBy: parser.id,
+            readAs: receipt.kind
         )
     }
 
