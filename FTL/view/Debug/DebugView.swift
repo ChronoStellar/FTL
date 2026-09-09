@@ -13,6 +13,7 @@
 //
 
 import SwiftUI
+import UIKit
 import FoundationModels
 
 struct DebugView: View {
@@ -86,6 +87,17 @@ private struct DebugHarness: View {
                 LabeledContent("Name", value: auth.name ?? "—")
                 LabeledContent("Email", value: auth.email ?? "—")
                 Button("Sign out", role: .destructive) { auth.signOut() }
+            }
+
+            // The only thing in the app that runs without a tap, and therefore
+            // the only one whose behaviour is otherwise invisible. Shown here
+            // rather than on a release screen: a sync that found nothing is not
+            // news, and a failed one is not something a person can act on.
+            Section("Auto-sync") {
+                LabeledContent("Last run", value: environment.autoSync.lastResult ?? "not yet this session")
+                Button("Force a sync now") {
+                    Task { _ = await environment.autoSync.syncIfDue(force: true) }
+                }
             }
 
             Section("Gmail") {
@@ -305,6 +317,10 @@ private struct DebugHarness: View {
                         .foregroundStyle(line.hasPrefix("⚠︎") ? .orange : .secondary)
                         .textSelection(.enabled)
                 }
+            }
+
+            Section("Live Trace · Parsers & Agents") {
+                LiveTraceSection()
             }
 
             // Isolates ONE variable at a time. `unsupportedLanguageOrLocale`
@@ -1298,6 +1314,171 @@ private struct DebugHarness: View {
         } catch {
             exportProgress = .failed(error.localizedDescription)
             isExporting = false
+        }
+    }
+}
+
+private struct LiveTraceSection: View {
+    @State private var filter: Filter = .all
+    @State private var copied: Bool = false
+    private var stub: PipelineDebugStub { PipelineDebugStub.shared }
+
+    enum Filter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case agent = "🤖 Agent"
+        case preMade = "📦 Pre-made"
+        case taggers = "🏷️ Taggers"
+
+        var id: String { rawValue }
+    }
+
+    var filteredEvents: [PipelineDebugEvent] {
+        switch filter {
+        case .all:
+            return stub.events
+        case .agent:
+            return stub.events.filter { event in
+                switch event.kind {
+                case .parserMatched(let origin): return origin.isAgent
+                case .taggerApplied(let source): return source.isAgent
+                case .synthesisAttempt: return true
+                default: return false
+                }
+            }
+        case .preMade:
+            return stub.events.filter { event in
+                if case .parserMatched(let origin) = event.kind {
+                    return origin.isPreset
+                }
+                return false
+            }
+        case .taggers:
+            return stub.events.filter { event in
+                switch event.kind {
+                case .taggerApplied, .taggerSkipped: return true
+                default: return false
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Metrics grid
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    metricPill("📦 Pre-made", count: stub.countPreMadeParsers, color: .blue)
+                    metricPill("🤖 Agent Parsers", count: stub.countAgentParsers, color: .purple)
+                    metricPill("🛠️ Hardcoded", count: stub.countHardcodedParsers, color: .orange)
+                }
+                HStack {
+                    metricPill("🤖 Agent Tagger", count: stub.countAgentTaggerCalls, color: .indigo)
+                    metricPill("🧠 Memory Hits", count: stub.countMemoryTaggerHits, color: .teal)
+                    metricPill("⏭️ Skipped", count: stub.countSkippedEmails, color: .gray)
+                }
+            }
+            .padding(.vertical, 4)
+
+            // Actions & Filter
+            HStack {
+                Picker("Filter", selection: $filter) {
+                    ForEach(Filter.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Button(copied ? "Copied!" : "Copy") {
+                    UIPasteboard.general.string = stub.formattedLogDump()
+                    copied = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        copied = false
+                    }
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+
+                Button("Clear") {
+                    stub.clear()
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+            }
+
+            if filteredEvents.isEmpty {
+                Text(stub.events.isEmpty ? "No events recorded yet. Sync Gmail or run corpus to see live parser & agent trace." : "No events matching filter.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(filteredEvents) { event in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(event.badge)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(badgeColor(event.tagColorName).opacity(0.15))
+                                .foregroundStyle(badgeColor(event.tagColorName))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                            Text(event.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Text(event.timestamp.formatted(date: .omitted, time: .standard))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(event.subtitle)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        Text(event.details)
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .padding(5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.secondary.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .textSelection(.enabled)
+                    }
+                    .padding(.vertical, 4)
+                    Divider()
+                }
+            }
+        }
+    }
+
+    private func metricPill(_ label: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.secondary)
+            Text("\(count)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(count > 0 ? color : .secondary)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    private func badgeColor(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "purple": return .purple
+        case "orange": return .orange
+        case "teal": return .teal
+        case "indigo": return .indigo
+        case "green": return .green
+        default: return .gray
         }
     }
 }

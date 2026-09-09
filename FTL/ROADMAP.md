@@ -635,17 +635,20 @@ ones that decide whether it works on anyone else's.
 
 #### Agent first — the decision, and what it takes
 
-The runtime path has a hand-written parser in front of the loop, and the
-precedence rule (`handWritten + learned`) means a learned pattern never reads a
-blu email. The loop is therefore shut out of exactly the sender it can be
-verified against. **The agent reads the mail; hand-written parsers become
-oracles.**
+**Decided and done, 2026-09-09.** The runtime path used to have a hand-written
+parser in front of the loop, and the precedence rule (`handWritten + learned`)
+meant a learned pattern never read a blu email — the loop was shut out of
+exactly the sender it could be verified against, so nothing ever accrued.
+**The agent reads the mail now; hand-written parsers are oracles.**
 
 What makes that safe is not the reference parser winning — it is the approval
 queue, which every row passes through anyway (Invariant 1). A misread amount
 costs a person seeing a wrong number in a queue built for that. The reference
-parser in front is belt-and-braces on a system that already has a belt, and it
-is the reason nothing ever accrues.
+parser in front was belt-and-braces on a system that already has a belt, and it
+was the reason nothing could improve.
+
+Items 1, 2 and 4 below are shipped. 3 and 5 are not, and both are load-bearing
+for the unseen-mailbox target.
 
 1. ✅ **The queue becomes tool 1's oracle.** Done — `PatternMemory`,
    `PatternObservation`, `SwiftDataPatternMemory`, recorded at the gate beside
@@ -685,10 +688,63 @@ is the reason nothing ever accrues.
    The original description of the work: Closes the measured blind spot — 81.9%
    coverage at 0% correctness — and it is what makes a provisional row safe to
    act on. Deterministic, one pass, no model.
-3. **Currency generalisation.** `IndonesianMoney` is the only money parser, so
-   an unseen non-Indonesian mailbox reads nothing. Needs a locale-aware money
-   parser and minor units that are not assumed to be zero. Literally required
-   for the target.
+3. ~~**Currency generalisation.**~~ **Descoped 2026-09-09.** `IndonesianMoney`
+   stays the only money parser, and an unseen mailbox in another currency reads
+   nothing. That is a known and accepted limit, not an oversight: "unseen
+   mailbox" means other banks and other merchants, not other currencies. The
+   measurement stands in the audit if the scope ever widens — 32 emails in this
+   corpus carry `$`/USD that nothing can read, and `Money` assumes zero minor
+   units.
+
+   What replaced it as the priority: **automation**.
+
+#### Automation — the app runs itself up to the queue
+
+Until 2026-09-09 nothing in this app ever ran without a tap. `rail.sync()` had
+exactly one caller and it was inside `#if DEBUG`, so in a release build nothing
+fetched anything, ever. The loop was real, verified, and manual.
+
+The boundary is the one the invariants already draw, so this enforces rather
+than bends it:
+
+| stage | writes to | automated |
+|---|---|---|
+| fetch + parse | `ProvisionalStore` | ✅ recoverable by definition (Invariant 7) |
+| dedup + reversal pairing | flags on pending rows | ✅ recoverable |
+| tag | a suggestion on a pending row | ✅ recoverable |
+| approve | the **ledger** | ❌ never — Invariant 1, `.assist` |
+
+**Everything up to the queue runs itself; the queue is where you show up.**
+
+- ✅ **A. A trigger.** `AutoSync` (`services/Capture/`), owned by
+  `AppEnvironment` so the throttle survives view rebuilds. Fires on first
+  appearance of the signed-in shell (always) and on every return to `.active`
+  (throttled to 15 minutes). Home reloads only when the queue actually grew —
+  `syncIfDue` returns that, so a foreground that found nothing costs no Sheets
+  read. Errors are swallowed: nobody asked for this sync, so nobody is waiting
+  on an answer, and an error banner for a background fetch reports something the
+  person cannot act on. Visible at Settings → Developer → **Auto-sync**.
+- ✅ **B. Out of `#if DEBUG`.** `AutoSync` is the non-DEBUG caller, so the
+  capture path now runs in a release build. The Debug button stays as a dev
+  tool. Checked: no `#if DEBUG` remains anywhere in the capture path, and
+  `gmail.readonly` is requested unconditionally at sign-in.
+- ⬜ **C. Discovery → synthesis → promote, unattended.** The agent extending its
+  own reach, and the one still missing. `PatternDiscovery.run(over:isRead:)`
+  already does discovery→learn; what is missing is an orchestrator that feeds it
+  **live Gmail** instead of the frozen corpus, promotes what clears the bar, and
+  holds a call budget (one sender per launch — the feasibility run produced a
+  30-call runaway, and every loop here is bounded).
+
+**`BGAppRefreshTask` is deliberately not taken yet.** It adds Info.plist surgery
+and a scheduler whose failure mode is silent, on top of a capture path that has
+never run unattended even once. Prove foreground first.
+
+⚠️ **Expectation, from the audit:** even with C working perfectly, on this
+mailbox the agent will appear to do nothing. 878 emails across 70 senders the
+rail never fetches, 142 carrying Rp across 15 senders, and after the volume and
+variance gates exactly **one** qualifies — Grab, already learned. Correct,
+automatic, and visibly idle. The loop gets work at a 3,000–5,000 email
+re-export, or as new senders accumulate.
 4. ✅ **Retire the hand-written parser from the runtime path.** Done. blu ships
    as a preset *pattern* (`Fixtures/preset-patterns.json`), `parsers: []` in
    `makeGmailRail`, and `BluReceiptParser` keeps the one job only it can do —

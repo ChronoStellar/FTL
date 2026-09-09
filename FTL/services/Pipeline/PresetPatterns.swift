@@ -50,6 +50,15 @@ nonisolated enum PresetPatterns {
         return (try? decoder.decode(File.self, from: data))?.patterns ?? []
     }
 
+    /// Cache of preset IDs that ship with the app.
+    static var presetIDs: Set<String> {
+        Set(load().map(\.id))
+    }
+
+    static func isPreset(id: String) -> Bool {
+        presetIDs.contains(id)
+    }
+
     private struct File: Decodable {
         let patterns: [ExtractionPattern]
     }

@@ -183,10 +183,15 @@ nonisolated struct GmailRail: Sendable {
             guard let parser = parsers.first(where: { $0.canParse(email) }) else {
                 logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: nil))
                 result.skipped += 1
+                PipelineDebugStub.recordParserSkipped(email: email, activeParserIDs: parsers.map(\.id.rawValue))
                 continue
             }
 
-            switch parser.parse(email) {
+            let isVouched = (parser as? PatternDrivenParser).map { vouched.contains($0.pattern.id) } ?? false
+            let parseResult = parser.parse(email)
+            PipelineDebugStub.recordParserMatch(email: email, parser: parser, result: parseResult, isVouched: isVouched)
+
+            switch parseResult {
             case .parsed(let receipt):
                 let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
                 entries.append(entry)

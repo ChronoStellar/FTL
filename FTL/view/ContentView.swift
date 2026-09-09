@@ -14,6 +14,11 @@ import SwiftUI
 struct ContentView: View {
     let environment: AppEnvironment
 
+    /// Drives the one automatic thing in the app — see `AutoSync`. Watched
+    /// here, on the signed-in shell, because that is the narrowest place that
+    /// is only alive when there is a mailbox to sync and a queue to put rows in.
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var home: HomeViewModel
     @State private var path: [Route] = []
     @State private var sheet: SheetRoute?
@@ -50,8 +55,28 @@ struct ContentView: View {
         .task {
             await home.load()
             offerIncomeSplitIfNeeded()
+            // First launch always checks. The throttle only suppresses the
+            // REPEAT foregrounds below, so opening the app is always a fresh
+            // look — which is the whole behaviour a person notices.
+            await syncMail(force: true)
+        }
+        // Coming back to the app is the trigger. Throttled inside `AutoSync`,
+        // so flicking between apps costs nothing.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await syncMail() }
         }
         .sheet(item: $sheet, content: sheetContent)
+    }
+
+    /// Fetches in the background and refreshes Home only if something landed.
+    ///
+    /// Reloading unconditionally would re-read the whole Sheet on every
+    /// foreground to change nothing. `syncIfDue` already knows whether the queue
+    /// grew, so that is what decides.
+    private func syncMail(force: Bool = false) async {
+        guard await environment.autoSync.syncIfDue(force: force) else { return }
+        await home.load()
     }
 
     /// Once, live-only, and only when there's real nothing set yet — a Total

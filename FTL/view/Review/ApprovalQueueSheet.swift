@@ -220,9 +220,9 @@ private struct QueueEntryCard: View {
     private var provenanceLine: String {
         var parts = [entry.transaction.source.rawValue.capitalized]
         switch entry.provenance {
-        case .rule(let id): parts.append(id.rawValue)
-        case .model: parts.append("model")
-        case .manual: parts.append("you")
+        case .rule(let id): parts.append(id.origin.badgeText)
+        case .model: parts.append("🤖 model")
+        case .manual: parts.append("✍️ you")
         }
         return parts.joined(separator: " · ")
     }

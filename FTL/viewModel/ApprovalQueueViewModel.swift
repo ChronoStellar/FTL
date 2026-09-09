@@ -106,9 +106,9 @@ final class ApprovalQueueViewModel {
 
         switch suggested.basis {
         case .memory(let agreed, let total):
-            return "Suggested \(bucket) — you chose it \(agreed) of the last \(total) times here"
+            return "🧠 Memory: Suggested \(bucket) — you chose it \(agreed) of the last \(total) times here"
         case .model:
-            return "Suggested \(bucket) — a merchant you haven't filed before"
+            return "🤖 Agent: Suggested \(bucket) — proposed by on-device model (new merchant)"
         }
     }
 

@@ -73,6 +73,14 @@ final class AppEnvironment {
     /// put unattended writes at 67% correct.
     let trustLevel: TrustLevel = .assist
 
+    /// Fetches mail when the app becomes active, without anybody asking.
+    ///
+    /// Lives here rather than in a view because the throttle has to survive
+    /// every screen rebuild — a per-view timer would re-fetch on each
+    /// navigation. Held lazily so `sample()` and a signed-out session build one
+    /// that simply never has a rail to run.
+    private(set) lazy var autoSync = AutoSync { [weak self] in self?.makeGmailRail() }
+
     private init(
         auth: GoogleAuthManager,
         ledger: LedgerStore,

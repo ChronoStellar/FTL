@@ -69,6 +69,15 @@ actor DefaultApprovalService: ApprovalService {
                 ? .accepted
                 : .correctedKind
         }
+        for entry in pending {
+            let v = entry.resolution.kind == (entry.readAs ?? entry.resolution.kind) ? "accepted" : "correctedKind"
+            PipelineDebugStub.recordSettlement(
+                entryID: entry.id,
+                merchant: entry.transaction.merchantRaw,
+                parserOrigin: entry.readBy?.origin,
+                verdict: v
+            )
+        }
         return ApprovalResult(written: written, failed: [])
     }
 
@@ -81,6 +90,14 @@ actor DefaultApprovalService: ApprovalService {
             rejected.append(entry)
         }
         await observePatterns(rejected) { _ in .dropped }
+        for entry in rejected {
+            PipelineDebugStub.recordSettlement(
+                entryID: entry.id,
+                merchant: entry.transaction.merchantRaw,
+                parserOrigin: entry.readBy?.origin,
+                verdict: "dropped"
+            )
+        }
     }
 
     /// Attributes a settled row to the learned pattern that produced it.

@@ -15,4 +15,13 @@ nonisolated struct RuleID: Sendable, Hashable, Codable, RawRepresentable {
 
     /// The user typed it in.
     static let manualEntry = RuleID(rawValue: "manual-entry")
+
+    /// Classifies the origin of this rule (Pre-made Preset vs Agent Learned vs Hardcoded Swift vs Manual).
+    var origin: ParserOrigin {
+        PipelineDebugStub.classify(ruleID: self)
+    }
+
+    var debugBadge: String {
+        origin.badgeText
+    }
 }

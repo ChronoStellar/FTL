@@ -83,6 +83,16 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
 
         for (context, index) in zip(contexts, taggable) {
             var suggestion = Self.remembered(context.merchant, in: known, valid: valid)
+            if let mem = suggestion,
+               case .memory(let agreed, let total) = mem.basis,
+               let catName = categories.first(where: { $0.id == mem.categoryID })?.name {
+                PipelineDebugStub.recordTaggerDecision(
+                    merchant: context.merchant,
+                    amount: context.amount,
+                    categoryName: catName,
+                    source: .memory(agreed: agreed, total: total)
+                )
+            }
 
             // The model is asked ONLY for a merchant you have no opinion about,
             // and only within the call budget.
@@ -90,12 +100,22 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
             // "No suggestion" and "nothing known" are different states, and
             // conflating them is what made the most-used merchant the most
             // expensive one — see `MerchantTagHistory.hasOpinion`.
-            if suggestion == nil,
-               Self.worthAsking(context.merchant, in: known),
-               let proposer, modelCalls < maxModelCalls {
-                modelCalls += 1
-                if let proposed = await proposer.propose(for: context, among: categories) {
-                    suggestion = TagSuggestion(categoryID: proposed, basis: .model)
+            if suggestion == nil {
+                if !Self.worthAsking(context.merchant, in: known) {
+                    PipelineDebugStub.recordTaggerSkipped(
+                        merchant: context.merchant,
+                        reason: "merchant already settled or has conflicted opinion"
+                    )
+                } else if modelCalls >= maxModelCalls {
+                    PipelineDebugStub.recordTaggerSkipped(
+                        merchant: context.merchant,
+                        reason: "model call budget reached (\(maxModelCalls))"
+                    )
+                } else if let proposer {
+                    modelCalls += 1
+                    if let proposed = await proposer.propose(for: context, among: categories) {
+                        suggestion = TagSuggestion(categoryID: proposed, basis: .model)
+                    }
                 }
             }
 

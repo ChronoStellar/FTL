@@ -66,7 +66,10 @@ nonisolated struct FoundationModelTagger: TagProposer {
         // the whole prompt — see the note on `FoundationModelSynthesizer.prompt`
         // for how that was measured, and why the framing here is English prose
         // wrapped around a merchant name that very often is not.
-        guard case .allow = languageGate.canProcess(prompt, for: .classification) else { return nil }
+        guard case .allow = languageGate.canProcess(prompt, for: .classification) else {
+            PipelineDebugStub.recordTaggerSkipped(merchant: context.merchant, reason: "languageGate refused prompt")
+            return nil
+        }
 
         do {
             let session = LanguageModelSession(instructions: Self.instructions)
@@ -75,11 +78,18 @@ nonisolated struct FoundationModelTagger: TagProposer {
                 generating: ProposedTag.self,
                 options: options
             )
-            return Self.resolve(response.content.bucket, among: categories)
+            let resolved = Self.resolve(response.content.bucket, among: categories)
+            if let resolved, let cat = categories.first(where: { $0.id == resolved }) {
+                PipelineDebugStub.recordTaggerDecision(
+                    merchant: context.merchant,
+                    amount: context.amount,
+                    categoryName: cat.name,
+                    source: .agentModel(modelName: "SystemLanguageModel", thinking: response.content.thinking)
+                )
+            }
+            return resolved
         } catch {
-            // A refused or failed call is a row with no suggestion on it. There
-            // is nothing to retry against and nothing to fall back to that
-            // wouldn't be a guess.
+            PipelineDebugStub.recordTaggerSkipped(merchant: context.merchant, reason: "model generation error (\(error.localizedDescription))")
             return nil
         }
     }
