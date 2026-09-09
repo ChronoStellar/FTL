@@ -103,6 +103,8 @@ nonisolated struct GmailRail: Sendable {
         var flagged = 0
         /// Rows that look like the other rail's copy of the same purchase.
         var duplicates = 0
+        /// Refunds paired with the charge they undo.
+        var reversals = 0
         /// Rows that arrived with a bucket already suggested. Reported because
         /// the difference between "the tagger is off" and "the tagger had
         /// nothing to say" is otherwise invisible from the queue.
@@ -116,6 +118,7 @@ nonisolated struct GmailRail: Sendable {
             if tagged > 0 { parts.append("\(tagged) pre-tagged") }
             if flagged > 0 { parts.append("\(flagged) flagged") }
             if duplicates > 0 { parts.append("\(duplicates) possible duplicates") }
+            if reversals > 0 { parts.append("\(reversals) reversals") }
             if skipped + notAPurchase > 0 { parts.append("\(skipped + notAPurchase) not receipts") }
             return parts.joined(separator: " · ")
         }
@@ -190,6 +193,12 @@ nonisolated struct GmailRail: Sendable {
             result.duplicates = entries.filter { entry in
                 entry.flags.contains { $0.reason == .possibleDuplicate }
             }.count
+
+            entries = try await flaggingReversals(entries)
+            result.reversals = entries.filter { entry in
+                entry.flags.contains { $0.reason == .reversal }
+            }.count
+
             // Last, after duplicates are flagged and before anything is stored.
             //
             // After, because a row about to be dropped as somebody else's copy
@@ -286,6 +295,102 @@ nonisolated struct GmailRail: Sendable {
 
     /// See `isSameCharge` — measured, not assumed.
     private static let dateSlackDays = 1
+
+    // MARK: - Reversals
+
+    /// **A refund is a dedup problem.** One purchase, two rows, arriving weeks
+    /// apart instead of a day apart — so it is found the same way a duplicate
+    /// is, by the same fingerprint buckets, and settled the same way: flagged
+    /// for a person, never netted.
+    ///
+    /// Netting is what this deliberately does NOT do. A refund is `.nonSpend`
+    /// and excluded from every ceiling (Invariant 5), so a Rp 42.500 purchase
+    /// you were refunded still reads as Rp 42.500 of spending. Making the
+    /// refund reduce that total would be a non-spend row moving a spend figure,
+    /// which contradicts the invariant rather than extending it — and it would
+    /// need to be certain WHICH purchase was reversed, which is exactly the
+    /// judgement `possibleDuplicate` already refuses to make on its own. What
+    /// the person gets instead is the pair, named: "Reverses TOKO ROTI MANIS,
+    /// 12 Sep". They decide what it means.
+    ///
+    /// Three tests, and each one exists to stop a specific wrong pairing:
+    ///
+    /// · **Exact amount.** Same choice, same reason as `isSameCharge`. A
+    ///   partial refund therefore does not pair, and that is the honest state:
+    ///   a tolerance wide enough to catch partials is wide enough to pair a
+    ///   refund with an unrelated purchase of a similar size.
+    /// · **Same normalized merchant.** The one test duplicates don't use, and
+    ///   here it carries the weight: two Rp 50.000 charges a fortnight apart are
+    ///   common, and the merchant is what says the refund belongs to this one.
+    /// · **The charge came FIRST.** A reversal cannot precede what it reverses.
+    ///   Without this, two refunds in a window pair with each other.
+    private func flaggingReversals(_ entries: [ProvisionalEntry]) async throws -> [ProvisionalEntry] {
+        var flagged = entries
+        for index in flagged.indices {
+            let refund = flagged[index]
+            guard refund.resolution.nonSpendType == .refund else { continue }
+
+            // One fetch per bucket in the lookback, which is why this runs only
+            // for rows already known to be refunds. Those are rare — a handful
+            // of blu's 116 — and the alternative is widening `dateWindowDays`
+            // for every duplicate check in the app.
+            var candidates: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
+            for bucket in refund.transaction.fingerprint.lookingBack(days: Self.reversalWindowDays) {
+                for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
+                    candidates[candidate.id] = candidate
+                }
+            }
+            // The purchase may well be in this same batch — a fetch after two
+            // weeks away brings both — so the batch is searched too.
+            for candidate in entries where candidate.id != refund.id {
+                candidates[candidate.id] = candidate
+            }
+
+            let charge = candidates.values
+                .filter { Self.isReversed(by: refund, $0) }
+                // Nearest first: if a merchant charged the same amount twice,
+                // the refund almost certainly undoes the more recent one.
+                .max { $0.transaction.date < $1.transaction.date }
+
+            guard let charge else { continue }
+            flagged[index].flags.append(
+                ReviewFlag(
+                    reason: .reversal,
+                    detail: "Undoes \(charge.transaction.merchantRaw) on "
+                        + charge.transaction.date.formatted(.dateTime.day().month(.abbreviated))
+                )
+            )
+        }
+        return flagged
+    }
+
+    /// Refunds are slow. blu's arrive same-week; a card reversal through an
+    /// acquirer can take a fortnight, and a disputed one longer. Thirty days is
+    /// wide enough to catch the ordinary case and short enough that a merchant
+    /// you use monthly doesn't pair with last month's identical charge.
+    ///
+    /// Unmeasured, unlike `dateSlackDays` — there are 4 refunds in the corpus
+    /// and none of them has its original charge in it, because the bodies were
+    /// stripped before this could be looked at. Revisit on real pairs.
+    private static let reversalWindowDays = 30
+
+    private static func isReversed(by refund: ProvisionalEntry, _ candidate: ProvisionalEntry) -> Bool {
+        guard candidate.resolution.kind == .spend,
+              candidate.transaction.amount == refund.transaction.amount,
+              MerchantID(normalizing: candidate.transaction.merchantRaw)
+                  == MerchantID(normalizing: refund.transaction.merchantRaw)
+        else { return false }
+
+        let charged = candidate.transaction.date
+        let refunded = refund.transaction.date
+        guard charged <= refunded else { return false }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: charged),
+            to: Calendar.current.startOfDay(for: refunded)
+        ).day ?? .max
+        return days <= reversalWindowDays
+    }
 
     private static func ruleName(of entry: ProvisionalEntry) -> String {
         if case .rule(let id) = entry.provenance { return id.rawValue }

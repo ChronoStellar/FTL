@@ -20,8 +20,13 @@
 //  · A row a parser **could not read** — `.unparseable`, amount zero. Its
 //    merchant is a subject line. Suggesting a bucket from that is guessing on
 //    top of a known failure.
-//  · A row that already carries a **category**. Nothing does today, but a
-//    suggestion overwriting a decision is the one thing this must never do.
+//  · A row a **person has settled**. `provenance == .manual` means someone
+//    already chose, and a suggestion arriving on top of that is the app
+//    overwriting a decision — the one thing this must never do.
+//
+//  A row carrying a category from an earlier SUGGESTION is fair game, though,
+//  and `refresh` replaces it whenever memory now has something to say. A stored
+//  model guess is not a decision; yours is.
 //
 
 import Foundation
@@ -33,7 +38,7 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
     private let proposer: (any TagProposer)?
     /// Where the buckets come from. The sheet is canonical (Stage 0.5): the app
     /// adapts to the categories a person set up, never the other way round.
-    private let ledger: LedgerStore
+    private let ledger: any CategorySource
 
     /// The call budget, per pass.
     ///
@@ -46,7 +51,7 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
     init(
         memory: TagMemory,
         proposer: (any TagProposer)? = nil,
-        ledger: LedgerStore,
+        ledger: any CategorySource,
         maxModelCalls: Int = 8
     ) {
         self.memory = memory

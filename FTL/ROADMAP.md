@@ -622,15 +622,37 @@ Ordered by what actually blocks something.
    reverses; a duplicate split across two bank charges (5.000 + 46.500 vs 51.500)
    cannot be caught by exact matching and is pinned unflagged.
 
-   The first half of that is now a **decision for you, not an oversight.** A
-   refund is labelled `nonSpend`/`.refund` and excluded from every ceiling,
-   which is Invariant 5 working exactly as written — and it means a Rp 42.500
-   purchase you were refunded still reads as Rp 42.500 of spending, with the
-   reversal sitting in its own row saying so. Making it offset would mean a
-   non-spend row moving a spend total, which contradicts the invariant rather
-   than extending it, and it needs a rule for *which* purchase it reverses that
-   nothing currently has. Labelled and visible is the honest state; netting is a
-   change to what a ceiling means and should be argued for on its own.
+   ✅ **A refund is a dedup problem, and is now handled as one.** One purchase,
+   two rows, arriving weeks apart instead of a day apart — so it is found by the
+   same fingerprint buckets `possibleDuplicate` uses and settled the same way:
+   flagged as a pair, never merged. A refund now arrives saying *"Undoes TOKO
+   ROTI MANIS on 20 Sep"*.
+
+   The reason it needed its own pass rather than a widened duplicate check is
+   the window. `Fingerprint.adjacent` is ±1 bucket, which is ±3 days — right for
+   two rails reporting one purchase, useless for a reversal that takes a
+   fortnight. Widening `dateWindowDays` for everyone would flood every duplicate
+   check, so `Fingerprint.lookingBack(days:)` lets a caller that needs a longer
+   reach say so and pay for it in fetches. Refunds are rare enough that it is
+   cheap, and rare enough that only rows already read as `.refund` trigger it.
+
+   Three tests, each stopping a specific wrong pairing: **exact amount** (same
+   choice as `isSameCharge` — a tolerance wide enough for partials is wide
+   enough to pair unrelated purchases), **same normalized merchant** (the test
+   duplicates don't need and this one does: two Rp 50.000 charges a fortnight
+   apart are ordinary, and the merchant is what says which one), and **the
+   charge came first** (without it, two refunds in a window pair with each
+   other).
+
+   Still not netted, and that stays deliberate: the refund is non-spend, the
+   purchase is spend, and a Rp 42.500 purchase you were refunded still reads as
+   Rp 42.500 with its reversal beside it. Netting would be a non-spend row
+   moving a spend total — a change to what a ceiling means, and the person
+   holding the pair can now see it and decide.
+
+   `reversalWindowDays` is 30 and is **unmeasured**, unlike `dateSlackDays`.
+   There are 4 refunds in the corpus and not one of them has its original charge
+   in it. Revisit on real pairs.
 
 ---
 
@@ -664,7 +686,42 @@ What it does NOT do, and why:
   Transport" *and* "Travel" is a bucket you didn't pick chosen by a rule nobody
   can read.
 
-Four things worth knowing that only came out of building it:
+**The first version put the suggestion in the wrong place, and using it showed
+that immediately.** Tagging ran once, at capture, and was frozen there. So:
+
+- a sync of five rows from one merchant looked up what was known *before* you
+  had settled any of them, and settling the first taught the other four nothing;
+- a row already waiting in the queue from last week never got a suggestion at
+  all, however much you had taught it since.
+
+The suggestion was buried at the start of the pipeline, so everything the queue
+learned went unused until the next fetch — which is the opposite of the design,
+where the queue *is* the training signal.
+
+The fix is to split the tool by cost rather than run it once:
+
+| | when | what it does |
+|---|---|---|
+| `tag` | once, at capture | may call the model — 3.8s p95, bounded, off the render path |
+| `refresh` | **every queue load** | memory lookup only; no model, no network |
+
+`tag` is now a cache of the expensive half; `refresh` re-derives the cheap half
+from what you have decided *by now*, and memory beats a stored model guess
+whenever both exist. It writes only the rows whose suggestion actually changed,
+and it will not touch a row whose provenance is `.manual` — that bucket is
+someone's decision, not a slot to overwrite. Verified: three rows from one
+merchant, nothing suggested at first; settle two and the third comes back
+`groceries · memory(2 of 2)`, across a `HOKKY SUPERMARKET` / `hokky supermarket`
+spelling difference.
+
+**The dashboard was stale for the same reason** — it reloaded on sheet dismiss
+and nothing else, so approving five rows moved nothing behind the sheet until it
+closed. The queue now calls back per settled row (`onSettled`), and Home reloads
+without forcing: `append` already invalidates the ledger cache, so the next read
+is fresh for free. The forced reload on dismiss stays, for everything that
+changed from somewhere else.
+
+Four more things worth knowing that only came out of building it:
 
 - **A suggestion must never be free to be right.** The first cut let memory
   suggest "not a spend" for a merchant you consistently mark that way. But an

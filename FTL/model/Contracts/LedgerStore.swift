@@ -9,7 +9,21 @@
 
 import Foundation
 
-nonisolated protocol LedgerStore: Sendable {
+/// Just the bucket list.
+///
+/// Split out so a collaborator that only needs to know what the buckets ARE
+/// doesn't have to be handed the whole ledger — `DefaultPurchaseTagger` needs
+/// the taxonomy and has no business being able to append a transaction. Same
+/// idea as `DomainScopedParser`: the narrowest thing that says what a caller
+/// actually depends on.
+///
+/// The sheet is canonical (Stage 0.5): whatever it says the buckets are is what
+/// the app offers, including to the model.
+nonisolated protocol CategorySource: Sendable {
+    func categories() async throws -> [SpendCategory]
+}
+
+nonisolated protocol LedgerStore: CategorySource {
     /// Append is idempotent on `LedgerTransaction.id`. A retry after an ambiguous
     /// failure must read back by id and skip what already landed — never append
     /// twice and never assume the first attempt failed.
@@ -23,8 +37,6 @@ nonisolated protocol LedgerStore: Sendable {
     func transactions(in interval: DateInterval) async throws -> [LedgerTransaction]
 
     func transaction(id: LedgerTransaction.ID) async throws -> LedgerTransaction?
-
-    func categories() async throws -> [SpendCategory]
 
     /// Removes a transaction from the canonical store.
     func delete(_ id: LedgerTransaction.ID) async throws

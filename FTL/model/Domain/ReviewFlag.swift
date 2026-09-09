@@ -30,6 +30,15 @@ nonisolated struct ReviewFlag: Sendable, Hashable, Codable, Identifiable {
         /// Coverage says it fits the template's shape; only a person can say
         /// it read the right number.
         case unverifiedPattern
+        /// A refund that lines up with a charge already captured.
+        ///
+        /// Structurally the same problem as `possibleDuplicate` — two rows, one
+        /// event, found by the same fingerprint buckets — and handled the same
+        /// way: flagged, never netted. What differs is the pair's meaning and
+        /// therefore its window. A duplicate is the same purchase seen by two
+        /// rails within a day; a reversal is one purchase and its undoing,
+        /// which arrive weeks apart.
+        case reversal
 
         /// What the user reads. Stated as an observation, never as a question and
         /// never as an instruction — the flag says what was noticed, the person
@@ -45,6 +54,7 @@ nonisolated struct ReviewFlag: Sendable, Hashable, Codable, Identifiable {
             case .languageUnsupported: return "Not readable on-device"
             case .largeAmount: return "Large amount"
             case .unverifiedPattern: return "Learned pattern"
+            case .reversal: return "Reverses a charge"
             }
         }
     }

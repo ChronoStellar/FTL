@@ -600,7 +600,7 @@
     },
     {
       "name": "learned-pattern-refund",
-      "note": "A refund read by a LEARNED pattern rather than a hand-written parser. Before markers carried a type this could only ever come out as `nonSpend` with no subtype, or — if the model proposed no marker at all — as spending, which adds a reversal to the total it reverses. No flag, for the same reason blu's refunds carry none: 'Refund Processed' is the sender's own words, not the app's inference.",
+      "note": "A refund read by a LEARNED pattern rather than a hand-written parser. Before markers carried a type this could only ever come out as `nonSpend` with no subtype, or — if the model proposed no marker at all — as spending, which adds a reversal to the total it reverses. It also PAIRS with `learned-pattern-purchase`: same merchant, same amount, a day later, so it carries `reversal` naming the charge it undoes. Flagged, never netted — the refund stays non-spend and the purchase stays spend, and the person decides what the pair means. No `ambiguousKind`: 'Refund Processed' is the sender's own words.",
       "email": {
         "id": "fx-023",
         "from": "notifikasi@zenpay.example.com",
@@ -616,7 +616,8 @@
         "kind": "nonSpend",
         "nonSpendType": "refund",
         "flags": [
-          "unverifiedPattern"
+          "unverifiedPattern",
+          "reversal"
         ]
       },
       "knownIssue": null
@@ -664,6 +665,29 @@
         "flags": [
           "unverifiedPattern",
           "ambiguousKind"
+        ]
+      },
+      "knownIssue": null
+    },
+    {
+      "name": "learned-pattern-partial-refund-does-not-pair",
+      "note": "A partial refund: same merchant, half the amount. It stays a lone non-spend row with NO reversal flag, and that is the deliberate state — matching is on the exact amount, the same choice `isSameCharge` makes, because a tolerance wide enough to catch partials is wide enough to pair a refund with an unrelated purchase of a similar size. Pinned so the tolerance cannot widen without this case going red.",
+      "email": {
+        "id": "fx-026",
+        "from": "notifikasi@zenpay.example.com",
+        "subject": "ZenPay Refund Processed",
+        "snippet": "ZenPay Refund Processed",
+        "internalDate": "1790208000000",
+        "bodyPlain": "Refund Processed\nCounterparty TOKO ROTI MANIS\nTotal Rp 20.000\nReference ZP-88217"
+      },
+      "expect": {
+        "verdict": "queued",
+        "amount": 20000,
+        "merchantRaw": "TOKO ROTI MANIS",
+        "kind": "nonSpend",
+        "nonSpendType": "refund",
+        "flags": [
+          "unverifiedPattern"
         ]
       },
       "knownIssue": null
