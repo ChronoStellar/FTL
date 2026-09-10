@@ -110,7 +110,13 @@ nonisolated struct GmailRail: Sendable {
     ///
     /// Loaded per sync rather than at init, so a pattern promoted while the app
     /// is running is live on the next fetch.
-    private func activeParsers() async -> [any ReceiptParser] {
+    ///
+    /// Internal, not private: `DiscoverySync` needs the same precedence to
+    /// decide what counts as "unread" — an unknown sender that discovery has
+    /// already learned, but that hasn't synced yet, should not be re-offered
+    /// to the model on the next launch. Duplicating this logic instead of
+    /// sharing it is how the two definitions of "already readable" drift.
+    func activeParsers() async -> [any ReceiptParser] {
         let learned = (try? await patterns?.active()) ?? []
         // A learned pattern outranks a preset for the same sender and layout:
         // the preset is a starting point, and something measured against real

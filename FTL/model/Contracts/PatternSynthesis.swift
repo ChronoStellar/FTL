@@ -336,15 +336,30 @@ nonisolated struct PatternSynthesisPolicy: Sendable {
     /// from before it is worth a person's attention.
     var coverageThreshold = 0.9
 
-    /// How much a layout's figures must move before it is worth a model call at
-    /// all. See `SenderTriage.Template.amountVariance`.
+    /// How many DIFFERENT figure-fingerprints a layout must produce before it is
+    /// worth a model call. See `SenderTriage.Template.distinctAmounts`.
     ///
-    /// Sits in the middle of a wide measured gap — receipt layouts score 0.88
-    /// to 1.00, brochures 0.04 to 0.12 — so it is a real separation rather than
-    /// a tuned number. This is the difference between an agent that goes at
-    /// unknown senders on its own and one that spends its call budget learning
-    /// to read Apple's storage-upgrade prices.
-    var minimumAmountVariance = 0.5
+    /// This is the check that lets the agent point itself at unknown senders
+    /// without spending its budget learning to read a discount banner. Ranked by
+    /// volume alone, the top candidates in the real corpus are Apple's "your
+    /// iCloud storage is full" and Traveloka's discount campaign — both
+    /// templated, both full of Rp, neither a transaction. A pattern learned from
+    /// either reads a figure out of every email and scores 1.0 coverage, which
+    /// is exactly the failure coverage cannot detect.
+    ///
+    /// An absolute count, not a share of the mail. It was a ratio (≥0.5) until
+    /// 2026-09-09, and the ratio's denominator is your email count — so it was
+    /// bounded above by (distinct fingerprints) ÷ (how much you use the sender),
+    /// and a merchant got *harder* to learn the more you transacted with it.
+    /// Measured, real senders produce 10–50 distinct fingerprints and every
+    /// brochure in the corpus produces exactly ONE, so five sits in a 10× gap.
+    ///
+    /// Widening the scan window was tried at the same time and REJECTED on the
+    /// measurement: falling back to the whole body when the head yields nothing
+    /// takes Traveloka from 1 fingerprint to 14 and turns a brochure into a
+    /// candidate. A promotion has no transaction block, and finding no figures
+    /// in the head is the honest signal for that.
+    var minimumDistinctAmounts = 5
 
     static let `default` = PatternSynthesisPolicy()
 }
@@ -384,7 +399,7 @@ nonisolated enum SynthesisOutcome: Sendable {
     /// of transactions. Refused BEFORE the model call, not after: this is the
     /// check that lets the loop point itself at unknown senders without
     /// spending its budget learning to read a discount banner.
-    case notTransactional(amountVariance: Double)
+    case notTransactional(distinctAmounts: Int, of: Int)
     case gated(GateDecision.Reason)
 }
 

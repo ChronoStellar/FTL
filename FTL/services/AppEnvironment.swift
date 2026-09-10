@@ -81,6 +81,11 @@ final class AppEnvironment {
     /// that simply never has a rail to run.
     private(set) lazy var autoSync = AutoSync { [weak self] in self?.makeGmailRail() }
 
+    /// The agent extending its own reach: discovery → synthesis → promote,
+    /// unattended. See `DiscoverySync` for why it is a separate trigger from
+    /// `autoSync` rather than folded into it.
+    private(set) lazy var discoverySync = DiscoverySync { [weak self] in self?.makeDiscoveryContext() }
+
     private init(
         auth: GoogleAuthManager,
         ledger: LedgerStore,
@@ -281,6 +286,32 @@ final class AppEnvironment {
             presets: PresetPatterns.load(),
             tagger: makePurchaseTagger(),
             trust: patternMemory
+        )
+    }
+
+    /// What `discoverySync` needs to run one bounded sweep, or nil under the
+    /// same conditions as `makeGmailRail()` — discovery needs the same
+    /// mailbox and the same place to store what it learns, and it reuses the
+    /// rail's own `activeParsers()` so "unread" means the same thing in both
+    /// places (see `DiscoverySync.Context.activeParsers`).
+    func makeDiscoveryContext() -> DiscoverySync.Context? {
+        guard isLive, let patterns, let rail = makeGmailRail() else { return nil }
+        return DiscoverySync.Context(
+            source: GmailExporter(auth: auth),
+            discovery: PatternDiscovery(
+                learner: DefaultPatternLearner(
+                    synthesizer: FoundationModelSynthesizer(),
+                    // The only sender this can verify against a real oracle
+                    // is blu — everything else falls through to coverage,
+                    // same as the manual "Discovery" run in the Debug screen.
+                    oracle: ParserOracle(BluReceiptParser())
+                ),
+                // "One sender per launch" — see DiscoverySync for why this is
+                // tighter than the Debug screen's manual button (3).
+                maxSendersPerRun: 1
+            ),
+            patterns: patterns,
+            activeParsers: rail.activeParsers
         )
     }
 

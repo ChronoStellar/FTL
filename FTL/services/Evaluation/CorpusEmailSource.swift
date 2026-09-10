@@ -85,6 +85,12 @@ actor InMemoryCaptureLog: CaptureLog {
 
     func recentlySeenCount() async throws -> Int { seen.count }
 
+    /// Forgets everything, so one harness run can sync the SAME mail twice —
+    /// once with nothing able to read it, once after patterns exist. Without
+    /// this the second pass reports every email as already handled and measures
+    /// nothing.
+    func forget() { seen.removeAll(); entries.removeAll() }
+
     /// What the rail decided about each message, kept so a fixture run can
     /// assert on the verdict — including the ones that produce no row at all.
     /// `notAPurchase` and `skipped` are outcomes worth pinning: a promo that

@@ -74,8 +74,8 @@ nonisolated struct DefaultPatternLearner: PatternLearner {
         // if the layout's figures never change, it is a price list rather than
         // a ledger. Checked before the evidence bar because a brochure with
         // plenty of evidence is still a brochure.
-        guard template.amountVariance >= policy.minimumAmountVariance else {
-            return .notTransactional(amountVariance: template.amountVariance)
+        guard template.distinctAmounts >= policy.minimumDistinctAmounts else {
+            return .notTransactional(distinctAmounts: template.distinctAmounts, of: fromSender.count)
         }
 
         // Enough to verify against, not merely enough to read. A pattern perfect

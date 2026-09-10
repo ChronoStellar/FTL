@@ -80,6 +80,9 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
 
         var tagged = entries
         var modelCalls = 0
+        /// Merchants the model has already answered for in THIS batch. The
+        /// outer optional is "did we ask"; the inner is "did it say anything".
+        var asked: [MerchantID: CategoryID?] = [:]
 
         for (context, index) in zip(contexts, taggable) {
             var suggestion = Self.remembered(context.merchant, in: known, valid: valid)
@@ -112,9 +115,28 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
                         reason: "model call budget reached (\(maxModelCalls))"
                     )
                 } else if let proposer {
-                    modelCalls += 1
-                    if let proposed = await proposer.propose(for: context, among: categories) {
-                        suggestion = TagSuggestion(categoryID: proposed, basis: .model)
+                    // Once per MERCHANT, not once per row.
+                    //
+                    // The budget counts model calls, and asking per row spends
+                    // it on rows rather than on questions: a sync of 45 rows
+                    // across 20 merchants used all 8 calls on the first 8 rows
+                    // and left later rows from merchants it had ALREADY
+                    // answered untagged. Measured on a real device run —
+                    // `APOTEK SEHAT JAYA` appeared twice, the first row got
+                    // `Subscriptions` and the second got nothing.
+                    //
+                    // Memory cannot cover this: it only fills from approvals,
+                    // and `minimumDecisions` is 2, so a merchant seen twice in
+                    // one batch never benefits from its own first row. Caching
+                    // the answer for the batch is what makes the budget buy
+                    // merchants instead of rows.
+                    if let cached = asked[context.merchant] {
+                        suggestion = cached.map { TagSuggestion(categoryID: $0, basis: .model) }
+                    } else {
+                        modelCalls += 1
+                        let proposed = await proposer.propose(for: context, among: categories)
+                        asked[context.merchant] = .some(proposed)
+                        suggestion = proposed.map { TagSuggestion(categoryID: $0, basis: .model) }
                     }
                 }
             }

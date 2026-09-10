@@ -81,6 +81,36 @@ nonisolated enum SenderTriage: Sendable {
         /// every email and scores 1.0 coverage, which is exactly the failure
         /// `PatternVerifier.coverage` warns it cannot catch.
         let amountVariance: Double
+
+        /// How many DIFFERENT figure-fingerprints this layout produced, as an
+        /// absolute count rather than a share of the mail.
+        ///
+        /// This is what the gate reads now, and `amountVariance` is kept beside
+        /// it because a ratio is the more readable number in a report.
+        ///
+        /// The ratio was the gate until 2026-09-09 and had one structural
+        /// fault: its denominator is your mail count, so it is bounded above by
+        /// (how many distinct fingerprints the sender produces) ÷ (how much you
+        /// use it). A warung with one line item and five prices scores 0.50 at
+        /// ten receipts and 0.10 at fifty — **the more you use a merchant, the
+        /// less learnable it becomes**, which is exactly backwards for an app
+        /// whose whole premise is learning the senders you actually transact
+        /// with.
+        ///
+        /// Measured over the real corpus, the absolute count separates the same
+        /// senders more cleanly and does not move with volume:
+        ///
+        ///     blu                   50 distinct  ┐
+        ///     blu/bluvirtual        35 distinct  │ real receipts
+        ///     grab/compliments      10 distinct  │
+        ///     grab/diterbitkan      10 distinct  ┘
+        ///     apple                  1 distinct  ┐
+        ///     traveloka/helvetica    1 distinct  │ brochures
+        ///     mandiri                1 distinct  ┘
+        ///
+        /// Every brochure in the corpus produced exactly ONE. A floor of five
+        /// sits in a 10× gap rather than on a tuned edge.
+        let distinctAmounts: Int
     }
 
     /// One email, read ONCE.
@@ -153,7 +183,8 @@ nonisolated enum SenderTriage: Sendable {
                 Template(
                     emails: prepared.map(\.email),
                     discriminators: [],
-                    amountVariance: variance(of: prepared)
+                    amountVariance: variance(of: prepared),
+                    distinctAmounts: distinctAmounts(of: prepared)
                 )
             ]
         }
@@ -162,7 +193,8 @@ nonisolated enum SenderTriage: Sendable {
             Template(
                 emails: cluster.map(\.email),
                 discriminators: discriminators(of: cluster, among: clusters),
-                amountVariance: variance(of: cluster)
+                amountVariance: variance(of: cluster),
+                distinctAmounts: distinctAmounts(of: cluster)
             )
         }
     }
@@ -178,7 +210,25 @@ nonisolated enum SenderTriage: Sendable {
     /// definition, which drags a real receipt's score toward a brochure's.
     private static func variance(of prepared: [Prepared]) -> Double {
         guard !prepared.isEmpty else { return 0 }
-        return Double(Set(prepared.map(\.amounts)).count) / Double(prepared.count)
+        return Double(distinctAmounts(of: prepared)) / Double(prepared.count)
+    }
+
+    /// Distinct figure-fingerprints, absolute. See `Template.distinctAmounts`.
+    ///
+    /// The unit is the SET of every Rp figure in the head of one email — total,
+    /// fee, subtotal, anything else — not the transaction amount. So it asks
+    /// "did this document's collection of figures differ from the sender's
+    /// others", which is much closer to "is this a record of an event or a
+    /// reprinted page" than comparing totals would be.
+    ///
+    /// `amountScanLength` bounds it to the head deliberately, and widening it
+    /// was tried and measured on 2026-09-09: falling back to the whole body
+    /// when the head yields nothing takes Traveloka from 1 fingerprint to 14
+    /// and turns a brochure into a candidate. A promotional email HAS no
+    /// transaction block, and finding no figures in the head is the honest
+    /// signal for that — not a blind spot to be patched.
+    private static func distinctAmounts(of prepared: [Prepared]) -> Int {
+        Set(prepared.map(\.amounts)).count
     }
 
     /// See `variance` — this is the same measure for callers holding emails.

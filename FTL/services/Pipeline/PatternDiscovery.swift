@@ -23,7 +23,7 @@
 //      unread money mail
 //        ↓  groups into a repeating layout       SenderTriage
 //      candidate layouts
-//        ↓  its figures actually MOVE            amountVariance ⭑
+//        ↓  its figures actually MOVE            distinctAmounts ⭑
 //      worth a model call
 //
 //  ⭑ is the step that makes unattended running safe. Ranked by volume alone,
@@ -141,7 +141,7 @@ nonisolated struct PatternDiscovery: Sendable {
         var found: [Candidate] = []
         for (domain, mail) in bySender {
             let layouts = SenderTriage.templates(from: mail).filter { layout in
-                layout.amountVariance >= policy.minimumAmountVariance
+                layout.distinctAmounts >= policy.minimumDistinctAmounts
                     && layout.emails.count >= evidenceFloor
             }
             guard !layouts.isEmpty else { continue }

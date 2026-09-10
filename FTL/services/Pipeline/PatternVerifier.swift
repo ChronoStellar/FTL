@@ -272,7 +272,7 @@ nonisolated struct PatternVerifier: Sendable {
     /// constant carries no information the sender's own name doesn't, so the
     /// schema has nothing to say about that sender. Most such senders never
     /// reach here anyway, because a fixed counterparty usually comes with fixed
-    /// amounts and `minimumAmountVariance` refuses them first.
+    /// amounts and `minimumDistinctAmounts` refuses them first.
     ///
     /// It also reaches the retry loop as a concrete miss, which is the point:
     /// "you returned the same value for every email" is exactly the kind of

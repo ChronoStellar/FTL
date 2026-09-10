@@ -74,6 +74,11 @@ private struct DebugHarness: View {
     @State private var patternReport: [String] = []
     @State private var isScoringPatterns = false
 
+    // The whole pipeline from a mailbox nobody has written anything for
+    @State private var endToEndReport: [String] = []
+    @State private var endToEndFileURL: URL?
+    @State private var isRunningEndToEnd = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -97,6 +102,16 @@ private struct DebugHarness: View {
                 LabeledContent("Last run", value: environment.autoSync.lastResult ?? "not yet this session")
                 Button("Force a sync now") {
                     Task { _ = await environment.autoSync.syncIfDue(force: true) }
+                }
+            }
+
+            // The agent extending its own reach — ROADMAP Automation item C.
+            // Runs once per launch on its own (see `DiscoverySync`); this is
+            // only for watching it happen and re-arming it without relaunching.
+            Section("Discovery") {
+                LabeledContent("Last run", value: environment.discoverySync.lastResult ?? "not yet this session")
+                Button("Force a discovery sweep now") {
+                    Task { _ = await environment.discoverySync.runIfDue(force: true) }
                 }
             }
 
@@ -217,6 +232,33 @@ private struct DebugHarness: View {
             // Synthetic cases with the answers attached. Deterministic — no
             // model, no network, no device patterns — so a red line here is a
             // regression rather than a difference of opinion about real mail.
+            // The one harness that starts at NOTHING — no preset, no
+            // hand-written parser, no learned pattern, no memory. Everything
+            // else in this screen starts somewhere.
+            Section("End-to-end · empty state") {
+                Text("100 invented emails, 6 senders, nothing written for any of them. Runs the whole arc: discover → learn → sync → tag → settle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button(isRunningEndToEnd ? "Running…" : "Run end-to-end from zero") {
+                    Task { await runEndToEnd() }
+                }
+                .disabled(isRunningEndToEnd)
+
+                if let endToEndFileURL {
+                    ShareLink(item: endToEndFileURL) {
+                        Label("Share report", systemImage: "square.and.arrow.up")
+                    }
+                }
+
+                ForEach(Array(endToEndReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(line.contains("✗") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             Section("Fixture cases") {
                 Button(isCasing ? "Running…" : "Run pipeline cases") {
                     Task { await runCases() }
@@ -569,6 +611,61 @@ private struct DebugHarness: View {
             lines = ["⚠︎ \(error)"]
         }
         tagReport = lines
+    }
+
+    /// The whole pipeline from an empty state. See `EndToEndRunner`.
+    ///
+    /// On a failure the model is asked to read the evidence the run recorded and
+    /// say where to look. It is given that evidence and forbidden to go past it
+    /// — see `FailureExplainer` — and its answer is labelled a guess, because
+    /// nothing checks it.
+    private func runEndToEnd() async {
+        isRunningEndToEnd = true
+        defer { isRunningEndToEnd = false }
+        endToEndFileURL = nil
+        do {
+            var report = try await EndToEndRunner().run()
+            report.reading = await FailureExplainer().read(report.failures)
+
+            var lines = report.lines
+            lines.append("")
+            if report.isClean {
+                lines.append("✓ all assertions held")
+            } else {
+                lines.append("✗ \(report.failures.count) assertion(s) failed")
+                if let reading = report.reading {
+                    lines.append("")
+                    lines.append("⚠︎ the model's reading of the evidence above — a guess,")
+                    lines.append("  not a measurement. Check it before acting on it.")
+                    for line in reading.split(separator: "\n") { lines.append("  \(line)") }
+                } else if !FailureExplainer.isAvailable {
+                    lines.append("  (no on-device model here — evidence above is all there is)")
+                }
+            }
+            endToEndReport = lines
+            endToEndFileURL = Self.exportReport(lines)
+        } catch {
+            endToEndReport = ["⚠︎ \(error)"]
+        }
+    }
+
+    /// Same idiom as the pipeline and coverage exports: a plain file in tmp,
+    /// handed to `ShareLink`. A run whose output only exists on a phone screen
+    /// cannot be diffed against the last one.
+    private static func exportReport(_ lines: [String]) -> URL? {
+        let header = [
+            "FTL — end-to-end pipeline run from an empty state",
+            ISO8601DateFormatter().string(from: .now),
+            "",
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftl-end-to-end.txt")
+        do {
+            try (header + lines).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
     }
 
     /// How the queue has voted on each learned pattern's rows.
@@ -1151,8 +1248,8 @@ private struct DebugHarness: View {
             }
         case .insufficientEvidence(let available):
             lines.append("⚠︎ insufficient evidence — \(available) email(s)")
-        case .notTransactional(let variance):
-            lines.append(String(format: "○ not transactional — figures repeat (%.2f), no model call spent", variance))
+        case .notTransactional(let distinct, let of):
+            lines.append("○ not transactional — only \(distinct) distinct figure-set(s) in \(of) email(s), no model call spent")
         case .gated(let reason):
             lines.append("⚠︎ LanguageGate refused: \(reason)")
         }

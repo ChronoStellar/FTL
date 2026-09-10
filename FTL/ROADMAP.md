@@ -728,12 +728,40 @@ than bends it:
   capture path now runs in a release build. The Debug button stays as a dev
   tool. Checked: no `#if DEBUG` remains anywhere in the capture path, and
   `gmail.readonly` is requested unconditionally at sign-in.
-- ⬜ **C. Discovery → synthesis → promote, unattended.** The agent extending its
-  own reach, and the one still missing. `PatternDiscovery.run(over:isRead:)`
-  already does discovery→learn; what is missing is an orchestrator that feeds it
-  **live Gmail** instead of the frozen corpus, promotes what clears the bar, and
-  holds a call budget (one sender per launch — the feasibility run produced a
-  30-call runaway, and every loop here is bounded).
+- ✅ **C. Discovery → synthesis → promote, unattended.** — built, ⚠️ **never run**.
+  `DiscoverySync` (`services/Capture/`), triggered from its own `.task` on
+  `ContentView`'s first appearance, alongside `autoSync` rather than chained
+  after it — discovery fetches its own 180-day window independently
+  (`PatternDiscovery.discoveryQuery`), so it does not need the ordinary sync to
+  go first. Feeds `PatternDiscovery.run(fetching:isRead:)` a live
+  `GmailExporter` instead of the frozen `EmailCorpus`, and persists whatever
+  clears a bar (`.promoted` or `.provisional`) straight to `PatternStore` — the
+  same two cases the Debug screen's manual "Discovery" button already
+  persists, same call site shape (`report(_:)` in `DebugView`).
+
+  **Call budget, and why it's tighter than the manual button:** `maxSendersPerRun: 1`,
+  not the default 3 — "one sender per launch" is the literal bound, enforced by
+  a `hasRun` flag with no timer, because the object's lifetime already *is* the
+  launch (`AppEnvironment` and `DiscoverySync` are both built once per process).
+  A failed run (offline, no model) does not set `hasRun` — see `AutoSync` for
+  the same reasoning: nothing was spent, so nothing is owed back.
+
+  **`isRead` reuses the rail's own precedence, not a second definition of it.**
+  `GmailRail.activeParsers()` went from `private` to internal so
+  `DiscoverySync` can call it through `AppEnvironment.makeDiscoveryContext()` —
+  duplicating that precedence (learned patterns, then presets, then any
+  hand-written parser) is exactly how "unread by discovery" and "unread by the
+  rail" would have drifted apart.
+
+  **Unrun, and worth the same suspicion as every other "built" item here**
+  (Stage 0 #1, tool 2): it type-checks and a clean `xcodebuild` passes, but
+  nobody has watched it find a sender on a live mailbox, persist a pattern,
+  and had that pattern show up in the next `GmailRail.sync()`. On *this*
+  mailbox the audit already predicts what that would look like — idle, because
+  after blu and Grab nothing else clears the volume and variance bars at this
+  corpus size (see *Automation*, ⚠️ Expectation). The honest first test is
+  either a re-exported mailbox with more senders, or a longer stretch of real
+  use.
 
 **`BGAppRefreshTask` is deliberately not taken yet.** It adds Info.plist surgery
 and a scheduler whose failure mode is silent, on top of a capture path that has
@@ -819,6 +847,104 @@ holding the pair can now see it and decide.
 `reversalWindowDays` is 30 and is **unmeasured**, unlike `dateSlackDays`.
 There are 4 refunds in the corpus and not one of them has its original charge
 in it. Revisit on real pairs.
+
+---
+
+## End-to-end from an empty state — 2026-09-10
+
+`Settings → Developer → End-to-end · empty state`. The one harness that starts at
+NOTHING: no preset, no hand-written parser, no learned pattern, no memory, no
+capture log. `Fixtures/empty-state-corpus.json` — 100 invented emails, six
+senders, each sitting on one side of one gate so a failure names the gate rather
+than "the pipeline is off".
+
+    ① 100 emails fetched, 0 read      with no parser the sender query is EMPTY,
+                                       so it asks for everything and reads none
+    ② discovery picks 3 of 6           three refusals, three different gates
+    ③ 3 patterns stored, 1 refused     dompetku's counterparty never changes
+    ④ 45 rows queued, all flagged      nothing verified them
+    ⑤ a suggested bucket per row       observed, never asserted
+    ⑥ approve 20 → vouched → unflagged the queue as the only oracle
+
+Three things it demonstrates that nothing else covered:
+
+- **The constant-merchant check, end to end.** dompetku is rejected after four
+  attempts — every one anchored on `Tujuan`, which is followed by the same string
+  in every email. There is no better anchor, so no retry can save it.
+- **The retry loop, visible in a version number.** nusabank promotes as `:2`. The
+  scripted first attempt leaves the merchant anchor with no terminator, the value
+  runs to the window edge, `implausibility` refuses it, and attempt two — fed
+  that concrete miss — adds the terminator.
+- **A sender's rare layouts are invisible.** nusabank sends 2 refunds and 2
+  incoming; triage keeps the dominant subject cluster, so the model only ever saw
+  purchases and proposed a pattern that does not claim the others. Asserted at
+  zero rather than discovered later.
+
+⚠️ **The synthesizer is SCRIPTED** (`ScriptedSynthesizer`). This measures the
+machinery — verifier, retry, plausibility, promotion, trust — and says nothing
+about what a real model would propose. The repo had `UncallableLearner`, which
+asserts the model is never reached; nothing exercised what happens when it is.
+
+⚠️ **The tag column is observed, not asserted.** The tagger's model half runs for
+real when the device has one, so that column is not deterministic. Everything
+asserted is.
+
+### First real-device run — 2026-09-10
+
+The model half fired: **45 queued · 8 pre-tagged**, exactly the call budget.
+
+| merchant | suggested | reading |
+|---|---|---|
+| `KEDAI KOPI LARAS` (coffee shop) | Food | right |
+| `BENGKEL MOTOR RAPI` (motorbike workshop) | Transport | defensible |
+| `APOTEK SEHAT JAYA` (pharmacy) | **Subscriptions** | wrong — and there is no Health bucket to be right with |
+
+Cold-start quality on a four-bucket taxonomy, which is exactly what the shadow
+scoreboard exists to count. Not a defect; a data point, and the first real one.
+
+**The run also exposed a budget bug.** Every merchant that appeared twice got a
+suggestion on its first row and nothing on its second — `APOTEK SEHAT JAYA`
+Rp 84.000 tagged, `APOTEK SEHAT JAYA` Rp 52.000 blank. The model was being asked
+once per ROW, so a batch of 45 rows across ~20 merchants spent all 8 calls on the
+first 8 rows and left later rows from merchants it had **already answered**
+untagged.
+
+Memory cannot cover that gap: it fills only from approvals, and
+`minimumDecisions` is 2, so a merchant seen exactly twice in one batch never
+benefits from its own first row. Fixed by caching the model's answer per
+normalized merchant for the duration of a batch — the same 8 calls now buy 8
+merchants instead of 8 rows.
+
+### Failures carry their evidence, and the model reads it
+
+A failure that says only "expected 3, got 2" sends a person hunting. Every
+assertion now attaches what the run itself computed — per-sender triage counts
+against the live gate values, the concrete misses out of `PatternFeedback`, the
+active patterns' provenance, the `PatternRecord` behind a trust decision.
+
+Verified by breaking a gate on purpose (`minimumDistinctAmounts` 5 → 11):
+
+    Stage ② discovery — "senders worth a model call" produced 1, expected 3
+      - nusabank.example.com: 29 money mail · 25e/22d
+      - kirimin.example.com:  20 money mail · 10e/9d 10e/10d
+      - dompetku.example.com: 10 money mail · 10e/10d
+      - gates — distinct ≥ 11, volume ≥ 10 per layout
+
+The cause is readable off the page: the floor is 11 and the layouts have 9 and
+10. **`FailureExplainer` narrates exactly that** and is forbidden to go past it —
+it is handed the evidence and a terse stage map, never asked "why did the
+pipeline fail", which is an invitation to invent a story about code it cannot
+see. It is instructed to explain the EARLIEST failing stage only, and to say
+"the evidence does not say" rather than guess.
+
+Its answer is labelled a guess on every run, because nothing checks it. That is
+the one place in this app where a model's prose reaches a person — allowed
+because the false positive is recoverable in the cheapest possible way: you open
+the file it named, find nothing, and ignore it. No row moves.
+
+The report exports to a file (`ShareLink`), same idiom as the pipeline and
+coverage runs: a run whose output only exists on a phone screen cannot be diffed
+against the last one.
 
 ---
 
@@ -935,6 +1061,69 @@ all sender-agnostic.
   Good news: that is a retry, not a schema gap — the feedback reads
   `merchant: got nothing, expected "004502609698"`, the same concrete-miss form
   that corrected blu twice already.
+
+### The discovery gate was measuring the wrong thing — found by the mock corpus
+
+Building the empty-state fixture surfaced this before its runner even existed,
+which is the fixture paying for itself on day one.
+
+`amountVariance` is not a variance. Per email it collects the **set of every Rp
+figure in the first 1500 characters** — total, fee, subtotal, anything — and then
+divides the number of DISTINCT such sets by the email count. As a question
+("did this document's figures differ from the sender's others?") that is well
+chosen. As a **ratio** it had one structural fault:
+
+> its denominator is your mail count, so it is bounded above by
+> (distinct fingerprints) ÷ (how much you use the sender)
+
+A warung with one line item and five prices scores 0.50 at ten receipts and
+**0.10 at fifty** — indistinguishable from a brochure. The more you use a
+merchant, the less learnable it becomes, which is backwards for an app whose
+premise is learning the senders you actually transact with. The first draft of
+the mock corpus hit it immediately: the happy-path sender scored 0.32 and was
+refused.
+
+**Fixed by gating on the absolute count instead.** Measured over the real corpus,
+it separates the same senders more cleanly and does not move with volume:
+
+| | distinct fingerprints |
+|---|---|
+| blu · blu/bluvirtual | 50 · 35 |
+| grab/compliments · grab/diterbitkan | 10 · 10 |
+| apple · traveloka · mandiri | **1 · 1 · 1** |
+
+Every brochure produces exactly one. `minimumDistinctAmounts = 5` sits in a 10×
+gap rather than on a tuned edge. Selection on the real corpus is **unchanged** —
+blu and Grab, same as before — and the `pipeline-cases` fixture still picks
+swiftpay and still refuses `deals.example.com`. So the fix costs nothing and
+removes the volume coupling.
+
+### A second "defect" that the measurement disproved
+
+Worth recording because it is exactly the kind of thing a later session will
+re-propose.
+
+`hasCurrencyMarker` reads the whole email; `amounts` reads only the first 1500
+characters. So a sender whose figures sit deeper yields an EMPTY set for every
+email — one distinct set over n — and is refused at `1/n`. Traveloka scores
+0.077, which is exactly 1/13, and **100% of its mail** has no figures in the
+head. klikbca, a real bank, has a third of its mail in the same state. It looked
+like a silent conflation of "unreadable" with "repeated", and the obvious fix was
+to fall back to the whole body when the head yields nothing.
+
+**Measured, that fix is wrong.** The fallback takes Traveloka from 1 fingerprint
+to **14** and turns a brochure into a candidate — its body is full of
+promotional prices that differ between campaigns.
+
+So the head window is not a blind spot, it is the thing making the metric mean
+something: it restricts attention to the transaction block, and **a promotion has
+no transaction block**. Finding no figures there is the honest signal, not an
+artefact. Traveloka is refused for the right reason after all.
+
+The residual concern — a genuine receipt sender with a long HTML header being
+refused the same way — has no example in the corpus: blu and Grab both have
+zero blind emails, and klikbca's three are below every floor regardless. Left
+alone, deliberately, and recorded so it is re-measured rather than re-argued.
 
 ### Tool 2, on the same mail
 

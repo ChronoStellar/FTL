@@ -51,6 +51,12 @@ struct ContentView: View {
         // reconciling the tag store from the Sheet's actual categories is
         // real network I/O and nothing on screen depends on it finishing.
         .task { await environment.reconcileTagStore() }
+        // Also fire-and-forget, and deliberately its own `.task` rather than
+        // chained after `syncMail` below: discovery fetches its own 180-day
+        // window independently of the ordinary sync, nothing on screen is
+        // waiting on it, and `DiscoverySync` bounds itself to one attempt per
+        // launch on its own — see `DiscoverySync`.
+        .task { _ = await environment.discoverySync.runIfDue() }
         .tint(FTLColor.textTertiary)
         .task {
             await home.load()
