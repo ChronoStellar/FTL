@@ -21,6 +21,9 @@ struct RootView: View {
     /// the flag and the environment can never disagree.
     var isSampleMode: Bool = false
     var onUseSampleData: () -> Void = {}
+    /// DEBUG only — see `SignInView`. Swaps the environment BEFORE the real
+    /// sign-in that follows it, so the mailbox is real but the ledger isn't.
+    var onUseLocalLedger: () -> Void = {}
 
     @State private var hasAttemptedRestore = false
 
@@ -43,7 +46,7 @@ struct RootView: View {
                 ContentView(environment: environment)
                     .id(ObjectIdentifier(environment))
             } else {
-                SignInView(onDebugBypass: onUseSampleData)
+                SignInView(onDebugBypass: onUseSampleData, onDebugLocalLedger: onUseLocalLedger)
             }
         }
         .task {

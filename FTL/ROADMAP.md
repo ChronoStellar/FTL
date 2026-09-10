@@ -322,6 +322,22 @@ app. Listed so it isn't rediscovered as a surprise.
   doors building the same entry independently is how they drift.
 - **`AppEnvironment.shared`** — App Intents run in-process, so a second
   environment would open a second SwiftData container on the same file.
+- **`AppEnvironment.liveWithoutSheet()`, DEBUG only** — a real mailbox with no
+  Google Sheet behind it. Two reasons to have it: the app should be usable by
+  someone who hasn't set one up, and stress-testing capture → discovery → tag
+  against a real mailbox at volume has no business writing hundreds of test
+  rows into anyone's real ledger. `ledger`/`budgets` swap to
+  `InMemoryLedgerStore`/`InMemoryBudgetStore` (ephemeral, lost on relaunch —
+  Invariant 7 still holds, there is simply no Sheet backing it);
+  `provisional`/`captureLog`/`patterns`/`tagMemory` stay the SAME instances
+  `.shared` uses, deliberately NOT a second `live()` call — that would open a
+  second SwiftData container on the same on-disk file, the exact hazard
+  `.shared`'s own doc comment already exists to prevent. Entry point:
+  `SignInView`'s "Sign in without a spreadsheet (debug)", real Google
+  sign-in, no Sheets scope needed. `DebugView` shows which backend is active
+  (`AppEnvironment.LedgerBackend`) so a stress-test session and a real one
+  are never visually the same screen. ⚠️ Unrun end to end — see the same
+  caution as `DiscoverySync` below.
 
 ---
 

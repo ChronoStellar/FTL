@@ -18,6 +18,12 @@ struct SignInView: View {
 
     /// DEBUG only — see RootView.bypassAuth.
     var onDebugBypass: () -> Void = {}
+    /// DEBUG only. Same sign-in as the button below, but the mailbox lands in
+    /// an environment with no Google Sheet behind it — see
+    /// `AppEnvironment.liveWithoutSheet()`. Called synchronously, before
+    /// `auth.signIn()`, so it only decides which environment the sign-in
+    /// lands in.
+    var onDebugLocalLedger: () -> Void = {}
 
     var body: some View {
         VStack(spacing: FTLSpacing.xl) {
@@ -81,6 +87,20 @@ struct SignInView: View {
             Button("Skip sign-in (debug)", action: onDebugBypass)
                 .font(FTLTypography.captionSmall)
                 .tint(FTLColor.textDisabled)
+
+            // Real Gmail, no Google Sheet — for stress-testing the capture →
+            // discovery → tag loop against a real mailbox without setting up
+            // (or writing test rows into) a real ledger.
+            Button("Sign in without a spreadsheet (debug)") {
+                onDebugLocalLedger()
+                Task {
+                    isWorking = true
+                    await auth.signIn()
+                    isWorking = false
+                }
+            }
+            .font(FTLTypography.captionSmall)
+            .tint(FTLColor.textDisabled)
             #endif
         }
         .padding(FTLSpacing.screenMargin)

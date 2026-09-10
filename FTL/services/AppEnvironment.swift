@@ -58,7 +58,23 @@ final class AppEnvironment {
     /// would overwrite the real, persisted taxonomy with demo data — and gates
     /// the one-time income-split onboarding prompt for the same reason: fixture
     /// data isn't the user's real income to ask about.
+    ///
+    /// Also true for `liveWithoutSheet()` — a real mailbox is being synced and
+    /// the loop is really learning, so everything gated on "is this a real
+    /// session" should still run. What differs there is only `ledger` and
+    /// `budgets`; see `LedgerBackend`.
     let isLive: Bool
+
+    /// What backs `ledger` and `budgets`. Purely descriptive — nothing branches
+    /// on it except the Debug screen, and that is exactly where a stress-test
+    /// session and a real one must never look alike by accident.
+    nonisolated enum LedgerBackend: String {
+        case sheets = "Google Sheet"
+        case local = "Local (no spreadsheet)"
+        case sample = "Fixtures"
+    }
+
+    let ledgerBackend: LedgerBackend
 
     // MARK: - Phase 2
     //
@@ -97,7 +113,8 @@ final class AppEnvironment {
         patterns: PatternStore? = nil,
         tagMemory: TagMemory? = nil,
         patternMemory: PatternMemory? = nil,
-        isProvisionalStorePersistent: Bool = true
+        isProvisionalStorePersistent: Bool = true,
+        ledgerBackend: LedgerBackend = .sheets
     ) {
         self.auth = auth
         self.ledger = ledger
@@ -110,6 +127,7 @@ final class AppEnvironment {
         self.tagMemory = tagMemory
         self.patternMemory = patternMemory
         self.isProvisionalStorePersistent = isProvisionalStorePersistent
+        self.ledgerBackend = ledgerBackend
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
         self.approvals = DefaultApprovalService(
             store: provisional,
@@ -147,7 +165,8 @@ final class AppEnvironment {
             patterns: SwiftDataPatternStore(modelContainer: store.container),
             tagMemory: SwiftDataTagMemory(modelContainer: store.container),
             patternMemory: SwiftDataPatternMemory(modelContainer: store.container),
-            isProvisionalStorePersistent: store.isPersistent
+            isProvisionalStorePersistent: store.isPersistent,
+            ledgerBackend: .sheets
         )
     }
 
@@ -200,7 +219,50 @@ final class AppEnvironment {
             budgets: budgets,
             provisional: InMemoryProvisionalStore(),
             goals: InMemoryGoalStore(),
-            isLive: false
+            isLive: false,
+            ledgerBackend: .sample
+        )
+    }
+
+    /// A real mailbox, with no spreadsheet needed at all.
+    ///
+    /// Reuses `.shared`'s already-open SwiftData container — `provisional`,
+    /// `captureLog`, `patterns`, `tagMemory` are the SAME instances `.shared`
+    /// uses — and swaps only `ledger` and `budgets` for in-memory ones. Only
+    /// `ledger`, `budgets`, and what's built from them (`calc`, `approvals`)
+    /// are new.
+    ///
+    /// Deliberately NOT a second `live()` call: that would open a SECOND
+    /// SwiftData container on the same on-disk file, which is exactly the
+    /// hazard `.shared`'s own doc comment exists to prevent. `.shared` is
+    /// already constructed by the time anything can call this (FTLApp builds
+    /// it unconditionally at launch), so reusing it costs nothing extra and
+    /// keeps the app to the one container it has ever opened.
+    ///
+    /// What this buys, and why it exists: the app should work for someone who
+    /// has never set up a spreadsheet, and stress-testing the capture →
+    /// discovery → tag loop against a real mailbox at volume has no business
+    /// writing hundreds of test rows into anyone's real ledger. `ledger`
+    /// starts empty and lives only for this process — nothing here is
+    /// durable, and nothing here is canonical (Invariant 7 still holds; there
+    /// is just no Sheet backing it).
+    ///
+    /// DEBUG-only entry point — see `SignInView`.
+    static func liveWithoutSheet() -> AppEnvironment {
+        let base = Self.shared
+        return AppEnvironment(
+            auth: base.auth,
+            ledger: InMemoryLedgerStore(empty: true),
+            budgets: InMemoryBudgetStore(),
+            provisional: base.provisional,
+            goals: base.goals,
+            isLive: true,
+            captureLog: base.captureLog,
+            patterns: base.patterns,
+            tagMemory: base.tagMemory,
+            patternMemory: base.patternMemory,
+            isProvisionalStorePersistent: base.isProvisionalStorePersistent,
+            ledgerBackend: .local
         )
     }
 

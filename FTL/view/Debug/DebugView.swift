@@ -91,6 +91,9 @@ private struct DebugHarness: View {
             Section("Account") {
                 LabeledContent("Name", value: auth.name ?? "—")
                 LabeledContent("Email", value: auth.email ?? "—")
+                // A stress-test session and a real one must never look alike
+                // by accident — see `AppEnvironment.LedgerBackend`.
+                LabeledContent("Ledger", value: environment.ledgerBackend.rawValue)
                 Button("Sign out", role: .destructive) { auth.signOut() }
             }
 

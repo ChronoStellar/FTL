@@ -26,6 +26,11 @@ struct FTLApp: App {
                 onUseSampleData: {
                     environment = .sample()
                     isBypassActive = true
+                },
+                onUseLocalLedger: {
+                    // Real sign-in still follows this — see SignInView. This
+                    // only decides which environment that sign-in lands in.
+                    environment = .liveWithoutSheet()
                 }
             )
             .environmentObject(auth)
