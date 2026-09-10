@@ -10,6 +10,11 @@
 //  common case, and a batch approve would quietly rubber-stamp the model's guess
 //  on rows the user never actually looked at.
 //
+//  `approveAll` is the one exception, and it is scoped narrowly on purpose —
+//  see `bulkApprovable`. It exists for the ordinary case (a bucket you already
+//  chose, or a merchant memory has settled) rather than for waving through
+//  whatever the model just guessed at for a sender with no history behind it.
+//
 
 import Foundation
 import Observation
@@ -25,6 +30,29 @@ final class ApprovalQueueViewModel {
     private(set) var phase: LoadPhase = .idle
     private(set) var entries: [ProvisionalEntry] = []
     private(set) var categories: [SpendCategory] = []
+
+    /// User-chosen, this screen only — not persisted. `needsAttention` always
+    /// wins first regardless of this choice; flagged rows are not something a
+    /// sort preference should be able to bury.
+    var sortOption: SortOption = .oldestFirst
+
+    nonisolated enum SortOption: String, CaseIterable, Identifiable, Equatable {
+        case oldestFirst
+        case newestFirst
+        case amountHighToLow
+        case amountLowToHigh
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .oldestFirst: return "Oldest first"
+            case .newestFirst: return "Newest first"
+            case .amountHighToLow: return "Largest amount"
+            case .amountLowToHigh: return "Smallest amount"
+            }
+        }
+    }
 
     /// Called after a row leaves the queue, so whatever is behind this sheet can
     /// catch up. Approving changes the hero total, a bucket's position against
@@ -47,14 +75,62 @@ final class ApprovalQueueViewModel {
     // MARK: - Derived
 
     /// Flagged rows first — they are the ones that actually need a person.
+    /// Within a group, OLDEST transaction first.
+    ///
+    /// It used to be newest CAPTURED first (`createdAt`), which is when a row
+    /// entered the queue rather than when the purchase happened — and on a
+    /// big first sync those two disagree badly. `DefaultPurchaseTagger`'s
+    /// model-call budget only reaches a handful of merchants per batch, and
+    /// capture order tends to be newest-mail-first, so the tagged rows and
+    /// the untagged ones clumped by fetch recency rather than interleaving:
+    /// a screenful of blank chips with a few tagged rows buried under them
+    /// read as "the tagger did nothing", when it had actually done exactly
+    /// what its budget allowed. Sorting by the transaction's own date instead
+    /// spreads tagged and untagged rows through the list in the order a
+    /// person actually recognises their spending, which is what the date on
+    /// each card (see `ApprovalQueueSheet`) is for.
+    ///
+    /// `sortOption` only ever decides the tie-break within a group — flagged
+    /// rows still come first no matter which one is picked. A sort preference
+    /// choosing to bury the rows that actually need a person would defeat the
+    /// point of flagging them at all.
     var sorted: [ProvisionalEntry] {
         entries.sorted { lhs, rhs in
             if lhs.needsAttention != rhs.needsAttention { return lhs.needsAttention }
-            return lhs.createdAt > rhs.createdAt
+            switch sortOption {
+            case .oldestFirst: return lhs.transaction.date < rhs.transaction.date
+            case .newestFirst: return lhs.transaction.date > rhs.transaction.date
+            case .amountHighToLow: return lhs.transaction.amount.minorUnits > rhs.transaction.amount.minorUnits
+            case .amountLowToHigh: return lhs.transaction.amount.minorUnits < rhs.transaction.amount.minorUnits
+            }
         }
     }
 
     var isEmpty: Bool { entries.isEmpty }
+
+    /// Safe for `approveAll`: not flagged, has a real bucket selected, and —
+    /// when that bucket is only a SUGGESTION nobody has confirmed yet — the
+    /// suggestion is grounded in your own past decisions (`.memory`) rather
+    /// than a fresh model guess with no history behind it.
+    ///
+    /// Invariant 10's whole point is that trust is earned per merchant from
+    /// your approvals, not from the model's confidence in itself; a bulk
+    /// action is exactly the place that has to be enforced rather than
+    /// assumed. A memory-backed suggestion is different: it is just your own
+    /// established pattern for that merchant repeated back to you, which is
+    /// what approving it individually would do anyway.
+    var bulkApprovable: [ProvisionalEntry] {
+        sorted.filter { entry in
+            guard !entry.needsAttention, selectedTag(for: entry).id != nil else { return false }
+            guard suggestionNote(for: entry) != nil else { return true }
+            if case .model = entry.resolution.suggestedTag?.basis { return false }
+            return true
+        }
+    }
+
+    var bulkApprovableTotal: Money {
+        Money.sum(bulkApprovable.map(\.transaction.amount))
+    }
 
     /// The tag options on each card: every bucket, plus the escape hatch. A
     /// transfer or top-up is not spending, and the user needs to say so without
@@ -195,6 +271,29 @@ final class ApprovalQueueViewModel {
             try await approvals.reject([entry.id])
             await load()
             onSettled?()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
+    /// Everything `bulkApprovable` allows, in one write. `ApprovalService`
+    /// already reports partial failure per row (Invariant 1's contract, not
+    /// something added for this) — one bad row does not strand the rest.
+    ///
+    /// Scoping is `bulkApprovable`'s job, not this method's: by the time this
+    /// runs, every id it is given is either a bucket you already chose or a
+    /// suggestion your own history backs up. A flagged row or a fresh model
+    /// guess never reaches here.
+    func approveAll() async {
+        let ids = bulkApprovable.map(\.id)
+        guard !ids.isEmpty else { return }
+        do {
+            let result = try await approvals.approve(ids)
+            await load()
+            onSettled?()
+            if !result.failed.isEmpty {
+                phase = .failed("\(result.failed.count) of \(ids.count) didn't go through — the rest are approved.")
+            }
         } catch {
             phase = .failed(String(describing: error))
         }

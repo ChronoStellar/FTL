@@ -46,6 +46,16 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
     /// 3.8s calls — two and a half minutes of an unbounded loop, which is the
     /// failure the feasibility run already produced once at 30 calls. Rows past
     /// the budget simply arrive untagged; that is the status quo, not a loss.
+    ///
+    /// WHICH merchants get the budget is decided by ROW COUNT within the
+    /// batch, not by which one happens to be encountered first — see `tag`.
+    /// A first sync is exactly where this matters most: no memory exists yet,
+    /// so every merchant is a candidate, and Gmail tends to return newest
+    /// mail first. Spending the budget in that order buys eight merchants —
+    /// which, on a batch with more than eight, could all be one-off rows
+    /// while a ten-row regular sits untagged. Spending it on the merchants
+    /// with the most rows is the cheap win the same eight calls can buy
+    /// instead.
     private let maxModelCalls: Int
 
     init(
@@ -78,6 +88,35 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         let known = (try? await memory.history(for: contexts.map(\.merchant))) ?? [:]
         let valid = Set(categories.map(\.id))
 
+        // Which merchants the model could actually help with: no settled
+        // memory opinion (a `remembered` suggestion needs no call at all),
+        // and not a merchant whose history is seen-but-unsettled (see
+        // `worthAsking` — a model asked there would just guess, every sync,
+        // forever). Counted by ROW, not by distinct appearance: a merchant
+        // with ten rows in this batch is worth far more of the budget than
+        // ten merchants with one row each, because one call answers for all
+        // ten either way.
+        var candidateRows: [MerchantID: Int] = [:]
+        var firstSeenAt: [MerchantID: Int] = [:]
+        for (order, context) in contexts.enumerated() {
+            guard Self.remembered(context.merchant, in: known, valid: valid) == nil,
+                  Self.worthAsking(context.merchant, in: known)
+            else { continue }
+            candidateRows[context.merchant, default: 0] += 1
+            if firstSeenAt[context.merchant] == nil { firstSeenAt[context.merchant] = order }
+        }
+
+        // Most rows first. Ties keep the batch's own order rather than
+        // dictionary order, which Swift does not guarantee — determinism
+        // here is what makes a run reproducible for debugging.
+        let priority = candidateRows.keys.sorted { lhs, rhs in
+            let lhsRows = candidateRows[lhs] ?? 0
+            let rhsRows = candidateRows[rhs] ?? 0
+            if lhsRows != rhsRows { return lhsRows > rhsRows }
+            return (firstSeenAt[lhs] ?? .max) < (firstSeenAt[rhs] ?? .max)
+        }
+        let fundedMerchants = Set(priority.prefix(maxModelCalls))
+
         var tagged = entries
         var modelCalls = 0
         /// Merchants the model has already answered for in THIS batch. The
@@ -109,11 +148,6 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
                         merchant: context.merchant,
                         reason: "merchant already settled or has conflicted opinion"
                     )
-                } else if modelCalls >= maxModelCalls {
-                    PipelineDebugStub.recordTaggerSkipped(
-                        merchant: context.merchant,
-                        reason: "model call budget reached (\(maxModelCalls))"
-                    )
                 } else if let proposer {
                     // Once per MERCHANT, not once per row.
                     //
@@ -130,13 +164,26 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
                     // one batch never benefits from its own first row. Caching
                     // the answer for the batch is what makes the budget buy
                     // merchants instead of rows.
+                    //
+                    // WHICH merchants get a call is decided above, by row
+                    // count (`fundedMerchants`) — not by reaching this line
+                    // first. A first sync with no memory at all is exactly
+                    // where that used to bite: Gmail tends to return newest
+                    // mail first, so the budget went to whichever eight
+                    // merchants happened to be newest, which could all be
+                    // one-off rows while a ten-row regular sat untagged.
                     if let cached = asked[context.merchant] {
                         suggestion = cached.map { TagSuggestion(categoryID: $0, basis: .model) }
-                    } else {
+                    } else if fundedMerchants.contains(context.merchant) {
                         modelCalls += 1
                         let proposed = await proposer.propose(for: context, among: categories)
                         asked[context.merchant] = .some(proposed)
                         suggestion = proposed.map { TagSuggestion(categoryID: $0, basis: .model) }
+                    } else {
+                        PipelineDebugStub.recordTaggerSkipped(
+                            merchant: context.merchant,
+                            reason: "model call budget (\(maxModelCalls)) spent on merchants with more rows this batch"
+                        )
                     }
                 }
             }

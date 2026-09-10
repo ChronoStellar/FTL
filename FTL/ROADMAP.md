@@ -931,6 +931,39 @@ benefits from its own first row. Fixed by caching the model's answer per
 normalized merchant for the duration of a batch — the same 8 calls now buy 8
 merchants instead of 8 rows.
 
+**That fixed repeats within a merchant; it left WHICH merchants get the 8
+calls to accident of order — 2026-09-10.** On a cold-start sync (no memory
+yet, so every merchant is a candidate) with more than 8 distinct merchants in
+the batch, the calls went to whichever 8 were reached first while iterating
+the batch — which, since Gmail tends to return newest mail first, meant
+"whichever merchants happen to be newest," not "whichever merchants would
+benefit the most." A ten-row regular could sit untagged behind eight
+one-off rows. Symptom in the queue: a handful of tagged rows read as if the
+tagger barely worked, when it had actually spent its whole budget — just not
+where it would have shown.
+
+Fixed the same way the repeat-within-a-merchant bug was: change what the
+budget buys. `DefaultPurchaseTagger.tag` now counts, per batch, how many
+TAGGABLE ROWS each candidate merchant has (not distinct appearances — a
+ten-row merchant outranks ten one-row merchants), and spends the 8 calls on
+the highest counts first. Deterministic, no model call spent deciding it —
+one pass over what `tag` was already computing.
+
+Paired with a queue fix, because prioritising the calls doesn't help if the
+result is still invisible: the approval queue sorted by `createdAt` (when a
+row was CAPTURED) descending, so a big first sync clumped everything by fetch
+recency regardless of tag status. Now sorted by the transaction's own date,
+oldest first (`ApprovalQueueViewModel.sorted`), with that date shown on every
+card (`ApprovalQueueSheet`) — tagged and untagged rows interleave in the
+order a person actually recognises their spending, rather than by whichever
+order Gmail happened to return the mail in. Flagged rows still sort first
+within that — unchanged, they are the ones that actually need a person.
+
+⚠️ Unmeasured past the code review: nobody has watched this on a real
+cold-start sync with more than 8 distinct merchants — that needs either a
+bigger mailbox than this one currently produces, or the wider re-export the
+ROADMAP already calls for elsewhere.
+
 ### Failures carry their evidence, and the model reads it
 
 A failure that says only "expected 3, got 2" sends a person hunting. Every

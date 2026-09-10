@@ -148,13 +148,23 @@ nonisolated struct GmailRail: Sendable {
         /// the difference between "the tagger is off" and "the tagger had
         /// nothing to say" is otherwise invisible from the queue.
         var tagged = 0
+        /// Rows already sitting in the queue from an EARLIER sync that just
+        /// got a suggestion for the first time — see the note above the
+        /// tagging step in `sync()`. Separate from `tagged`, which counts only
+        /// this sync's own newly-captured rows.
+        var backlogTagged = 0
         var notAPurchase = 0
         var skipped = 0
 
         var summary: String {
-            if fetched == 0 { return "No new mail in the window." }
+            if fetched == 0 {
+                return backlogTagged > 0
+                    ? "No new mail — \(backlogTagged) older row(s) freshly tagged."
+                    : "No new mail in the window."
+            }
             var parts = ["\(queued) queued"]
             if tagged > 0 { parts.append("\(tagged) pre-tagged") }
+            if backlogTagged > 0 { parts.append("\(backlogTagged) older rows tagged") }
             if flagged > 0 { parts.append("\(flagged) flagged") }
             if duplicates > 0 { parts.append("\(duplicates) possible duplicates") }
             if reversals > 0 { parts.append("\(reversals) reversals") }
@@ -173,94 +183,123 @@ nonisolated struct GmailRail: Sendable {
         let query = ([window] + [Self.senderQuery(for: parsers)]).joined(separator: " ")
         let emails = try await exporter.fetchCaptured(query: query, limit: fetchLimit)
         result.fetched = emails.count
-        guard !emails.isEmpty else { return result }
-
-        let unseen = try await log.unseen(from: emails.map(\.id))
-        result.alreadySeen = emails.count - unseen.count
-
-        // One read for the batch: which learned patterns the queue has already
-        // stood behind often enough to stop flagging.
-        let vouched = await Self.vouchedPatterns(among: parsers, using: trust)
 
         var entries: [ProvisionalEntry] = []
-        var logEntries: [CaptureLogEntry] = []
 
-        for email in emails where unseen.contains(email.id) {
-            guard let parser = parsers.first(where: { $0.canParse(email) }) else {
-                logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: nil))
-                result.skipped += 1
-                PipelineDebugStub.recordParserSkipped(email: email, activeParserIDs: parsers.map(\.id.rawValue))
-                continue
+        if !emails.isEmpty {
+            let unseen = try await log.unseen(from: emails.map(\.id))
+            result.alreadySeen = emails.count - unseen.count
+
+            // One read for the batch: which learned patterns the queue has already
+            // stood behind often enough to stop flagging.
+            let vouched = await Self.vouchedPatterns(among: parsers, using: trust)
+
+            var logEntries: [CaptureLogEntry] = []
+
+            for email in emails where unseen.contains(email.id) {
+                guard let parser = parsers.first(where: { $0.canParse(email) }) else {
+                    logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: nil))
+                    result.skipped += 1
+                    PipelineDebugStub.recordParserSkipped(email: email, activeParserIDs: parsers.map(\.id.rawValue))
+                    continue
+                }
+
+                let isVouched = (parser as? PatternDrivenParser).map { vouched.contains($0.pattern.id) } ?? false
+                let parseResult = parser.parse(email)
+                PipelineDebugStub.recordParserMatch(email: email, parser: parser, result: parseResult, isVouched: isVouched)
+
+                switch parseResult {
+                case .parsed(let receipt):
+                    let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
+                    entries.append(entry)
+                    logEntries.append(.init(messageID: email.id, verdict: .queued, entryID: entry.id, parserID: parser.id.rawValue))
+                    result.queued += 1
+
+                case .incomplete(let missing):
+                    // The template matched but a field didn't. Queue it flagged so a
+                    // person sees it, rather than dropping a real purchase because
+                    // one regex moved.
+                    let receipt = ParsedReceipt(
+                        date: email.date,
+                        amount: .zero,
+                        merchantRaw: email.subject,
+                        kind: .spend,
+                        nonSpendType: nil,
+                        flags: [ReviewFlag(reason: .unparseable, detail: "missing \(missing)")]
+                    )
+                    let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
+                    entries.append(entry)
+                    logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: parser.id.rawValue))
+                    result.flagged += 1
+
+                case .notAPurchase:
+                    logEntries.append(.init(messageID: email.id, verdict: .notAPurchase, entryID: nil, parserID: parser.id.rawValue))
+                    result.notAPurchase += 1
+
+                case .notApplicable:
+                    logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: parser.id.rawValue))
+                    result.skipped += 1
+                }
             }
 
-            let isVouched = (parser as? PatternDrivenParser).map { vouched.contains($0.pattern.id) } ?? false
-            let parseResult = parser.parse(email)
-            PipelineDebugStub.recordParserMatch(email: email, parser: parser, result: parseResult, isVouched: isVouched)
+            // Cache first, log second. If the log write fails the worst case is a
+            // duplicate on the next run, which a person can reject. The other order
+            // risks marking mail handled that never made it into the queue — spend
+            // that silently disappears, which is the failure this app cares most
+            // about avoiding.
+            if !entries.isEmpty {
+                entries = try await flaggingDuplicates(entries)
+                result.duplicates = entries.filter { entry in
+                    entry.flags.contains { $0.reason == .possibleDuplicate }
+                }.count
 
-            switch parseResult {
-            case .parsed(let receipt):
-                let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
-                entries.append(entry)
-                logEntries.append(.init(messageID: email.id, verdict: .queued, entryID: entry.id, parserID: parser.id.rawValue))
-                result.queued += 1
+                entries = try await flaggingReversals(entries)
+                result.reversals = entries.filter { entry in
+                    entry.flags.contains { $0.reason == .reversal }
+                }.count
+            }
+            try await log.record(logEntries)
+        }
 
-            case .incomplete(let missing):
-                // The template matched but a field didn't. Queue it flagged so a
-                // person sees it, rather than dropping a real purchase because
-                // one regex moved.
-                let receipt = ParsedReceipt(
-                    date: email.date,
-                    amount: .zero,
-                    merchantRaw: email.subject,
-                    kind: .spend,
-                    nonSpendType: nil,
-                    flags: [ReviewFlag(reason: .unparseable, detail: "missing \(missing)")]
-                )
-                let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
-                entries.append(entry)
-                logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: parser.id.rawValue))
-                result.flagged += 1
+        // Tag whatever is new here, AND give rows still sitting untagged from
+        // an EARLIER sync another shot at the SAME budget — one `tag()` call
+        // over the union, so `DefaultPurchaseTagger`'s row-count priority
+        // weighs an old backlog row exactly like a new one instead of always
+        // favouring whichever happened to be newest.
+        //
+        // This used to run only inside "if there is new mail", on only the
+        // batch just parsed. Two consequences, both silent: a merchant whose
+        // rows missed the budget on the sync that captured them stayed
+        // untagged FOREVER — `refresh` (run on every queue open) is
+        // memory-only and has nothing to say until enough decisions accrue by
+        // hand — and a sync that found no new mail, which is the common case
+        // (mail arrives a few times a day; syncs run every 15 minutes), never
+        // even tried. Read as "only new emails ever get tagged."
+        //
+        // Run AFTER duplicates/reversals are flagged and BEFORE the new rows
+        // are written, for the same reason as before: a row about to be
+        // dropped as somebody else's copy is not worth a model call, and a
+        // suggestion added after the write would be a second pass over the
+        // store with a window where the queue shows a row untagged and then
+        // changes under the reader. The backlog fetch happens here rather
+        // than earlier for the same reason — before this sync's own new rows
+        // are inserted, so they cannot appear in it twice.
+        if let tagger {
+            let backlog = (try? await provisional.pending()) ?? []
+            let taggedAll = await tagger.tag(entries + backlog)
+            entries = Array(taggedAll.prefix(entries.count))
+            result.tagged = entries.filter { $0.resolution.suggestedTag != nil }.count
 
-            case .notAPurchase:
-                logEntries.append(.init(messageID: email.id, verdict: .notAPurchase, entryID: nil, parserID: parser.id.rawValue))
-                result.notAPurchase += 1
-
-            case .notApplicable:
-                logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: parser.id.rawValue))
-                result.skipped += 1
+            for (before, after) in zip(backlog, taggedAll.suffix(backlog.count))
+            where after.resolution.suggestedTag != before.resolution.suggestedTag {
+                try? await provisional.update(after)
+                result.backlogTagged += 1
             }
         }
 
-        // Cache first, log second. If the log write fails the worst case is a
-        // duplicate on the next run, which a person can reject. The other order
-        // risks marking mail handled that never made it into the queue — spend
-        // that silently disappears, which is the failure this app cares most
-        // about avoiding.
         if !entries.isEmpty {
-            entries = try await flaggingDuplicates(entries)
-            result.duplicates = entries.filter { entry in
-                entry.flags.contains { $0.reason == .possibleDuplicate }
-            }.count
-
-            entries = try await flaggingReversals(entries)
-            result.reversals = entries.filter { entry in
-                entry.flags.contains { $0.reason == .reversal }
-            }.count
-
-            // Last, after duplicates are flagged and before anything is stored.
-            //
-            // After, because a row about to be dropped as somebody else's copy
-            // of the same purchase is not worth a model call. Before the write,
-            // because a suggestion added afterwards would be a second pass over
-            // the store and a window in which the queue shows a row untagged
-            // and then changes it under the reader.
-            if let tagger {
-                entries = await tagger.tag(entries)
-                result.tagged = entries.filter { $0.resolution.suggestedTag != nil }.count
-            }
             try await provisional.insert(entries)
         }
-        try await log.record(logEntries)
 
         return result
     }

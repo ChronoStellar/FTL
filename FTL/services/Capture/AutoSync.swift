@@ -83,7 +83,7 @@ final class AutoSync {
             // offline moment buys fifteen minutes of not trying again.
             lastCompleted = .now
             lastResult = result.summary
-            return result.queued > 0 || result.flagged > 0
+            return result.queued > 0 || result.flagged > 0 || result.backlogTagged > 0
         } catch {
             // Swallowed on purpose. Nobody asked for this sync, so nobody is
             // waiting on an answer, and an error banner for a background fetch
