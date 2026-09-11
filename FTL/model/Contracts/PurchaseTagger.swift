@@ -133,8 +133,27 @@ nonisolated protocol TagProposer: Sendable {
 /// purchase, not a re-reading of the receipt the parser already read.
 nonisolated struct TagContext: Sendable, Hashable {
     let merchantRaw: String
-    /// The accrual key. See `MerchantID(normalizing:)`.
     let merchant: MerchantID
+    /// WHICH layout read this row — the TEMPLATE `entry.readBy` names, not
+    /// the raw RuleID and not `entry.provenance`. See `TagKey` for why this
+    /// exists at all: a merchant name like "Grab" is not one kind of
+    /// purchase, and this is the only signal in the row honest enough to
+    /// split it by.
+    ///
+    /// `ExtractionPattern.templateIdentity(of:)`, not `entry.readBy?.rawValue`
+    /// directly — a learned pattern's raw id carries a trailing `:version`
+    /// that changes every time the pattern is re-synthesized to a better
+    /// attempt, and the version is not part of what "layout" means here. The
+    /// template identity strips it, so `grab.com/compliments:1` and
+    /// `grab.com/compliments:2` accrue as the same key rather than orphaning
+    /// a merchant's whole tag history on every re-promotion.
+    ///
+    /// Sourced from `readBy` rather than `provenance` because a retag
+    /// overwrites the latter — the accrual key must describe what actually
+    /// produced this row's content, not whatever it was last corrected to.
+    let layout: String?
+    /// The accrual key tag memory is looked up and recorded against. See `TagKey`.
+    var key: TagKey { TagKey(merchant: merchant, layout: layout) }
     let amount: Money
     let date: Date
     /// Which parser produced the row — a hint a person would use too, since the
@@ -144,6 +163,7 @@ nonisolated struct TagContext: Sendable, Hashable {
     init(entry: ProvisionalEntry) {
         self.merchantRaw = entry.transaction.merchantRaw
         self.merchant = MerchantID(normalizing: entry.transaction.merchantRaw)
+        self.layout = entry.readBy.map(ExtractionPattern.templateIdentity(of:))
         self.amount = entry.transaction.amount
         self.date = entry.transaction.date
         if case .rule(let id) = entry.provenance { self.ruleID = id.rawValue } else { self.ruleID = nil }

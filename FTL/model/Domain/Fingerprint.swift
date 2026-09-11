@@ -66,6 +66,24 @@ nonisolated struct Fingerprint: Sendable, Hashable, Codable {
         return buckets
     }
 
+    /// Every bucket this amount could have landed in within `days` EITHER
+    /// direction — unlike `lookingBack`, which reaches mostly backward
+    /// (built for a refund searching for the charge it reverses, which is
+    /// always chronologically earlier). A caller here does not know in
+    /// advance whether the row it's looking for comes before or after this
+    /// one — a manual entry can be logged days late (later than the receipt
+    /// it will eventually match) just as easily as it can be logged same-day.
+    func widened(byDays days: Int) -> Set<Fingerprint> {
+        let steps = max(0, days / Self.dateWindowDays) + 1
+        var buckets: Set<Fingerprint> = []
+        for step in -steps...steps {
+            let shifted = Fingerprint(amountBucket: amountBucket, dateBucket: dateBucket + step, currency: currency)
+            buckets.insert(shifted)
+            buckets.formUnion(shifted.adjacent)
+        }
+        return buckets
+    }
+
     private init(amountBucket: Int, dateBucket: Int, currency: CurrencyCode) {
         self.amountBucket = amountBucket
         self.dateBucket = dateBucket

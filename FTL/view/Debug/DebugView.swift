@@ -79,6 +79,11 @@ private struct DebugHarness: View {
     @State private var endToEndFileURL: URL?
     @State private var isRunningEndToEnd = false
 
+    // Train on July–August, test on September, check against the real Sheet
+    @State private var holdoutReport: [String] = []
+    @State private var holdoutFileURL: URL?
+    @State private var isRunningHoldout = false
+
     // Exporter state
     @State private var exportProgress: ExportProgress = .idle
     @State private var exportedJSONURL: URL?
@@ -116,6 +121,19 @@ private struct DebugHarness: View {
                 Button("Force a discovery sweep now") {
                     Task { _ = await environment.discoverySync.runIfDue(force: true) }
                 }
+                // No preset, no oracle — even blu has to be discovered and
+                // learned the same coverage-only way a sender this app has
+                // never seen would be. See `AppEnvironment.pureAgentMode`.
+                Toggle(
+                    "Pure agent mode",
+                    isOn: Binding(
+                        get: { environment.pureAgentMode },
+                        set: { environment.pureAgentMode = $0 }
+                    )
+                )
+                Text("Drops blu's preset and its hand-written oracle. Takes effect on the next sync, not retroactively. Defaults ON right now for testing — see AppEnvironment.pureAgentMode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Gmail") {
@@ -255,6 +273,34 @@ private struct DebugHarness: View {
                 }
 
                 ForEach(Array(endToEndReport.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(line.contains("✗") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            // Real Gmail, real Sheet, nothing scripted. The one harness that
+            // asks whether the loop generalises forward in TIME the way it's
+            // supposed to generalise across senders — see
+            // `TemporalHoldoutRunner`.
+            Section("Temporal holdout") {
+                Text("Learns July–August from your real mailbox into isolated stores, then reads September using ONLY what it just learned, and checks the result against your real Sheet. Read-only both ends — writes nothing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button(isRunningHoldout ? "Running…" : "Train Jul–Aug, test Sep") {
+                    Task { await runTemporalHoldout() }
+                }
+                .disabled(isRunningHoldout)
+
+                if let holdoutFileURL {
+                    ShareLink(item: holdoutFileURL) {
+                        Label("Share report", systemImage: "square.and.arrow.up")
+                    }
+                }
+
+                ForEach(Array(holdoutReport.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(line.contains("✗") ? .orange : .secondary)
@@ -598,7 +644,12 @@ private struct DebugHarness: View {
             lines.append("merchant                          n   agreed   settled")
 
             for history in board.byMerchant.prefix(40) {
-                let name = String(history.merchantRaw.prefix(30)).padding(toLength: 30, withPad: " ", startingAt: 0)
+                // Layout appended when there is one — see `TagKey`. This is
+                // what makes "grab" showing up as several rows here, one per
+                // service, visible rather than one row that could never
+                // settle.
+                let displayName = history.key.layout.map { "\(history.merchantRaw) · \($0)" } ?? history.merchantRaw
+                let name = String(displayName.prefix(30)).padding(toLength: 30, withPad: " ", startingAt: 0)
                 let agreement = history.suggested == 0
                     ? "  —   "
                     : String(format: "%2d/%-2d ", history.agreed, history.suggested)
@@ -649,6 +700,41 @@ private struct DebugHarness: View {
             endToEndFileURL = Self.exportReport(lines)
         } catch {
             endToEndReport = ["⚠︎ \(error)"]
+        }
+    }
+
+    /// Real Gmail (read-only), real Sheet (read-only) — see
+    /// `TemporalHoldoutRunner` for what it does and does not measure.
+    private func runTemporalHoldout() async {
+        isRunningHoldout = true
+        defer { isRunningHoldout = false }
+        holdoutFileURL = nil
+        do {
+            let report = try await TemporalHoldoutRunner().run(
+                auth: auth,
+                ledger: environment.ledger,
+                config: .julyAugustToSeptember()
+            )
+            holdoutReport = report.lines
+            holdoutFileURL = Self.exportHoldoutReport(report.lines)
+        } catch {
+            holdoutReport = ["⚠︎ \(error)"]
+        }
+    }
+
+    private static func exportHoldoutReport(_ lines: [String]) -> URL? {
+        let header = [
+            "FTL — temporal holdout: train Jul–Aug, test Sep, compare to the Sheet",
+            ISO8601DateFormatter().string(from: .now),
+            "",
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftl-temporal-holdout.txt")
+        do {
+            try (header + lines).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
         }
     }
 
@@ -1177,6 +1263,10 @@ private struct DebugHarness: View {
                 if case .parsed = parser.parse(email) { return true }
                 return false
             }
+            // Senders with at least one active pattern — a rarer layout from
+            // the SAME sender gets the relaxed evidence floor. See
+            // `PatternSynthesisPolicy.minimumProvisionalEvidenceForKnownSender`.
+            let knownSenders = Set(parsers.compactMap { ($0 as? DomainScopedParser)?.domain })
 
             let discovery = PatternDiscovery(
                 learner: DefaultPatternLearner(
@@ -1185,7 +1275,7 @@ private struct DebugHarness: View {
                 )
             )
 
-            let shortlist = discovery.candidates(in: corpus.emails, isRead: isRead)
+            let shortlist = discovery.candidates(in: corpus.emails, isRead: isRead, knownSenders: knownSenders)
             lines.append("candidates: \(shortlist.count)")
             for candidate in shortlist.prefix(6) {
                 let shape = candidate.transactionalLayouts
@@ -1195,7 +1285,7 @@ private struct DebugHarness: View {
             }
 
             let started = Date.now
-            let findings = await discovery.run(over: corpus.emails, isRead: isRead)
+            let findings = await discovery.run(over: corpus.emails, isRead: isRead, knownSenders: knownSenders)
             lines.append(String(format: "elapsed %.1fs", Date.now.timeIntervalSince(started)))
 
             for finding in findings {

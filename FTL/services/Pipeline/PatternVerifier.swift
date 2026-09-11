@@ -41,6 +41,18 @@ nonisolated struct ParserOracle<Parser: ReceiptParser>: PatternOracle {
     }
 }
 
+/// No ground truth at all — every email says "I don't know". `verify` then
+/// has `attempted == 0` for everything, which is exactly the state a sender
+/// with no reference parser is always in, and the state `AppEnvironment`'s
+/// pure-agent mode puts EVERY sender in deliberately, blu included: the one
+/// way to find out whether "the agent recognises the pattern on its own" is
+/// actually true is to take away the hand-written answer key and watch what
+/// the coverage-only path does with a sender this app happens to already
+/// know the right answer for.
+nonisolated struct NoOracle: PatternOracle {
+    func expected(for email: CapturedEmail) -> ParsedReceipt? { nil }
+}
+
 nonisolated struct PatternVerifier: Sendable {
 
     /// Runs `pattern` over every email the oracle can vouch for, and reports

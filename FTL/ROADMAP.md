@@ -1,7 +1,9 @@
 # FTL — build order
 
 Companion to `CLAUDE.md`, which says *how* to work. This says *what next*, and why
-each thing sits where it does.
+each thing sits where it does. `TESTING.md` is the third: every harness that
+exists, what each measured, and — the part that matters — what is **not** tested
+and what that costs.
 
 **Sizes** are relative, not calendar estimates: **S** ≈ an evening, **M** ≈ a
 weekend, **L** ≈ several sessions with unknowns in them.
@@ -830,6 +832,38 @@ re-export, or as new senders accumulate.
 11. **Smaller, real:** a duplicate split across two bank charges (5.000 + 46.500
     vs 51.500) cannot be caught by exact matching and is pinned unflagged.
 
+#### Done: manual entries missed as duplicates — 2026-09-10
+
+✅ Reported directly: the same purchase landed once as a manual entry and
+again from its own receipt email, days apart, and `possibleDuplicate` never
+fired. `isSameCharge`'s 1-day slack was measured against two AUTOMATED
+rails — a bank notification and a merchant receipt, both stamped at or near
+the moment of purchase (see the Grab measurement above). `ManualEntry` has no
+way to backdate a row to when the purchase actually happened — Add Spend has
+no date field, so a manual row is always stamped at whenever a person opened
+the app and typed it in, which can be days after the fact. The 1-day rule was
+correct for the case it was measured against and silently wrong for this one.
+
+Fixed with a second, wider slack (`manualDateSlackDays`, 5 days) that applies
+only when a manual entry is one side of the pair — the measured 1-day case
+for two automated rails is untouched. The candidate SEARCH also had to widen
+to match: `Fingerprint.widened(byDays:)`, new, distinct from the existing
+`lookingBack(days:)` a refund search uses. `lookingBack` reaches mostly
+backward because a refund is always chronologically after the charge it
+reverses; a manual entry can land on EITHER side of its own receipt's date
+(logged early, or logged late), so this needed a symmetric search instead.
+
+⚠️ **Unmeasured, unlike `dateSlackDays`.** Five days is a judgment call — wide
+enough to cover "logged it a few days late", narrow enough that two unrelated
+purchases of the same round amount within a week stay rare — not a number
+pulled from a corpus of real manual-entry timing, because there isn't one yet.
+Revisit once there are enough real pairs to look at.
+
+**Root cause still open:** widening the match is a safety net, not a fix for
+why the date was wrong in the first place. Add Spend still has no way to
+backdate an entry to when a purchase actually happened — worth doing on its
+own merits, independent of dedup.
+
 #### Done: refunds
 
 ✅ **A refund is a dedup problem, and is now handled as one.** One purchase,
@@ -1003,6 +1037,71 @@ Run over the real 1,000-email export, against the shipping sources. The question
 was not "does the loop work on my mail" — that was answered — but **what an
 unseen mailbox would experience**, where no hand-written parser exists for any
 sender.
+
+✅ **This is now a live toggle, not just a one-off offline run — 2026-09-10.**
+`AppEnvironment.pureAgentMode` (Settings → Developer → Discovery), off by
+default. On, it drops blu's preset from `makeGmailRail` and swaps
+`ParserOracle(BluReceiptParser())` for `NoOracle()` in
+`makeDiscoveryContext`'s learner — the two hand-authored crutches this audit
+already measured the app leaning on. With it on, blu has to be rediscovered,
+relearned and promoted through the exact coverage-only path a genuinely
+unseen sender takes, on a REAL mailbox, not the frozen export. Motivated
+directly: "what if we're not using the premade parser at all — the agent
+will recognize the pattern on its own", and the honest answer to that
+question needed something you could actually flip and watch, not another
+paragraph asserting it already works.
+
+⚠️ **Unrun** — same status as everything else marked built-not-watched in
+this file. The expected result, from the audit below and from Stage 4's own
+"the loop closed, on device, against real mail" run: blu should get
+rediscovered, reach `.provisional` (never `.promoted` — there is no oracle to
+clear the bar with), and every row it produces should arrive flagged
+`unverifiedPattern` until the queue itself vouches for it over ≥20 settled
+rows at ≥95% (`PatternTrustPolicy`). If blu instead fails to be discovered at
+all, or the promoted pattern reads worse than the ~94–99% already measured
+for it, that is new information this toggle exists to surface.
+
+### First real run, pure agent mode — 2026-09-10
+
+**It worked — blu was rediscovered and relearned on a real mailbox, and
+tagging read better than before.** The first actual evidence that "the agent
+recognises the pattern on its own" is not just a claim this codebase makes
+about itself. Reported directly: "it actually work quite well the tag is
+better we just missed a bit more emails."
+
+✅ **The missed emails, diagnosed and fixed.** Two gaps, both real:
+
+- **Money mail from a known sender that matched no active layout was
+  silently `.skipped`, with no queue row and no way to ever see it.** This
+  is the gap one level earlier than the one Invariant 6's existing exception
+  already covers — a template that matched but had a field missing
+  (`.incomplete`) was already flagged; a template that matched NOTHING was
+  not. Fixed: `GmailRail.sync()` now flags it instead
+  (`RuleID.unclaimed`, a new `ParserOrigin.unclaimed` badge) — a person sees
+  "no pattern claimed this" in the queue and can record it by hand, rather
+  than the spend disappearing with only a debug log entry to show for it.
+  Costs nothing structurally; it's the same fallback `.incomplete` already
+  used, one branch earlier.
+- **Rare layouts from an already-known sender couldn't clear the volume
+  floor.** blu's refunds and other minority subjects are a small fraction of
+  its mail (CLAUDE.md: 116 emails, ten subjects, 95 identical) — likely too
+  few to reach the 10-email `evidenceFloor` (`maxExamples` 5 +
+  `minimumProvisionalEvidence` 5) that gate was built to ask "is this sender
+  even real". For a sender with an ALREADY active pattern, that question is
+  already answered. Fixed: `PatternSynthesisPolicy
+  .minimumProvisionalEvidenceForKnownSender` (2, floor 7 total) applies
+  instead, for any sender in a new `knownSenders: Set<String>` parameter
+  threaded through `PatternDiscovery.candidates`/`run` — computed by
+  `DiscoverySync` from `patterns.active()`'s sender domains, and by
+  `DebugView`'s manual discovery button from its own active-parser list, for
+  the same behaviour in both places.
+
+⚠️ **`minimumProvisionalEvidenceForKnownSender` is a judgment call, not a
+measurement**, unlike the 5 it's relaxing from. A genuinely rare layout (1–3
+emails total) still can't clear even the relaxed floor of 7, and correctly
+falls back to the flagged-`.unclaimed` path above rather than being forced
+through a synthesis attempt with no real holdout to verify against. Revisit
+once there are real minority-layout runs to measure instead of one report.
 
 ### The ceiling: without an oracle, nothing is ever promoted
 
@@ -1410,15 +1509,53 @@ the loop is the better bet.
 
 ## Decisions I need from you
 
-**The Grab merchant key.** `MerchantID(normalizing:)` folds 22 spellings of
-`Grab* A-…` into `grab`, which is what makes 72% of tagging a lookup — and also
-collapses rides and food into one key. Tag those differently and the merchant
-never settles, so the most-seen merchant gets a model call every sync forever.
-Cheap fix: treat "history that will not settle" as a stop, not as "ask the
-model" (three lines). Structural fix: key on merchant AND layout, so
-`grab/ride` and `grab/food` accrue separately — bigger, and the tag key stops
-being just the merchant. Cheap looks right under the unseen-mailbox target, but
-it is your call.
+✅ **The Grab merchant key — decided 2026-09-10: structural.** `MerchantID
+(normalizing:)` folded 22 spellings of `Grab* A-…` into `grab`, which is what
+made 72% of tagging a lookup — and also collapsed rides and food into one key,
+so the most-seen merchant got a model call every sync forever, never able to
+settle. Raised again independently via Shopee — the same shape of problem on a
+second platform, not a Grab-only quirk.
+
+Built: `TagKey` (`model/Contracts/TagMemory.swift`) — `merchant` AND `layout`
+(the TEMPLATE `entry.readBy` names, not its raw RuleID — see the correction
+below). `grab.com/compliments` (a ride) and `grab.com/diterbitkan` (a food
+order) now accrue as two separate histories under the same merchant name
+instead of one that could never settle. Sourced from `readBy` rather than
+`provenance` deliberately — the same reason the rail already keeps the two
+apart: `provenance` is overwritten by a retag, and the accrual key has to
+describe what actually produced the row's content, not whatever it was last
+corrected to. `TagContext`, `DefaultPurchaseTagger`, `SwiftDataTagMemory`,
+`TagDecisionRecord` (new `layoutKey` column, defaults nil for every row
+written before it existed) all follow this key now instead of bare
+`MerchantID`.
+
+⚠️ **Honest limit, not a bug:** this only recovers what the SOURCE EMAIL
+actually distinguishes. Grab's own receipt differs by service; a bank's
+generic notification for the same charge (`Grab* A-XXXX` via blu) does not
+name a service at all, so rows read that way still share one layout — the
+information was never captured to begin with, and no key scheme recovers what
+isn't there. The cheap fix ("stop asking once history won't settle") was NOT
+built on top of this — `worthAsking` already stops asking once a key's own
+history is a genuine split, which is now scoped narrowly enough (per layout,
+not per whole-merchant) that it should fire far less often than before.
+Revisit if it doesn't.
+
+**Correction, same day: the first version used the raw RuleID, and that
+broke more than it fixed.** Reported as "the tag scope is smaller now" —
+merchants that used to have a settled suggestion no longer did, and not just
+Grab or Shopee. Cause: `ExtractionPattern.id` always carries a trailing
+`:version`, so `entry.readBy?.rawValue` is not "which template read this
+row", it's "which NUMBERED ATTEMPT at that template" — and a pattern gets a
+new version every time it is re-synthesized, including by `DiscoverySync`
+running unattended. Keying tag accrual on the raw RuleID meant EVERY
+learned-sender merchant's whole tag history was silently orphaned on every
+re-promotion, a far bigger and more general effect than the deliberate
+Grab/Shopee split above. Fixed with `ExtractionPattern.templateIdentity(of:)`
+— strips the same trailing `:N` `namesPattern` already knows how to find, so
+`grab.com/compliments:1` and `grab.com/compliments:2` accrue as one key. Both
+the read side (`TagContext.layout`) and the write side
+(`DefaultApprovalService.recordDecisions`) have to agree on this or the bug
+just moves; both now call the same function.
 
 
 **Where synthesis runs.** This is the one job a larger model would help most with,

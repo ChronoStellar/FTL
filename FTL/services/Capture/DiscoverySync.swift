@@ -99,7 +99,19 @@ final class DiscoverySync {
                 return false
             }
 
-            let findings = try await context.discovery.run(fetching: context.source, isRead: isRead)
+            // Senders with at least one pattern already active — the volume
+            // gate that decides whether a LAYOUT is worth a model call
+            // relaxes for these (`minimumProvisionalEvidenceForKnownSender`):
+            // the question that gate exists to answer, "is this sender
+            // real", is already settled for them.
+            let activePatterns = (try? await context.patterns.active()) ?? []
+            let knownSenders = Set(activePatterns.map(\.senderDomain))
+
+            let findings = try await context.discovery.run(
+                fetching: context.source,
+                isRead: isRead,
+                knownSenders: knownSenders
+            )
 
             var promoted = 0
             var provisional = 0

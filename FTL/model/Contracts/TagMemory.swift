@@ -13,10 +13,13 @@
 //
 //  Two consequences of that wording, both structural rather than stylistic:
 //
-//  · The scope is **per merchant**, because that is the scope the evidence has.
-//    Trusting `HOKKY SUPERMARKET` implies nothing about a shop seen once, so
-//    there is no global hit rate that can open anything — `TagScoreboard` reports
-//    one anyway, for reading, and nothing routes on it.
+//  · The scope is **per merchant, per layout** (`TagKey`) — because that is the
+//    scope the evidence has. Trusting `HOKKY SUPERMARKET` implies nothing about
+//    a shop seen once, and trusting "grab" as one thing implies nothing about
+//    which of Grab's several services a charge actually was — a platform's
+//    ride, food and grocery arms all share one merchant name and mean three
+//    different buckets. `TagScoreboard` reports one global hit rate anyway,
+//    for reading, and nothing routes on it.
 //  · A **retag is the most valuable event in the system**, not correction noise.
 //    It is the only place the app finds out it was wrong, so it is recorded with
 //    exactly as much care as an agreement.
@@ -26,12 +29,44 @@
 
 import Foundation
 
+/// WHAT accrues a decision: a merchant, AND which layout of it read the row.
+///
+/// A merchant name is not always one kind of purchase. Grab's ride, food and
+/// grocery services all say "Grab" on a bank statement, and a `MerchantID`
+/// alone folds all three into one key — which is exactly why that key could
+/// never settle: 22 decisions split three ways looks identical to a merchant
+/// nobody can predict, and `worthAsking` correctly gave up on it rather than
+/// keep guessing. Keying on the LAYOUT too — which template or pattern
+/// actually read the email, `RuleID.rawValue` — separates `grab.com/food`
+/// from `grab.com/ride` before they ever get folded together, so each can
+/// settle on its own.
+///
+/// `layout` is nil for a manual entry (nothing read it) or a merchant no
+/// active parser or pattern claimed. Nil rows still accrue together as one
+/// key — there is no signal to split them by, which is the honest answer
+/// rather than a guess: a bank's generic notification for a Grab charge
+/// carries no more information about what was bought than the merchant name
+/// itself, and no key scheme can recover what was never captured.
+nonisolated struct TagKey: Sendable, Hashable, Codable {
+    let merchant: MerchantID
+    let layout: String?
+
+    /// A flat, queryable encoding for the persistence layer — SwiftData
+    /// predicates filter and group on one column, not a compound value. Not
+    /// shown anywhere a person reads; `merchantRaw` is what they see.
+    ///
+    /// The delimiter is a control character rather than something like "/",
+    /// which both a merchant name and a `RuleID` could plausibly contain —
+    /// see `ExtractionPattern.id`, which itself uses "/" as a separator.
+    var compositeKey: String { merchant.rawValue + "\u{1F}" + (layout ?? "") }
+}
+
 /// One settled row: what was offered, what you chose.
 nonisolated struct TagDecision: Sendable, Hashable, Codable, Identifiable {
     /// The provisional entry this settled, so a decision is never double-counted
     /// if a promotion is retried.
     let id: ProvisionalEntry.ID
-    let merchant: MerchantID
+    let key: TagKey
     /// Kept alongside the key so a scoreboard can show a name a person
     /// recognises rather than the flattened form (Invariant 3, in spirit).
     let merchantRaw: String
@@ -53,9 +88,9 @@ nonisolated struct TagDecision: Sendable, Hashable, Codable, Identifiable {
     }
 }
 
-/// Everything decided about one merchant.
+/// Everything decided about one merchant LAYOUT — see `TagKey`.
 nonisolated struct MerchantTagHistory: Sendable, Hashable {
-    let merchant: MerchantID
+    let key: TagKey
     /// The name last seen for it, for display.
     let merchantRaw: String
     /// Bucket → how many times you chose it.
@@ -145,7 +180,7 @@ nonisolated protocol TagMemory: Sendable {
     /// second agreement.
     func record(_ decisions: [TagDecision]) async throws
 
-    func history(for merchants: [MerchantID]) async throws -> [MerchantID: MerchantTagHistory]
+    func history(for keys: [TagKey]) async throws -> [TagKey: MerchantTagHistory]
 
     func scoreboard() async throws -> TagScoreboard
 }

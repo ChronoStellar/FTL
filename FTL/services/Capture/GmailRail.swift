@@ -198,6 +198,54 @@ nonisolated struct GmailRail: Sendable {
 
             for email in emails where unseen.contains(email.id) {
                 guard let parser = parsers.first(where: { $0.canParse(email) }) else {
+                    // Money mail from a sender the app already reads
+                    // something from — `senderQuery` restricts the fetch
+                    // itself to known domains, so this email was never a
+                    // brochure or an unrelated sender — but no active LAYOUT
+                    // claims it: a refund, or a minority template too rare
+                    // to have cleared the evidence floor yet.
+                    //
+                    // Silently skipping it is exactly what Invariant 6 exists
+                    // to prevent. The existing exception below only covers a
+                    // template that matched but had one field missing
+                    // (`.incomplete`) — this is the gap one level earlier,
+                    // "nothing matched at all", which used to fall all the
+                    // way through to a bare `.skipped` log entry with no
+                    // queue row and no way for a person to ever see it.
+                    if email.hasCurrencyMarker {
+                        let entry = ProvisionalEntry(
+                            id: UUID(),
+                            transaction: NormalizedTransaction(
+                                id: UUID(),
+                                documentID: UUID(),
+                                source: .email,
+                                date: email.date,
+                                amount: .zero,
+                                merchantRaw: email.subject,
+                                merchant: nil,
+                                lineItems: [],
+                                fingerprint: Fingerprint(amount: .zero, date: email.date)
+                            ),
+                            resolution: ProvisionalEntry.Resolution(
+                                kind: .spend,
+                                nonSpendType: nil,
+                                categoryID: nil,
+                                merchantID: nil,
+                                splits: [],
+                                mergedFrom: []
+                            ),
+                            provenance: .rule(.unclaimed),
+                            flags: [ReviewFlag(reason: .unparseable, detail: "no active pattern claimed this layout")],
+                            status: .pending,
+                            createdAt: .now,
+                            readBy: .unclaimed,
+                            readAs: .spend
+                        )
+                        entries.append(entry)
+                        logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: nil))
+                        result.flagged += 1
+                        continue
+                    }
                     logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: nil))
                     result.skipped += 1
                     PipelineDebugStub.recordParserSkipped(email: email, activeParserIDs: parsers.map(\.id.rawValue))
@@ -340,6 +388,15 @@ nonisolated struct GmailRail: Sendable {
     /// The buckets still do the searching — `candidates(matching:)` is indexed
     /// on them — and the exact test filters what comes back.
     ///
+    /// The search reaches back `manualDateSlackDays` (see `isSameCharge`),
+    /// not just the fingerprint's own ±1-bucket neighbourhood. Cheap: the
+    /// candidate pool this widens is a local SwiftData fetch, run per entry,
+    /// against a mailbox measured at roughly a hundred messages a month —
+    /// nothing like the fetches `flaggingReversals` already pays for over a
+    /// 30-day reach. Widening the POOL doesn't loosen what actually matches;
+    /// `isSameCharge` still applies the tighter 1-day slack unless a manual
+    /// entry is one side of the pair.
+    ///
     /// Flagged, never merged. Two rows both saying Rp 44.300 on 12 Aug might be
     /// one Grab ride billed twice or two rides at the same fare, and only the
     /// person who took them knows. Invariant 6.
@@ -347,11 +404,16 @@ nonisolated struct GmailRail: Sendable {
         var flagged = entries
         for index in flagged.indices {
             let entry = flagged[index]
-            let stored = (try? await provisional.candidates(matching: entry.transaction.fingerprint)) ?? []
+            var stored: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
+            for bucket in entry.transaction.fingerprint.widened(byDays: Self.manualDateSlackDays) {
+                for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
+                    stored[candidate.id] = candidate
+                }
+            }
 
             // Both directions: the pair usually arrives in the SAME sync, so
             // checking only what is already stored would miss every one of them.
-            let others = stored + entries.filter { $0.id != entry.id }
+            let others = Array(stored.values) + entries.filter { $0.id != entry.id }
             guard let twin = others.first(where: { Self.isSameCharge($0, as: entry) }) else { continue }
 
             flagged[index].flags.append(
@@ -371,16 +433,28 @@ nonisolated struct GmailRail: Sendable {
     /// coffees. The same figure arriving once from the merchant and once from
     /// the bank is one purchase.
     ///
-    /// A day of slack, not none. Measured on the 137 real rows: same-day only
-    /// caught 19 of Grab's 21, missing a ride whose receipt arrived on the 10th
-    /// and whose card charge posted on the 9th. Widening to ±1 day caught 20
-    /// and flagged exactly one more row — its twin. ±2 and ±3 caught nothing
-    /// further, so the slack stops here rather than at `Fingerprint`'s ±3.
+    /// A day of slack, not none, for two AUTOMATED rails. Measured on the 137
+    /// real rows: same-day only caught 19 of Grab's 21, missing a ride whose
+    /// receipt arrived on the 10th and whose card charge posted on the 9th.
+    /// Widening to ±1 day caught 20 and flagged exactly one more row — its
+    /// twin. ±2 and ±3 caught nothing further, so the slack stops here rather
+    /// than at `Fingerprint`'s ±3.
     ///
     /// The 21st has no exact twin and cannot get one: blu split that fare into
     /// Rp 5.000 and Rp 46.500 against Grab's single Rp 51.500. Matching sums of
     /// charges is a different and much harder problem, and guessing at it would
     /// merge unrelated purchases.
+    ///
+    /// Widened to `manualDateSlackDays` when either side is a MANUAL entry.
+    /// That measurement was about two rails that both timestamp at or near
+    /// the moment of purchase — a card charge and a receipt email. A hand
+    /// typed entry does not: `ManualEntry` has no way to backdate a row to
+    /// when the purchase actually happened, so it is stamped at whenever a
+    /// person happened to open the app and type it in, which can be days
+    /// after the fact. Reported directly: the same purchase landed once as a
+    /// manual entry and again from its own receipt email days later, and the
+    /// 1-day rule — correct for the case it was measured against — missed
+    /// the pair entirely.
     private static func isSameCharge(_ lhs: ProvisionalEntry, as rhs: ProvisionalEntry) -> Bool {
         guard lhs.transaction.amount == rhs.transaction.amount,
               ruleName(of: lhs) != ruleName(of: rhs)
@@ -390,11 +464,24 @@ nonisolated struct GmailRail: Sendable {
             from: Calendar.current.startOfDay(for: min(lhs.transaction.date, rhs.transaction.date)),
             to: Calendar.current.startOfDay(for: max(lhs.transaction.date, rhs.transaction.date))
         ).day ?? .max
-        return days <= dateSlackDays
+        let slack = (Self.isManual(lhs) || Self.isManual(rhs)) ? manualDateSlackDays : dateSlackDays
+        return days <= slack
+    }
+
+    private static func isManual(_ entry: ProvisionalEntry) -> Bool {
+        if case .manual = entry.provenance { return true }
+        return false
     }
 
     /// See `isSameCharge` — measured, not assumed.
     private static let dateSlackDays = 1
+    /// See `isSameCharge`. Unmeasured, unlike `dateSlackDays` — there is no
+    /// recorded corpus of manual-entry timing to tune this against, only the
+    /// one reported pair. Five days is a judgment call: wide enough to cover
+    /// "logged it a few days late", narrow enough that two unrelated
+    /// purchases of the same round amount within the same week stay rare.
+    /// Revisit once there are real pairs to measure instead of one report.
+    private static let manualDateSlackDays = 5
 
     // MARK: - Reversals
 

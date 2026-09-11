@@ -89,6 +89,42 @@ final class AppEnvironment {
     /// put unattended writes at 67% correct.
     let trustLevel: TrustLevel = .assist
 
+    /// True when the loop should learn EVERY sender itself — no preset
+    /// patterns, no hand-authored oracle. Toggling this on drops blu's
+    /// preset (`presets: []` in `makeGmailRail`) and swaps `BluReceiptParser`
+    /// out of the synthesis oracle for `NoOracle`, so even a sender this app
+    /// already has a known-good answer for has to be discovered, learned and
+    /// promoted the same coverage-only way a genuinely unseen sender would
+    /// (`PatternVerifier`'s `attempted == 0` path, always `.provisional`
+    /// until the queue itself vouches for it — `PatternTrustPolicy`).
+    ///
+    /// This is "the mailbox nobody has looked at" (see `CLAUDE.md`), made
+    /// testable on a mailbox this app has actually been tuned against — the
+    /// one honest way to check "the agent recognises the pattern on its own"
+    /// rather than assume it because a preset is quietly doing the work.
+    ///
+    /// UserDefaults-backed rather than a stored property: read fresh by
+    /// `makeGmailRail()`/`makeDiscoveryContext()` on every call, so flipping
+    /// it takes effect on the NEXT sync with no environment rebuild needed.
+    /// DEBUG-only surface (Settings → Developer).
+    ///
+    /// ⚠️ **Defaults ON right now, for testing — flip back before relying on
+    /// blu's preset again.** The normal default is OFF (a preset exists
+    /// precisely to keep spend flowing while the loop is proven elsewhere),
+    /// but the point of asking for this right now is to SEE it, not to find
+    /// it in a menu first. The `object(forKey:) == nil` check is what makes
+    /// this only a fallback: the Debug toggle's explicit `set` below always
+    /// wins over it, on either value, and persists across relaunches like any
+    /// other UserDefaults write.
+    var pureAgentMode: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: Self.pureAgentModeKey) != nil else { return true }
+            return UserDefaults.standard.bool(forKey: Self.pureAgentModeKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pureAgentModeKey) }
+    }
+    private static let pureAgentModeKey = "ftl_pure_agent_mode"
+
     /// Fetches mail when the app becomes active, without anybody asking.
     ///
     /// Lives here rather than in a view because the throttle has to survive
@@ -340,12 +376,13 @@ final class AppEnvironment {
             // verifier scores proposals against, not a reader that sits in
             // front of the loop — see `GmailRail.activeParsers`. blu is covered
             // by a preset pattern instead, which the audit measured as an exact
-            // reproduction (116/116).
+            // reproduction (116/116) — unless `pureAgentMode` says to take even
+            // that away.
             parsers: [],
             provisional: provisional,
             log: captureLog,
             patterns: patterns,
-            presets: PresetPatterns.load(),
+            presets: pureAgentMode ? [] : PresetPatterns.load(),
             tagger: makePurchaseTagger(),
             trust: patternMemory
         )
@@ -366,7 +403,10 @@ final class AppEnvironment {
                     // The only sender this can verify against a real oracle
                     // is blu — everything else falls through to coverage,
                     // same as the manual "Discovery" run in the Debug screen.
-                    oracle: ParserOracle(BluReceiptParser())
+                    // `pureAgentMode` removes that one exception too, so
+                    // nothing here is ever graded against a hand-written
+                    // answer — see `pureAgentMode`'s own doc comment.
+                    oracle: pureAgentMode ? NoOracle() : ParserOracle(BluReceiptParser())
                 ),
                 // "One sender per launch" — see DiscoverySync for why this is
                 // tighter than the Debug screen's manual button (3).

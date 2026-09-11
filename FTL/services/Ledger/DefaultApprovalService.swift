@@ -158,7 +158,20 @@ actor DefaultApprovalService: ApprovalService {
         let decisions = entries.map { entry in
             TagDecision(
                 id: entry.id,
-                merchant: MerchantID(normalizing: entry.transaction.merchantRaw),
+                key: TagKey(
+                    merchant: MerchantID(normalizing: entry.transaction.merchantRaw),
+                    // `readBy`, not `provenance` — stable across a retag, and
+                    // the same choice `TagContext.layout` makes, for the same
+                    // reason: the accrual key must describe what actually
+                    // produced this row, not whatever it was last corrected to.
+                    // `templateIdentity(of:)`, not the raw RuleID, for the
+                    // same reason too — strips the trailing `:version` so a
+                    // pattern re-promoted to a better attempt doesn't orphan
+                    // everything accrued under the old one. Must match
+                    // `TagContext.layout` exactly, or the write and read
+                    // sides of this key would silently disagree.
+                    layout: entry.readBy.map(ExtractionPattern.templateIdentity(of:))
+                ),
                 merchantRaw: entry.transaction.merchantRaw,
                 suggested: entry.resolution.suggestedTag,
                 chosen: entry.resolution.categoryID,

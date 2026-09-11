@@ -48,24 +48,24 @@ actor InMemoryTagMemory: TagMemory {
         for decision in new { decisions[decision.id] = decision }
     }
 
-    func history(for merchants: [MerchantID]) async throws -> [MerchantID: MerchantTagHistory] {
-        let wanted = Set(merchants)
-        var byMerchant: [MerchantID: [TagDecision]] = [:]
-        for decision in decisions.values where wanted.contains(decision.merchant) {
-            byMerchant[decision.merchant, default: []].append(decision)
+    func history(for keys: [TagKey]) async throws -> [TagKey: MerchantTagHistory] {
+        let wanted = Set(keys)
+        var byKey: [TagKey: [TagDecision]] = [:]
+        for decision in decisions.values where wanted.contains(decision.key) {
+            byKey[decision.key, default: []].append(decision)
         }
-        return byMerchant.mapValues(Self.fold)
+        return byKey.mapValues(Self.fold)
     }
 
     func scoreboard() async throws -> TagScoreboard {
-        var byMerchant: [MerchantID: [TagDecision]] = [:]
-        for decision in decisions.values { byMerchant[decision.merchant, default: []].append(decision) }
+        var byKey: [TagKey: [TagDecision]] = [:]
+        for decision in decisions.values { byKey[decision.key, default: []].append(decision) }
         let all = Array(decisions.values)
         return TagScoreboard(
             decisions: all.count,
             suggested: all.filter { $0.suggested != nil }.count,
             agreed: all.filter { $0.wasCorrect == true }.count,
-            byMerchant: byMerchant.values.map(Self.fold).sorted { $0.total > $1.total }
+            byMerchant: byKey.values.map(Self.fold).sorted { $0.total > $1.total }
         )
     }
 
@@ -76,7 +76,7 @@ actor InMemoryTagMemory: TagMemory {
             if let chosen = row.chosen { choices[chosen, default: 0] += 1 } else { nonSpend += 1 }
         }
         return MerchantTagHistory(
-            merchant: rows[0].merchant,
+            key: rows[0].key,
             merchantRaw: rows.max { $0.decidedAt < $1.decidedAt }?.merchantRaw ?? rows[0].merchantRaw,
             choices: choices,
             nonSpendCount: nonSpend,

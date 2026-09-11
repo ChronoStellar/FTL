@@ -28,6 +28,12 @@ final class TagDecisionRecord {
     /// decide about THIS merchant", and per-merchant scope is what makes the
     /// evidence honest (Invariant 10 — auto is never a global switch).
     var merchantKey: String
+    /// The other half of the accrual key — see `TagKey`. Nil for every row
+    /// written before this column existed, and for a manual entry or a
+    /// merchant no active parser or pattern claimed: all of those genuinely
+    /// have no layout signal, so they fold into one history together, exactly
+    /// as every row did before this existed.
+    var layoutKey: String?
     var decidedAt: Date
 
     /// Mirrored so a scoreboard can count without decoding every blob.
@@ -40,9 +46,16 @@ final class TagDecisionRecord {
 
     var payload: Data
 
+    /// The two real columns above, joined the same way `TagKey.compositeKey`
+    /// joins them — a single value to group and filter records by without
+    /// decoding every blob. Computed, not stored: SwiftData persists only the
+    /// two columns it is built from.
+    var compositeKey: String { merchantKey + "\u{1F}" + (layoutKey ?? "") }
+
     init(decision: TagDecision) throws {
         self.id = decision.id
-        self.merchantKey = decision.merchant.rawValue
+        self.merchantKey = decision.key.merchant.rawValue
+        self.layoutKey = decision.key.layout
         self.decidedAt = decision.decidedAt
         self.chosenCategory = decision.chosen?.rawValue ?? ""
         self.suggestedCategory = decision.suggested?.categoryID.rawValue
@@ -56,7 +69,8 @@ final class TagDecisionRecord {
     }
 
     func apply(_ decision: TagDecision) throws {
-        self.merchantKey = decision.merchant.rawValue
+        self.merchantKey = decision.key.merchant.rawValue
+        self.layoutKey = decision.key.layout
         self.decidedAt = decision.decidedAt
         self.chosenCategory = decision.chosen?.rawValue ?? ""
         self.suggestedCategory = decision.suggested?.categoryID.rawValue

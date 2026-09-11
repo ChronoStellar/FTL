@@ -18,6 +18,11 @@ nonisolated enum ParserOrigin: Sendable, Hashable {
     case agentLearned(id: String, version: Int, author: String, verifiedCount: Int, isVouched: Bool)
     case handWritten(id: String)
     case manual
+    /// Money mail from a known sender, no active layout claimed it — see
+    /// `RuleID.unclaimed`. Not "unknown": the app knows exactly why this
+    /// happened, which is what makes it worth its own badge rather than
+    /// falling into the generic case below.
+    case unclaimed
     case unknown(id: String)
 
     var badgeText: String {
@@ -30,6 +35,8 @@ nonisolated enum ParserOrigin: Sendable, Hashable {
             return "🛠️ Hardcoded: \(id)"
         case .manual:
             return "✍️ Manual"
+        case .unclaimed:
+            return "⚠️ No pattern claimed this"
         case .unknown(let id):
             return "❓ \(id)"
         }
@@ -41,6 +48,7 @@ nonisolated enum ParserOrigin: Sendable, Hashable {
         case .agentLearned: return "AGENT"
         case .handWritten: return "HARDCODED"
         case .manual: return "MANUAL"
+        case .unclaimed: return "UNCLAIMED"
         case .unknown: return "UNKNOWN"
         }
     }
@@ -472,6 +480,9 @@ final class PipelineDebugStub {
         let raw = ruleID.rawValue
         if raw == "manual-entry" {
             return .manual
+        }
+        if raw == RuleID.unclaimed.rawValue {
+            return .unclaimed
         }
         if PresetPatterns.isPreset(id: raw) {
             let version = Int(raw.split(separator: ":").last ?? "1") ?? 1

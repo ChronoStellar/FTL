@@ -85,7 +85,7 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         }
 
         let contexts = taggable.map { TagContext(entry: entries[$0]) }
-        let known = (try? await memory.history(for: contexts.map(\.merchant))) ?? [:]
+        let known = (try? await memory.history(for: contexts.map(\.key))) ?? [:]
         let valid = Set(categories.map(\.id))
 
         // Which merchants the model could actually help with: no settled
@@ -96,14 +96,14 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         // with ten rows in this batch is worth far more of the budget than
         // ten merchants with one row each, because one call answers for all
         // ten either way.
-        var candidateRows: [MerchantID: Int] = [:]
-        var firstSeenAt: [MerchantID: Int] = [:]
+        var candidateRows: [TagKey: Int] = [:]
+        var firstSeenAt: [TagKey: Int] = [:]
         for (order, context) in contexts.enumerated() {
-            guard Self.remembered(context.merchant, in: known, valid: valid) == nil,
-                  Self.worthAsking(context.merchant, in: known)
+            guard Self.remembered(context.key, in: known, valid: valid) == nil,
+                  Self.worthAsking(context.key, in: known)
             else { continue }
-            candidateRows[context.merchant, default: 0] += 1
-            if firstSeenAt[context.merchant] == nil { firstSeenAt[context.merchant] = order }
+            candidateRows[context.key, default: 0] += 1
+            if firstSeenAt[context.key] == nil { firstSeenAt[context.key] = order }
         }
 
         // Most rows first. Ties keep the batch's own order rather than
@@ -115,16 +115,16 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
             if lhsRows != rhsRows { return lhsRows > rhsRows }
             return (firstSeenAt[lhs] ?? .max) < (firstSeenAt[rhs] ?? .max)
         }
-        let fundedMerchants = Set(priority.prefix(maxModelCalls))
+        let funded = Set(priority.prefix(maxModelCalls))
 
         var tagged = entries
         var modelCalls = 0
-        /// Merchants the model has already answered for in THIS batch. The
-        /// outer optional is "did we ask"; the inner is "did it say anything".
-        var asked: [MerchantID: CategoryID?] = [:]
+        /// Keys the model has already answered for in THIS batch. The outer
+        /// optional is "did we ask"; the inner is "did it say anything".
+        var asked: [TagKey: CategoryID?] = [:]
 
         for (context, index) in zip(contexts, taggable) {
-            var suggestion = Self.remembered(context.merchant, in: known, valid: valid)
+            var suggestion = Self.remembered(context.key, in: known, valid: valid)
             if let mem = suggestion,
                case .memory(let agreed, let total) = mem.basis,
                let catName = categories.first(where: { $0.id == mem.categoryID })?.name {
@@ -143,13 +143,14 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
             // conflating them is what made the most-used merchant the most
             // expensive one — see `MerchantTagHistory.hasOpinion`.
             if suggestion == nil {
-                if !Self.worthAsking(context.merchant, in: known) {
+                if !Self.worthAsking(context.key, in: known) {
                     PipelineDebugStub.recordTaggerSkipped(
                         merchant: context.merchant,
-                        reason: "merchant already settled or has conflicted opinion"
+                        reason: "merchant/layout already settled or has conflicted opinion"
                     )
                 } else if let proposer {
-                    // Once per MERCHANT, not once per row.
+                    // Once per KEY (merchant + layout — see `TagKey`), not
+                    // once per row.
                     //
                     // The budget counts model calls, and asking per row spends
                     // it on rows rather than on questions: a sync of 45 rows
@@ -163,26 +164,26 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
                     // and `minimumDecisions` is 2, so a merchant seen twice in
                     // one batch never benefits from its own first row. Caching
                     // the answer for the batch is what makes the budget buy
-                    // merchants instead of rows.
+                    // keys instead of rows.
                     //
-                    // WHICH merchants get a call is decided above, by row
-                    // count (`fundedMerchants`) — not by reaching this line
-                    // first. A first sync with no memory at all is exactly
-                    // where that used to bite: Gmail tends to return newest
-                    // mail first, so the budget went to whichever eight
-                    // merchants happened to be newest, which could all be
-                    // one-off rows while a ten-row regular sat untagged.
-                    if let cached = asked[context.merchant] {
+                    // WHICH keys get a call is decided above, by row count
+                    // (`funded`) — not by reaching this line first. A first
+                    // sync with no memory at all is exactly where that used to
+                    // bite: Gmail tends to return newest mail first, so the
+                    // budget went to whichever eight merchants happened to be
+                    // newest, which could all be one-off rows while a ten-row
+                    // regular sat untagged.
+                    if let cached = asked[context.key] {
                         suggestion = cached.map { TagSuggestion(categoryID: $0, basis: .model) }
-                    } else if fundedMerchants.contains(context.merchant) {
+                    } else if funded.contains(context.key) {
                         modelCalls += 1
                         let proposed = await proposer.propose(for: context, among: categories)
-                        asked[context.merchant] = .some(proposed)
+                        asked[context.key] = .some(proposed)
                         suggestion = proposed.map { TagSuggestion(categoryID: $0, basis: .model) }
                     } else {
                         PipelineDebugStub.recordTaggerSkipped(
                             merchant: context.merchant,
-                            reason: "model call budget (\(maxModelCalls)) spent on merchants with more rows this batch"
+                            reason: "model call budget (\(maxModelCalls)) spent on merchant/layouts with more rows this batch"
                         )
                     }
                 }
@@ -204,12 +205,12 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         guard !candidates.isEmpty, !categories.isEmpty else { return [] }
 
         let contexts = candidates.map(TagContext.init(entry:))
-        let known = (try? await memory.history(for: contexts.map(\.merchant))) ?? [:]
+        let known = (try? await memory.history(for: contexts.map(\.key))) ?? [:]
         let valid = Set(categories.map(\.id))
 
         var changed: [ProvisionalEntry] = []
         for (context, entry) in zip(contexts, candidates) {
-            guard let suggestion = Self.remembered(context.merchant, in: known, valid: valid) else { continue }
+            guard let suggestion = Self.remembered(context.key, in: known, valid: valid) else { continue }
             // Nothing to write when the row already says this. Without the
             // check, opening the queue would rewrite every remembered row every
             // time — a store write per row per open, to change nothing.
@@ -224,17 +225,17 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
 
     // MARK: - The one suggestion rule, shared by both paths
 
-    /// What memory says about this merchant, or nil.
+    /// What memory says about this merchant/layout, or nil.
     ///
     /// A settled outcome of nil means you consistently mark this merchant as
     /// NOT a spend, and that is deliberately not turned into a suggestion —
     /// see `TagSuggestion.categoryID`.
     private static func remembered(
-        _ merchant: MerchantID,
-        in known: [MerchantID: MerchantTagHistory],
+        _ key: TagKey,
+        in known: [TagKey: MerchantTagHistory],
         valid: Set<CategoryID>
     ) -> TagSuggestion? {
-        guard let settled = known[merchant]?.settled(),
+        guard let settled = known[key]?.settled(),
               let category = settled.categoryID,
               // A bucket you have since deleted from the sheet is not a
               // suggestion — it is a row that would land nowhere. The row then
@@ -250,8 +251,8 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
         )
     }
 
-    /// A merchant the model might be able to help with: one you have not
-    /// settled often enough to have an opinion about.
+    /// A merchant/layout the model might be able to help with: one you have
+    /// not settled often enough to have an opinion about.
     ///
     /// Two histories produce no suggestion and mean opposite things:
     ///
@@ -262,11 +263,19 @@ nonisolated struct DefaultPurchaseTagger: PurchaseTagger {
     ///   informative thing in the system here and it does not point one way.
     ///   A model that has never seen your budget will not resolve that; it will
     ///   just spend the call budget guessing, every sync, forever.
+    ///
+    /// This is where `TagKey` earns its keep. Before it existed, "seen and
+    /// unsettled" was the permanent state of a merchant like Grab or Shopee —
+    /// food, rides and groceries all share one merchant name and split the
+    /// decisions three ways, so the history could never settle and the model
+    /// got asked forever without ever being able to help. Split by layout,
+    /// `grab.com/food` and `grab.com/ride` each get their own history and can
+    /// each settle on their own.
     private static func worthAsking(
-        _ merchant: MerchantID,
-        in known: [MerchantID: MerchantTagHistory]
+        _ key: TagKey,
+        in known: [TagKey: MerchantTagHistory]
     ) -> Bool {
-        guard let history = known[merchant] else { return true }
+        guard let history = known[key] else { return true }
         return !history.hasOpinion
     }
 

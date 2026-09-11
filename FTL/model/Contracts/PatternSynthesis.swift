@@ -72,6 +72,27 @@ nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable 
         return Int(ruleID.rawValue[ruleID.rawValue.index(after: colon)...]) != nil
     }
 
+    /// Which TEMPLATE a rule reads, independent of which attempt at it this
+    /// is — the same trailing `:N` this file already strips to answer
+    /// "is this a pattern at all", stripped here to answer "which one".
+    ///
+    /// This exists for `TagContext.layout` (`TagKey`, tag accrual). Without
+    /// it, re-promoting a pattern to a better version — exactly what
+    /// `DiscoverySync` and a manual re-run both do — silently changes the
+    /// layout key every learned-sender row accrues under: `grab.com/
+    /// compliments:1` and `grab.com/compliments:2` are the SAME real
+    /// template, read one attempt apart, and treating them as two different
+    /// layouts would orphan a merchant's whole tag history on every
+    /// re-synthesis — a much bigger and more general effect than the
+    /// Grab/Shopee splitting `TagKey` was actually built for. A hand-written
+    /// parser's id has no colon at all, so it passes through unchanged.
+    static func templateIdentity(of ruleID: RuleID) -> String {
+        guard let colon = ruleID.rawValue.lastIndex(of: ":"),
+              Int(ruleID.rawValue[ruleID.rawValue.index(after: colon)...]) != nil
+        else { return ruleID.rawValue }
+        return String(ruleID.rawValue[ruleID.rawValue.startIndex..<colon])
+    }
+
     let senderDomain: String
 
     /// Which of the sender's layouts this reads. Empty for a sender with only
@@ -332,6 +353,32 @@ nonisolated struct PatternSynthesisPolicy: Sendable {
     /// Five is thinner than it looks: at `coverageThreshold` 0.9, five held-out
     /// emails means all five must read, because four of five is 0.8.
     var minimumProvisionalEvidence = 5
+
+    /// A lower `minimumProvisionalEvidence` for a sender's OTHER layouts,
+    /// once at least one of its layouts is already active.
+    ///
+    /// The volume floor exists to answer one question — "is this sender
+    /// real, or a brochure?" — and an active pattern for the sender has
+    /// already answered it. A second, rarer layout from the SAME sender
+    /// (blu's refunds against its 95 identical transaction receipts) doesn't
+    /// need to re-clear that bar from nothing; it only needs enough of its
+    /// own emails to propose from and a thin real holdout to check against.
+    ///
+    /// Reported directly: pure-agent mode (no preset, no oracle) missed real
+    /// mail that the preset used to cover, because minority layouts never
+    /// reached the normal floor. `PatternDiscovery.candidates` and
+    /// `run(over:isRead:knownSenders:)` apply this instead of
+    /// `minimumProvisionalEvidence` for any sender in the caller's
+    /// `knownSenders` set.
+    ///
+    /// ⚠️ Unmeasured, unlike `minimumProvisionalEvidence` above — a judgment
+    /// call, not a further-tuned number. Two is thin: `maxExamples` +
+    /// this is 7 emails total, meaning as few as 2 held out to verify
+    /// against, and `coverageThreshold` 0.9 at 2 means both must read.
+    /// Revisit once there are real minority-layout runs to measure instead
+    /// of one report ("we just missed a bit more emails").
+    var minimumProvisionalEvidenceForKnownSender = 2
+
     /// Share of the held-out emails a pattern must read SOMETHING plausible
     /// from before it is worth a person's attention.
     var coverageThreshold = 0.9

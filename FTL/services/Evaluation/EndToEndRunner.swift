@@ -338,10 +338,6 @@ nonisolated struct FixedCategories: CategorySource {
     func categories() async throws -> [SpendCategory] { buckets }
 }
 
-nonisolated struct NoOracle: PatternOracle {
-    func expected(for email: CapturedEmail) -> ParsedReceipt? { nil }
-}
-
 nonisolated enum EndToEndCorpus {
     static func load(bundle: Bundle = .main) throws -> [CapturedEmail] {
         guard let url = bundle.url(forResource: "empty-state-corpus", withExtension: "json") else {

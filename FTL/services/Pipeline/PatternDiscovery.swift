@@ -117,9 +117,10 @@ nonisolated struct PatternDiscovery: Sendable {
     /// already in hand — a fixture, the recorded corpus — can skip the network.
     func run(
         fetching source: any CapturedEmailSource,
-        isRead: (CapturedEmail) -> Bool
+        isRead: (CapturedEmail) -> Bool,
+        knownSenders: Set<String> = []
     ) async throws -> [Finding] {
-        await run(over: try await candidateMail(from: source), isRead: isRead)
+        await run(over: try await candidateMail(from: source), isRead: isRead, knownSenders: knownSenders)
     }
 
     /// Who to learn next, best first. No model call, safe to run on every sync.
@@ -129,20 +130,30 @@ nonisolated struct PatternDiscovery: Sendable {
     /// promos for every receipt) and that is not a reason to look at it again,
     /// so its remaining layouts have to fail the variance bar on their own
     /// merits, which they do.
+    ///
+    /// `knownSenders` — domains with at least one ALREADY ACTIVE pattern —
+    /// get `minimumProvisionalEvidenceForKnownSender` instead of the normal
+    /// floor: the volume gate exists to answer "is this sender real", and an
+    /// active pattern already answered it, so a second, rarer layout from
+    /// the same sender doesn't have to re-clear the full bar from nothing.
+    /// See the policy field's doc comment.
     func candidates(
         in emails: [CapturedEmail],
-        isRead: (CapturedEmail) -> Bool
+        isRead: (CapturedEmail) -> Bool,
+        knownSenders: Set<String> = []
     ) -> [Candidate] {
         let unread = emails.filter { $0.hasCurrencyMarker && !isRead($0) }
 
         let evidenceFloor = policy.maxExamples + policy.minimumProvisionalEvidence
+        let relaxedEvidenceFloor = policy.maxExamples + policy.minimumProvisionalEvidenceForKnownSender
         let bySender: [String: [CapturedEmail]] = Dictionary(grouping: unread, by: \.senderDomain)
 
         var found: [Candidate] = []
         for (domain, mail) in bySender {
+            let floor = knownSenders.contains(domain) ? relaxedEvidenceFloor : evidenceFloor
             let layouts = SenderTriage.templates(from: mail).filter { layout in
                 layout.distinctAmounts >= policy.minimumDistinctAmounts
-                    && layout.emails.count >= evidenceFloor
+                    && layout.emails.count >= floor
             }
             guard !layouts.isEmpty else { continue }
             found.append(
@@ -171,14 +182,25 @@ nonisolated struct PatternDiscovery: Sendable {
     /// belong to the caller that knows the context — Invariant 10.
     func run(
         over emails: [CapturedEmail],
-        isRead: (CapturedEmail) -> Bool
+        isRead: (CapturedEmail) -> Bool,
+        knownSenders: Set<String> = []
     ) async -> [Finding] {
         var findings: [Finding] = []
-        for candidate in candidates(in: emails, isRead: isRead).prefix(maxSendersPerRun) {
+        for candidate in candidates(in: emails, isRead: isRead, knownSenders: knownSenders).prefix(maxSendersPerRun) {
+            // The relaxed floor is not just a SELECTION filter — the learner
+            // re-applies its own `minimumProvisionalEvidence` guard per
+            // template (`DefaultPatternLearner.learn`), so a candidate that
+            // only cleared selection under the relaxed floor must be handed
+            // the SAME relaxed policy here, or it clears one gate only to be
+            // rejected by the other with the exact same number.
+            var effectivePolicy = policy
+            if knownSenders.contains(candidate.senderDomain) {
+                effectivePolicy.minimumProvisionalEvidence = policy.minimumProvisionalEvidenceForKnownSender
+            }
             let outcomes = await learner.learn(
                 senderDomain: candidate.senderDomain,
                 from: candidate.transactionalLayouts.flatMap(\.emails),
-                policy: policy
+                policy: effectivePolicy
             )
             findings.append(Finding(senderDomain: candidate.senderDomain, outcomes: outcomes))
         }
