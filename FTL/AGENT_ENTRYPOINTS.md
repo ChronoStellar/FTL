@@ -186,6 +186,15 @@ All Settings → Developer (DEBUG-only, gated in `SettingsView.swift`):
   `minimumProvisionalEvidenceForKnownSender` (relaxed volume floor for a
   sender that already has one active pattern). The relaxed floor is a
   judgment call, unmeasured — watch it.
+- **First `TemporalHoldoutRunner` run against live Gmail, 2026-09-11** — see
+  `TESTING.md`, "Temporal holdout, first real run". Confirmed the self-taught
+  loop relearns blu from real mail and generalises one month forward with no
+  retraining — real, new evidence. Also surfaced a live-mail-only defect
+  (merchant field bleeding into transaction metadata on refund layouts,
+  scored 100% coverage anyway) and left `minimumProvisionalEvidenceForKnownSender`
+  and `TagKey` both still unexercised — only blu cleared discovery in this
+  window, and September's Sheet is still empty. Don't treat this run as
+  having validated either.
 - **Dedup's `manualDateSlackDays`** — not tagging, but agent-adjacent: a
   manual entry has no real timestamp to trust, same epistemic shape as "no
   oracle for tagging."

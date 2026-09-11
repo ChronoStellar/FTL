@@ -345,6 +345,75 @@ later rows from merchants it had already answered untagged. Fixed by caching the
 answer per normalized merchant for the batch: the same 8 calls now buy 8
 merchants instead of 8 rows.
 
+### Temporal holdout, first real run · 2026-09-11
+
+`TemporalHoldoutRunner`, live Gmail, `pureAgentMode`'s default (`NoOracle` —
+no ground truth, coverage-only). Trained on 692 real July–September 1 emails,
+tested on 114 real September 1–11 emails, compared against the real Sheet.
+
+**Training: only blu cleared discovery.** `findings.count == 1` — no second
+sender was even attempted in this window, Grab included. Two layouts learned,
+both provisional, both **100% coverage**:
+
+| layout | held out | coverage |
+|---|---|---|
+| `blubybcadigital.id/-` | 38 | 100% |
+| `blubybcadigital.id/bluvirtual` | 26 | 100% |
+
+0 promoted — expected, `NoOracle` never promotes (see *The ceiling* in
+`ROADMAP.md`).
+
+**Test: those two self-taught patterns read 21/114 September emails with zero
+retraining.** This is the first real evidence the loop generalises **forward in
+time** on live mail, not just across senders in the frozen 2026-09-07 export —
+genuinely new, and worth recording as a positive result on its own.
+
+**And it surfaced a real defect the frozen corpus never would have.** Two of
+the 21 rows — both refunds (`kind: nonSpend`) — read `merchantRaw` as:
+
+```
+004502609698 Transaction Date & Time 08 Sep 2026 19:58:53 WIB Transaction
+Type Online Debit Refund Location Domestic
+```
+
+The merchant field ran straight past the amount into the notification's own
+metadata. This is the exact failure shape already named in *Two things
+recorded earlier that the audit corrected* (`ROADMAP.md`) — a proposal whose
+merchant terminators don't include `Transaction Date` / `Transaction ID`
+misreads blu's refund/transfer layouts — fixed once, by hand, for a different
+pattern instance. Because synthesis is a model call, a fresh, unconstrained
+run on real mail regenerated the same gap on its own, and **coverage scored
+both patterns 100% anyway** — coverage asks whether a field reads something at
+all and looks distinct across merchants, not whether what it read is clean.
+Nothing here currently checks merchant-field *quality*, only presence and
+diversity.
+
+Not a dedup break, at least: the second garbled row shares its date and exact
+amount (Rp 38.687, 8 Sep) with a genuine Grab charge read the same day, so
+Invariant 5's reversal pairing — fingerprint-based, not merchant-text-based —
+should still catch it. It would just display terribly in the queue if this
+pattern were ever promoted.
+
+**Unconfirmed, worth a look:** one spend row, `HENDRIK NICOLAS... BCA 5271
+9632 39` at Rp 400.000, reads as `.spend`. If that's a transfer to the user's
+own account it should be `.nonSpend` under Invariant 5. Flagged, not
+diagnosed — needs the user to confirm what the transaction actually was.
+
+⚠️ **What this run did NOT show — do not read it as closing either open
+gate:**
+
+- **`minimumProvisionalEvidenceForKnownSender` was never exercised.** It only
+  applies to a sender's *second* layout once one is already active, and only
+  one sender cleared discovery at all in this window. Still unmeasured.
+- **`TagKey` (merchant + layout) was not exercised.** `TemporalHoldoutRunner`
+  checks tagging by merchant only, by its own design (see the file header) —
+  and the compare step found **0 real spend rows in the Sheet's September
+  window**, so the tag-accuracy number is undefined (0/0), not a pass.
+
+Re-run once a training window produces a second sender or a known sender's
+rarer second layout, and once September has real approved rows to compare
+against.
+
 ---
 
 ## What is NOT tested, and what that costs

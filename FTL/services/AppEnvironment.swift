@@ -409,8 +409,11 @@ final class AppEnvironment {
                     oracle: pureAgentMode ? NoOracle() : ParserOracle(BluReceiptParser())
                 ),
                 // "One sender per launch" — see DiscoverySync for why this is
-                // tighter than the Debug screen's manual button (3).
-                maxSendersPerRun: 1
+                // tighter than the Debug screen's manual button (3). Same
+                // reasoning for the near-miss top-up: one extra live Gmail
+                // fetch per launch, not three.
+                maxSendersPerRun: 1,
+                maxNearMissesPerRun: 1
             ),
             patterns: patterns,
             activeParsers: rail.activeParsers

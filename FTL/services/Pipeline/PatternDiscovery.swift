@@ -23,6 +23,7 @@
 //      unread money mail
 //        ↓  groups into a repeating layout       SenderTriage
 //      candidate layouts
+//        ↓  too thin to judge yet?               nearMisses → one top-up fetch ⭑⭑
 //        ↓  its figures actually MOVE            distinctAmounts ⭑
 //      worth a model call
 //
@@ -34,6 +35,17 @@
 //  failure coverage cannot detect. Asking whether the numbers change costs one
 //  regex pass and separates them completely: receipts 0.88–1.00, brochures
 //  0.04–0.12.
+//
+//  ⭑⭑ added 2026-09-11. A low-*frequency* sender — real history, most of it
+//  outside whatever window this particular sweep used — looks identical to a
+//  sender that genuinely doesn't have enough mail, UNLESS something looks
+//  past the window before giving up. `nearMisses` finds a sender too thin to
+//  judge (not one already judged and rejected), and `run(fetching:...)` gives
+//  it one bounded, unrestricted `from:(domain)` fetch before deciding. This
+//  does not touch `minimumDistinctAmounts` or `minimumProvisionalEvidence` —
+//  lowering either would trade statistical soundness for coverage, the exact
+//  trade the constant-merchant defect above already burned once. It gives a
+//  thin sender a fair look with its REAL history instead of a smaller bar.
 //
 
 import Foundation
@@ -58,21 +70,41 @@ nonisolated struct PatternDiscovery: Sendable {
         let outcomes: [TemplateOutcome]
     }
 
+    /// A sender with real signal (currency-marker mail) that `candidates`
+    /// didn't select — either there wasn't enough of it yet in THIS sweep to
+    /// judge fairly, or it already looked transactional but hadn't
+    /// accumulated enough volume to clear the evidence floor. Deliberately
+    /// NOT a sender the sweep already saw enough of to fail the variance bar
+    /// on its own merits — that is a real answer (a brochure), not a reason
+    /// to spend a second fetch confirming it again. See `nearMisses` and
+    /// `run(fetching:isRead:knownSenders:)`.
+    nonisolated struct NearMiss: Sendable {
+        let senderDomain: String
+        let unreadMoneyMail: Int
+    }
+
     private let learner: any PatternLearner
     private let policy: PatternSynthesisPolicy
     /// Bounded, always. Each sender costs up to `maxAttempts` model calls per
     /// layout, and an unattended run that walks a whole mailbox is how a
     /// background task becomes a battery complaint.
     private let maxSendersPerRun: Int
+    /// Bounded separately from `maxSendersPerRun` — a near-miss top-up
+    /// (`nearMisses`, `deepenFetchLimit`) spends a live Gmail fetch, not a
+    /// model call, on a sender discovery has not yet decided is even real.
+    /// See `run(fetching:isRead:knownSenders:)`.
+    private let maxNearMissesPerRun: Int
 
     init(
         learner: any PatternLearner,
         policy: PatternSynthesisPolicy = .default,
-        maxSendersPerRun: Int = 3
+        maxSendersPerRun: Int = 3,
+        maxNearMissesPerRun: Int = 3
     ) {
         self.learner = learner
         self.policy = policy
         self.maxSendersPerRun = maxSendersPerRun
+        self.maxNearMissesPerRun = maxNearMissesPerRun
     }
 
     /// Mail to look for candidates in — and the reason this exists at all.
@@ -103,6 +135,18 @@ nonisolated struct PatternDiscovery: Sendable {
     /// several times over, small enough to stay a single background fetch.
     static let discoveryFetchLimit = 400
 
+    /// Below this there is nothing to even group into a layout — one email is
+    /// one data point, and a live top-up fetch is too expensive to spend
+    /// confirming it. See `nearMisses`.
+    static let minimumSignalForDeepening = 2
+    /// One bounded top-up fetch per near-miss sender, unrestricted by date —
+    /// the whole point is seeing past whatever the ambient sweep's window
+    /// happened to catch, the same way `discoveryQuery`'s 180 days can still
+    /// be narrower than a low-frequency sender's real history. Smaller than
+    /// `discoveryFetchLimit`: this tops up ONE sender, it does not scan the
+    /// mailbox.
+    static let deepenFetchLimit = 200
+
     /// Money mail from anywhere, including senders nothing can read yet.
     func candidateMail(
         from source: any CapturedEmailSource,
@@ -113,14 +157,91 @@ nonisolated struct PatternDiscovery: Sendable {
             .filter(\.hasCurrencyMarker)
     }
 
-    /// Fetch, then select. The two-argument form exists so a caller with mail
-    /// already in hand — a fixture, the recorded corpus — can skip the network.
+    /// Domains worth a second look before discovery writes them off.
+    ///
+    /// `minimumDistinctAmounts` doubles as the fairness floor here: a layout
+    /// needs at least that many raw emails before `distinctAmounts` means
+    /// anything at all — you cannot have 5 distinct amounts from 3 emails —
+    /// so a sender under that has not had a fair chance to prove itself
+    /// either way. That is exactly the shape a low-*frequency* sender
+    /// produces on a bounded ambient window: real history, most of it
+    /// outside this particular sweep. Measured directly —
+    /// `TemporalHoldoutRunner`'s 2026-09-11 run over a 2-month live slice
+    /// found Grab clearing discovery zero times, where the full frozen
+    /// export's longer span found it twice (`grab.com/compliments`,
+    /// `grab.com/diterbitkan`). A sender the sweep already saw ENOUGH of
+    /// (`≥ minimumDistinctAmounts` raw emails) and which still reads as a
+    /// brochure is a real answer, not a near miss — excluded, so a rejected
+    /// promo sender (Apple's storage nag, Traveloka's discount campaign) is
+    /// not re-fetched forever.
+    func nearMisses(
+        in emails: [CapturedEmail],
+        isRead: (CapturedEmail) -> Bool,
+        excluding alreadyCandidates: Set<String>
+    ) -> [NearMiss] {
+        let unread = emails.filter { $0.hasCurrencyMarker && !isRead($0) }
+        let bySender = Dictionary(grouping: unread, by: \.senderDomain)
+
+        return bySender.compactMap { domain, mail -> NearMiss? in
+            guard !alreadyCandidates.contains(domain),
+                  mail.count >= Self.minimumSignalForDeepening
+            else { return nil }
+
+            let hadAFairShot = mail.count >= policy.minimumDistinctAmounts
+            let readsLikeABrochure = SenderTriage.templates(from: mail)
+                .allSatisfy { $0.distinctAmounts < policy.minimumDistinctAmounts }
+            if hadAFairShot && readsLikeABrochure { return nil }
+
+            return NearMiss(senderDomain: domain, unreadMoneyMail: mail.count)
+        }
+        .sorted { $0.unreadMoneyMail > $1.unreadMoneyMail }
+    }
+
+    /// Fetch, top up any near miss, then select. The two-argument form
+    /// (`run(over:...)`) stays a plain pass over mail already in hand — a
+    /// frozen corpus holds everything it will ever hold, so there is nothing
+    /// to top up, and `TemporalHoldoutRunner`'s own train/test fetches go
+    /// through that form deliberately, not this one.
     func run(
         fetching source: any CapturedEmailSource,
         isRead: (CapturedEmail) -> Bool,
         knownSenders: Set<String> = []
     ) async throws -> [Finding] {
-        await run(over: try await candidateMail(from: source), isRead: isRead, knownSenders: knownSenders)
+        var pool = try await candidateMail(from: source)
+
+        // Only a sender the ambient sweep couldn't already decide on gets a
+        // top-up — one that already qualifies doesn't need more evidence,
+        // and re-fetching it would just spend a call confirming a yes.
+        let alreadyCandidates = Set(
+            candidates(in: pool, isRead: isRead, knownSenders: knownSenders).map(\.senderDomain)
+        )
+        let targets = nearMisses(in: pool, isRead: isRead, excluding: alreadyCandidates)
+            .prefix(maxNearMissesPerRun)
+
+        for target in targets {
+            // Best-effort: a failed top-up leaves the sender exactly as thin
+            // as the ambient sweep found it — the same as never having
+            // tried, not a reason to fail the whole run over one sender.
+            guard let more = try? await source.fetchCaptured(
+                query: "from:(\(target.senderDomain))",
+                limit: Self.deepenFetchLimit
+            ) else { continue }
+            pool.append(contentsOf: more)
+        }
+
+        return await run(over: Self.deduplicated(pool), isRead: isRead, knownSenders: knownSenders)
+    }
+
+    /// A top-up query can return mail the ambient sweep already fetched —
+    /// their windows overlap by construction. The same email counted twice
+    /// would inflate every volume and distinctness check downstream, which
+    /// is exactly the kind of silent double-count `possibleDuplicate` exists
+    /// to catch elsewhere in this app; simplest to just not let it happen
+    /// here; `id` is the Gmail message id, so it is the same identity a
+    /// second fetch of the same message would carry.
+    private static func deduplicated(_ emails: [CapturedEmail]) -> [CapturedEmail] {
+        var seen = Set<String>()
+        return emails.filter { seen.insert($0.id).inserted }
     }
 
     /// Who to learn next, best first. No model call, safe to run on every sync.

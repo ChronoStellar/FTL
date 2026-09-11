@@ -36,17 +36,25 @@ import Foundation
 /// alone folds all three into one key — which is exactly why that key could
 /// never settle: 22 decisions split three ways looks identical to a merchant
 /// nobody can predict, and `worthAsking` correctly gave up on it rather than
-/// keep guessing. Keying on the LAYOUT too — which template or pattern
-/// actually read the email, `RuleID.rawValue` — separates `grab.com/food`
-/// from `grab.com/ride` before they ever get folded together, so each can
-/// settle on its own.
+/// keep guessing. Keying on the LAYOUT too — `ExtractionPattern
+/// .templateIdentity(of:)` applied to the `RuleID` that read the email, NOT
+/// the raw `RuleID` itself — separates `grab.com/food` from `grab.com/ride`
+/// before they ever get folded together, so each can settle on its own. The
+/// raw RuleID was tried first, the same day, and reverted: `ExtractionPattern
+/// .id` carries a trailing `:version` that changes on every re-synthesis, so
+/// keying on it silently orphaned a merchant's whole tag history on every
+/// promotion — see `ROADMAP.md`, "The Grab merchant key", for the correction.
 ///
-/// `layout` is nil for a manual entry (nothing read it) or a merchant no
-/// active parser or pattern claimed. Nil rows still accrue together as one
-/// key — there is no signal to split them by, which is the honest answer
-/// rather than a guess: a bank's generic notification for a Grab charge
-/// carries no more information about what was bought than the merchant name
-/// itself, and no key scheme can recover what was never captured.
+/// `layout` is nil only for a row with no reader recorded at all — a manual
+/// entry, or a row cached before this field existed. It is **not** nil for
+/// money mail that no active parser or pattern claims: that case reads
+/// `RuleID.unclaimed`, a real, non-nil layout key, so those rows accrue
+/// together under a key of their own rather than folding into the true-nil
+/// rows above. They still accrue as one key rather than several, because
+/// there is no signal to split them by, which is the honest answer rather
+/// than a guess: a bank's generic notification for a Grab charge carries no
+/// more information about what was bought than the merchant name itself, and
+/// no key scheme can recover what was never captured.
 nonisolated struct TagKey: Sendable, Hashable, Codable {
     let merchant: MerchantID
     let layout: String?

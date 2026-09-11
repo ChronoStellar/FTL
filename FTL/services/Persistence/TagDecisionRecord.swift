@@ -29,10 +29,12 @@ final class TagDecisionRecord {
     /// evidence honest (Invariant 10 — auto is never a global switch).
     var merchantKey: String
     /// The other half of the accrual key — see `TagKey`. Nil for every row
-    /// written before this column existed, and for a manual entry or a
-    /// merchant no active parser or pattern claimed: all of those genuinely
-    /// have no layout signal, so they fold into one history together, exactly
-    /// as every row did before this existed.
+    /// written before this column existed, and for a manual entry — neither
+    /// has a reader to name, so both fold into one history together. **Not**
+    /// nil for money mail no active parser or pattern claims: that case is
+    /// `RuleID.unclaimed`, a real layout string (see `TagKey`'s own doc
+    /// comment), so it accrues as a key of its own rather than folding into
+    /// the true-nil rows above.
     var layoutKey: String?
     var decidedAt: Date
 

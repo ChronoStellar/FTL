@@ -583,6 +583,77 @@ left is brochures, or real receipt senders with 3–9 emails against a floor of 
 (Mandiri 0.67, KAI 0.50 — both clear the variance bar and fail on volume). The
 limit is the sample, not the loop. Re-export at 3,000–5,000 and it has work.
 
+### 10a. Deepen a near-miss sender before writing it off · **S** — built, 2026-09-11
+
+Raised directly from using the app: "if the model can only read from email
+with high quantity that's a liability... the agent should be able to
+generalize." Right — and worth being precise about what it does and doesn't
+fix, because the wrong fix is lowering `minimumDistinctAmounts` or
+`minimumProvisionalEvidence`. That trades statistical soundness for
+coverage, the exact trade the constant-merchant defect (item 2 above) already
+burned once — 81.9% coverage, 0% accuracy.
+
+Two different failure modes were being named as one:
+
+- **A sender has plenty of real mail; the ambient sweep's window just didn't
+  happen to include it all.** `PatternDiscovery.candidates` only ever sees
+  whatever the caller already fetched — `discoveryQuery`'s 180 days live, or
+  a `TemporalHoldoutRunner` slice as narrow as 2 months. A low-*frequency*
+  sender (used for years, rarely) can fail the volume floor purely because
+  most of its history sits outside whatever window this sweep used, not
+  because the evidence isn't real. Measured directly: the 2026-09-11
+  temporal-holdout run, over a 2-month live slice, found Grab clearing
+  discovery **zero** times — where the full frozen export's longer span
+  found it twice (`grab.com/compliments`, `grab.com/diterbitkan`), and the
+  ⚠️ *Expectation* note above already put a number on the same gap ("142
+  emails across 15 senders, exactly one qualifies").
+- **A sender genuinely doesn't send enough mail, ever, for a reusable
+  template to be learnable.** No fetch strategy manufactures volume that
+  isn't there. That is `PurchaseClassifier`'s job (Stage 5, #11) — read the
+  one-off email directly, no template required, Invariant 6 flags what it
+  can't handle and moves on — not discovery's. Still blocked on #6 and #12.
+
+**Built, for the first failure mode.**
+`PatternDiscovery.nearMisses(in:isRead:excluding:)` finds a sender with real
+currency-marker signal that `candidates` didn't select for one of two honest
+reasons: too little raw mail yet in THIS sweep to judge `distinctAmounts`
+fairly (you cannot have 5 distinct amounts from 3 emails), or enough to look
+transactional but short of the volume floor. Deliberately excluded: a
+sender the sweep already saw *enough* of that still reads as a brochure —
+that is a real answer (Apple's storage nag, Traveloka's discount campaign),
+and re-fetching it every run would just spend a live call reconfirming a no.
+
+`PatternDiscovery.run(fetching:isRead:knownSenders:)` now tops up each near
+miss — bounded by `maxNearMissesPerRun`, kept separate from the model-call
+budget `maxSendersPerRun` since a top-up spends a Gmail fetch, not a model
+call — with one unrestricted `from:(domain)` query (`deepenFetchLimit`
+capped, no date window; the same query shape `CorpusEmailSource` already
+parses) before candidate selection runs. A thin-looking sender gets a fair,
+fuller look before being judged; a genuinely rare one still fails, honestly,
+on real evidence rather than a window artefact. Production
+(`AppEnvironment.makeDiscoveryContext`) sets `maxNearMissesPerRun: 1`, same
+"one sender per launch" tightening `maxSendersPerRun` already gets.
+
+**Same fix, structurally, as the already-open 14-day backfill problem**
+(Automation item 4, above): once a pattern exists for a sender, the rail
+still only ever asks for its last two weeks going forward, so older mail is
+invisible forever. A bounded, unrestricted `from:(domain)` top-up is the
+answer to both "not enough evidence to learn from" and "learned it, now
+can't see its history." **Not done here**: wiring the same top-up into
+`GmailRail`/the capture log for the *post*-promotion case still needs "the
+capture log to know which domains it has seen before," the exact
+prerequisite the backfill item already named. Scoped out of this pass on
+purpose — a bigger, separate change.
+
+⚠️ `TemporalHoldoutRunner` does **not** get this for free — it calls
+`PatternDiscovery.run(over:...)` on mail it already fetched itself, not
+`run(fetching:...)`, so its 2-month Grab-never-clears result stands
+unchanged until it is wired to top up too.
+
+⚠️ Unmeasured, same honest label `minimumProvisionalEvidenceForKnownSender`
+already carries: `minimumSignalForDeepening` (2) and `maxNearMissesPerRun`
+(1 live, 3 default) are judgment calls, not tuned numbers. Watch them.
+
 ---
 
 ## Where this stands — 2026-09-08
