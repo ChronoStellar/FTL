@@ -99,9 +99,13 @@ actor InMemoryLedgerStore: LedgerStore {
     func all() async throws -> [LedgerTransaction] { rows }
 
     func append(_ transactions: [LedgerTransaction]) async throws {
-        // Idempotent on `id`, the same guarantee the Sheets store must give.
-        let existing = Set(rows.map(\.id))
-        rows.append(contentsOf: transactions.filter { !existing.contains($0.id) })
+        var fresh: [LedgerTransaction] = []
+        for tx in transactions {
+            guard !rows.contains(where: { LedgerDeduplicator.isDuplicate($0, tx) }) else { continue }
+            guard !fresh.contains(where: { LedgerDeduplicator.isDuplicate($0, tx) }) else { continue }
+            fresh.append(tx)
+        }
+        rows.append(contentsOf: fresh)
     }
 
     func transactions(in interval: DateInterval) async throws -> [LedgerTransaction] {

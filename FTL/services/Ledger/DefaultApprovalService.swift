@@ -36,8 +36,12 @@ actor DefaultApprovalService: ApprovalService {
 
     func approve(_ ids: [ProvisionalEntry.ID]) async throws -> ApprovalResult {
         let pending = try await store.pending().filter { ids.contains($0.id) }
-        let written = pending.map { entry in
-            LedgerTransaction(
+        let existingLedger = try await ledger.all()
+        var toAppend: [LedgerTransaction] = []
+        var written: [LedgerTransaction] = []
+
+        for entry in pending {
+            let tx = LedgerTransaction(
                 id: entry.id,
                 date: entry.transaction.date,
                 amount: entry.transaction.amount,
@@ -56,8 +60,39 @@ actor DefaultApprovalService: ApprovalService {
                 approvedAt: .now,
                 notes: nil
             )
+            written.append(tx)
+
+            // Auto-dropped rather than flagged, deliberately — but never
+            // without a record. A dropped row is still marked promoted below,
+            // so the only thing separating "this was its twin" from "captured
+            // spending vanished" is this line. See `LedgerDeduplicator` for
+            // what the rule can and cannot tell apart.
+            if let twin = existingLedger.first(where: { LedgerDeduplicator.isDuplicate($0, tx) }) {
+                PipelineDebugStub.recordSettlement(
+                    entryID: entry.id,
+                    merchant: entry.transaction.merchantRaw,
+                    parserOrigin: entry.readBy?.origin,
+                    verdict: "auto-dropped: duplicate of ledger row \(twin.id) "
+                        + "(\(twin.merchantRaw), \(twin.date.formatted(.dateTime.day().month(.abbreviated))))"
+                )
+                continue
+            }
+            // Deduplicate against twins in the same approval batch
+            if let twin = toAppend.first(where: { LedgerDeduplicator.isDuplicate($0, tx) }) {
+                PipelineDebugStub.recordSettlement(
+                    entryID: entry.id,
+                    merchant: entry.transaction.merchantRaw,
+                    parserOrigin: entry.readBy?.origin,
+                    verdict: "auto-dropped: duplicate of \(twin.merchantRaw) in this same approval batch"
+                )
+                continue
+            }
+            toAppend.append(tx)
         }
-        try await ledger.append(written)
+
+        if !toAppend.isEmpty {
+            try await ledger.append(toAppend)
+        }
         try await store.markPromoted(written.map(\.id))
         await recordDecisions(from: pending)
         await observePatterns(pending) { entry in

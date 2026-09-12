@@ -81,13 +81,20 @@ actor SheetsLedgerStore: LedgerStore {
 
     // MARK: - Writes
 
-    /// Idempotent on `id`. A retry after an ambiguous failure reads back first and
-    /// appends only what is missing — never appends twice, and never assumes the
-    /// first attempt failed.
+    /// Idempotent on `id` and deduplicated against existing ledger rows by amount,
+    /// normalized merchant, calendar date, and timestamp (LedgerDeduplicator).
+    /// Never appends twice, and never creates duplicate sheet rows.
     func append(_ transactions: [LedgerTransaction]) async throws {
         guard !transactions.isEmpty else { return }
-        let existing = Set(try await all().map(\.id))
-        let fresh = transactions.filter { !existing.contains($0.id) }
+        let existing = try await all()
+        var fresh: [LedgerTransaction] = []
+        for tx in transactions {
+            // Deduplicate against already written ledger transactions
+            guard !existing.contains(where: { LedgerDeduplicator.isDuplicate($0, tx) }) else { continue }
+            // Deduplicate against other transactions in the same append batch
+            guard !fresh.contains(where: { LedgerDeduplicator.isDuplicate($0, tx) }) else { continue }
+            fresh.append(tx)
+        }
         guard !fresh.isEmpty else { return }
 
         try await sheets.append(

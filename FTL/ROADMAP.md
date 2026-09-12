@@ -748,6 +748,26 @@ for the unseen-mailbox target.
    down, which is what makes it reversible. Verified: 20 approvals → vouched;
    2 drops → 91%, un-vouched.
 
+   ⚠️ **The ladder only moved for NEW rows, and that was named as a gap and
+   fixed 2026-09-11.** `GmailRail` stamps `unverifiedPattern` once, at
+   capture, from whatever the vouch status was THEN — but a row already
+   sitting in the queue when its pattern crosses the bar had no way to find
+   that out, and stayed flagged forever unless re-synced. The identical shape
+   of bug already named and fixed once for tagging ("frozen at capture...
+   the wrong change", Stage 4.5 #13) had quietly reappeared in a different
+   field. Fixed the same way: `ApprovalQueueViewModel.reviseUnverifiedFlags`,
+   called from `load()` beside `tagger.refresh`, clears `unverifiedPattern`
+   from a pending row whose `readBy` pattern is vouched *now* — sharing one
+   trust check (`PatternTrustPolicy.vouched(among:using:)`) with `GmailRail`
+   so "vouched" cannot mean two things depending on who asks.
+
+   One direction only: a trust DROP does not retroactively re-flag an
+   already-pending row here. That needs the full `ExtractionPattern` (to
+   confirm `verifiedAgainst == 0` still holds, the same condition `GmailRail`
+   checks at capture) rather than just a pattern id, and re-flagging a row
+   someone may already be looking at is a different judgment call than
+   quietly clearing a stale caution. Scoped out on purpose, not missed.
+
    ⚠️ **It is an ACCEPTANCE rate, not an accuracy**, and the scoreboard says so
    on screen. The queue cannot edit an amount or a merchant, so approving a row
    is a vote that it looked right, not a check that it was. Letting a person

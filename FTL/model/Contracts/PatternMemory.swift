@@ -107,4 +107,21 @@ nonisolated struct PatternTrustPolicy: Sendable {
         guard let record else { return false }
         return record.settled >= minimumSettled && record.acceptanceRate >= acceptanceThreshold
     }
+
+    /// Which of these pattern ids the queue has vouched for, right now.
+    ///
+    /// One shared answer to "is this pattern vouched", not two — `GmailRail`
+    /// asks it at capture time (to decide whether a NEW row needs
+    /// `unverifiedPattern`) and `ApprovalQueueViewModel` asks it on every
+    /// queue load (to decide whether an ALREADY-QUEUED row's flag is stale —
+    /// see its `reviseUnverifiedFlags`). Trust is a live, reversible number;
+    /// a second definition of "vouched" living in each caller is exactly how
+    /// those two would silently drift apart.
+    static func vouched(among patternIDs: [String], using trust: (any PatternMemory)?) async -> Set<String> {
+        guard let trust, !patternIDs.isEmpty,
+              let records = try? await trust.records(for: patternIDs)
+        else { return [] }
+        let policy = PatternTrustPolicy.default
+        return Set(records.filter { policy.isVouchedFor($0.value) }.keys)
+    }
 }

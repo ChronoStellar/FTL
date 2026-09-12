@@ -345,6 +345,156 @@ later rows from merchants it had already answered untagged. Fixed by caching the
 answer per normalized merchant for the batch: the same 8 calls now buy 8
 merchants instead of 8 rows.
 
+### Ledger dedup — `capturedAt` is not a transaction time · 2026-09-12
+
+Replayed the real 137-row ledger (`test/ftl-ledger-rows.tsv`) through
+`LedgerDeduplicator`. Both reported symptoms — duplicates reaching the Sheet
+AND legitimate rows being swallowed — were **one root cause**.
+
+`SheetsSchema` writes the date with `dayFormatter` ("yyyy-MM-dd", fixed UTC),
+so a purchase's time of day does not survive the write. Every row
+`LedgerStore.all()` returns is at midnight, and the first version of the
+matcher filled that gap with `capturedAt` — **the time the sync ran**. In this
+ledger 130 of 137 rows share the single value `2026-09-08T08:47:47Z`.
+
+| | old rule | shipped rule |
+|---|---|---|
+| matched as duplicate | 29 of 137 | **21 of 137** |
+| provably wrong | **9** | **0** |
+| cross-day matches | 9 (1–61 days apart) | 0 — all same-day |
+
+The 9 wrong ones, all silently dropped: `Google YouTubePremium` Rp 76,590
+matched against itself **31 days apart** (a monthly subscription), BCA
+transfers 22 and 53 days apart, `WARUNG MBAK YULI` 8 days apart, `KAYABOYS1`
+6 days apart, and two pairs 60–61 days apart.
+
+Two directions, one cause:
+
+- **Duplicate passed through.** Fresh entry carries a real time from the email
+  (19:58); the stored row fell back to its sync stamp (08:47); the 15-minute
+  proximity test saw an 11-hour gap on the same day and returned "distinct
+  charges". The window was comparing a purchase against a sync.
+- **Real spending swallowed.** Two stored rows both resolved to a nil stamp
+  and fell through to `true`, while `capturedSameDay` — true for any pair from
+  one sync — made the day gate unable to reject anything at all.
+
+**Shipped:** exact amount + currency, matching merchant, same calendar day.
+Nothing finer, because nothing finer survives the write. 21 matches, **19 of
+them cross-rail** (blu's `Grab* A-…` card notification against Grab's own
+`Pengemudi … Diterbitkan` receipt) — the double-count already measured at 10%
+of spending in 2026-09-08's audit.
+
+⚠️ **One case no threshold resolves:** two `Grab* 9879131c5fa5de5d` rows,
+Rp 24,000, same day, identical merchant string. One ride counted twice and two
+identical rides are the same bytes. Auto-drop is kept (decided 2026-09-12), so
+this one is guessed — and every auto-drop now logs the ledger row it matched
+(`PipelineDebugStub.recordSettlement`), because a dropped row is still marked
+promoted and the log is the only route back to it.
+
+**The same bug was in the capture gate, found by reading the fix back.**
+`GmailRail.isPossibleLedgerDuplicate` compared `entry.transaction.date` (a real
+purchase time) against `tx.capturedAt` (the sync clock) and refused the match
+past 15 min same-rail / 2 h cross-rail. So the gate whose whole job is to
+**show** you a duplicate had gone quiet:
+
+| | flagged `possibleDuplicate` |
+|---|---|
+| with the `capturedAt` test | **2** of 137 |
+| without it (shipped) | **22** of 137 |
+
+Of the 22: 20 are the cross-rail Grab double-count, 2 are three identical
+Rp 24,000 rows on one day — the case nothing can resolve, and the one a flag
+rather than a drop exists for.
+
+16% of the queue, against `isSameCharge`'s own 39/137 and the 48/137 already
+rejected as too noisy — so it stays under this file's own bar, *"a flag that
+fires on a third of the queue trains people to approve past it."*
+
+⚠️ A first pass at this measurement read **42 of 137 (31%)** and nearly got the
+fix abandoned as too noisy. That number used ledger rows as proxies for
+incoming entries and so counted **both** members of every duplicate pair, where
+the real flow only ever flags the second one to arrive. Simulating arrival in
+date order gives 22. Worth recording: the noise bar and the measurement of it
+have to agree about which side of a pair gets flagged.
+
+**The merchant test was the real blocker, found from live sheet rows · 2026-09-12.**
+Everything above matches *automated* rails against each other, where both sides
+describe the merchant in the merchant's own words. The duplicates actually
+sitting in the sheet were **manual ↔ email**, and no string rule reaches them:
+
+```
+"glazed donut"      ↔ MIDNIGHT DONUTCITRALAND SURABAYA    Rp 12,432  29 Aug
+"MMBN Legacy Vol2"  ↔ WL *STEAM PURCHASE                  Rp 166,080 29 Aug
+"salad"             ↔ HOKKY SUPERMARKET SURABAYA          Rp 38,000  30 Aug
+```
+
+You cannot derive "Steam" from "MMBN Legacy Vol2" lexically — that needs to know
+what the game is. What identifies them is arithmetic: same amount, same day, one
+typed and one parsed. **Shipped:** when a pair crosses the manual boundary the
+merchant test is skipped rather than loosened — a test that can only ever answer
+"no" is not evidence. Only when *exactly* one side is manual; two typed rows
+should still resemble each other, two parsed rows always do.
+
+Catches all 3 pairs. The 137-row corpus is unchanged at 21, because nothing in
+it crosses that boundary.
+
+⚠️ **The false-positive rate of this arm is UNMEASURED** — the recorded ledger
+has no manual rows at all, so there is nothing to measure it against. The risk
+is real and nameable: type Rp 50,000 on a day an unrelated Rp 50,000 email
+lands, and they merge. Bounding it from the automated side, 4 of 24 same-amount
+same-day clusters in the corpus are genuinely different merchants
+(`GOOGLE *ANDROID TEMP` vs a Rp 10,000 refund; `BIGA BAKEHOUSE` vs
+`WARUNG MBAK YULI`) — all email↔email, so out of scope here, but they are what
+this arm would look like if it were wrong.
+
+**Bank ↔ commerce, and the 1000× read hiding underneath it · 2026-09-12.**
+The other duplicate class: the bank's card notification and the platform's own
+receipt. Found the pair in the export —
+
+```
+bank      blu              WL *STEAM PURCHASE    Rp 166,080   29 Aug
+commerce  steampowered.com "Mega Man Battle…"    Total: Rp 166 080   29 Aug 21:50
+```
+
+**The structure, which the Grab hardcode was hiding:** a bank descriptor names
+the PLATFORM; the platform's receipt names the ITEM. `WL *STEAM PURCHASE` vs a
+game title; `Grab* A-…` vs a driver's name. No lexical rule connects those. So
+the hardcoded Grab arm is replaced by a general one: does a platform-shaped
+token on one side (≥4 chars, not payment noise) appear in the OTHER side's rule
+id — which is its sender domain? Reproduces all 20 Grab pairs the hardcode
+caught (the other 2 are an identical-string triple the exact arm already
+matches) and adds none — there is no commerce-side row in the 137-row corpus.
+
+⚠️ **And dedup could never have worked for Steam anyway**, because the amount
+was wrong before it got there. `IndonesianMoney` matched `([\d.]+)` — dots
+only — and Steam writes `Total: Rp 166 080` with **spaces** grouping thousands.
+So it read **Rp 166**, and the two sides of the pair were three orders of
+magnitude apart. The same thousandfold error this file was written to prevent,
+through a separator nobody had seen.
+
+Measured over all 1,000 emails in the export before changing it:
+
+| | |
+|---|---|
+| parses that change | **11** |
+| of those, steampowered.com | **11** |
+| blu emails affected | **0** — the 116/116 parser is untouched |
+
+Every change is a 1000× correction (166 → 166,080; 519 → 519,000; 699 →
+699,000). Only exact 3-digit groups extend a match, so an unrelated figure
+sitting after an amount cannot be swallowed into it.
+
+⚠️ **If a Steam pattern was ever promoted before today, the rows it wrote are
+in the sheet at 1/1000th of their value** and no dedup pass will pair them with
+the bank row. Those need finding and fixing by hand; the parser fix only
+corrects what arrives from here.
+
+⚠️ **Not tested:** whether the two rails ever disagree on the AMOUNT for one
+purchase. On this corpus all 21 pairs agree exactly, so exact-amount matching
+costs nothing here. A rail that rounds differently would slip through, and the
+fix is not a tolerance — ±Rp5,000/±3d was already measured wrong (48/137
+flagged, 29 of them incorrectly) in the 2026-09-08 audit.
+
 ### Temporal holdout, first real run · 2026-09-11
 
 `TemporalHoldoutRunner`, live Gmail, `pureAgentMode`'s default (`NoOracle` —

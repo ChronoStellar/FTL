@@ -46,6 +46,7 @@ nonisolated struct GmailRail: Sendable {
     private let presets: [ExtractionPattern]
     private let provisional: ProvisionalStore
     private let log: CaptureLog
+    private let ledger: (any LedgerStore)?
     /// Patterns the loop has learned and promoted. Nil before Stage 4 is wired.
     private let patterns: PatternStore?
 
@@ -71,6 +72,7 @@ nonisolated struct GmailRail: Sendable {
         parsers: [any ReceiptParser],
         provisional: ProvisionalStore,
         log: CaptureLog,
+        ledger: (any LedgerStore)? = nil,
         patterns: PatternStore? = nil,
         presets: [ExtractionPattern] = [],
         tagger: (any PurchaseTagger)? = nil,
@@ -82,6 +84,7 @@ nonisolated struct GmailRail: Sendable {
         self.parsers = parsers
         self.provisional = provisional
         self.log = log
+        self.ledger = ledger
         self.patterns = patterns
         self.presets = presets
         self.tagger = tagger
@@ -195,6 +198,7 @@ nonisolated struct GmailRail: Sendable {
             let vouched = await Self.vouchedPatterns(among: parsers, using: trust)
 
             var logEntries: [CaptureLogEntry] = []
+            var parsedItems: [(entry: ProvisionalEntry, emailID: String, parserID: String?)] = []
 
             for email in emails where unseen.contains(email.id) {
                 guard let parser = parsers.first(where: { $0.canParse(email) }) else {
@@ -237,7 +241,7 @@ nonisolated struct GmailRail: Sendable {
                             provenance: .rule(.unclaimed),
                             flags: [ReviewFlag(reason: .unparseable, detail: "no active pattern claimed this layout")],
                             status: .pending,
-                            createdAt: .now,
+                            createdAt: email.date,
                             readBy: .unclaimed,
                             readAs: .spend
                         )
@@ -259,9 +263,7 @@ nonisolated struct GmailRail: Sendable {
                 switch parseResult {
                 case .parsed(let receipt):
                     let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
-                    entries.append(entry)
-                    logEntries.append(.init(messageID: email.id, verdict: .queued, entryID: entry.id, parserID: parser.id.rawValue))
-                    result.queued += 1
+                    parsedItems.append((entry: entry, emailID: email.id, parserID: parser.id.rawValue))
 
                 case .incomplete(let missing):
                     // The template matched but a field didn't. Queue it flagged so a
@@ -290,18 +292,34 @@ nonisolated struct GmailRail: Sendable {
                 }
             }
 
+            // Deduplicate at the gate against canonical Google Sheets ledger:
+            // If an email purchase was already read and settled to Google Sheets before
+            // (matching amount, normalized merchant, date, and exact timestamp),
+            // record it as handled in CaptureLog and skip re-queueing to prevent duplicate sheet rows.
+            let existingLedger = (try? await ledger?.all()) ?? []
+            for item in parsedItems {
+                if let exact = existingLedger.first(where: { Self.isExactLedgerMatch(item.entry, as: $0) }) {
+                    logEntries.append(.init(messageID: item.emailID, verdict: .skipped, entryID: exact.id, parserID: item.parserID))
+                    result.alreadySeen += 1
+                } else {
+                    entries.append(item.entry)
+                    logEntries.append(.init(messageID: item.emailID, verdict: .queued, entryID: item.entry.id, parserID: item.parserID))
+                    result.queued += 1
+                }
+            }
+
             // Cache first, log second. If the log write fails the worst case is a
             // duplicate on the next run, which a person can reject. The other order
             // risks marking mail handled that never made it into the queue — spend
             // that silently disappears, which is the failure this app cares most
             // about avoiding.
             if !entries.isEmpty {
-                entries = try await flaggingDuplicates(entries)
+                entries = try await flaggingDuplicates(entries, existingLedger: existingLedger)
                 result.duplicates = entries.filter { entry in
                     entry.flags.contains { $0.reason == .possibleDuplicate }
                 }.count
 
-                entries = try await flaggingReversals(entries)
+                entries = try await flaggingReversals(entries, existingLedger: existingLedger)
                 result.reversals = entries.filter { entry in
                     entry.flags.contains { $0.reason == .reversal }
                 }.count
@@ -358,11 +376,8 @@ nonisolated struct GmailRail: Sendable {
         among parsers: [any ReceiptParser],
         using trust: PatternMemory?
     ) async -> Set<String> {
-        guard let trust else { return [] }
         let ids = parsers.compactMap { ($0 as? PatternDrivenParser)?.pattern.id }
-        guard !ids.isEmpty, let records = try? await trust.records(for: ids) else { return [] }
-        let policy = PatternTrustPolicy.default
-        return Set(records.filter { policy.isVouchedFor($0.value) }.keys)
+        return await PatternTrustPolicy.vouched(among: ids, using: trust)
     }
 
     // MARK: - Duplicates
@@ -400,10 +415,28 @@ nonisolated struct GmailRail: Sendable {
     /// Flagged, never merged. Two rows both saying Rp 44.300 on 12 Aug might be
     /// one Grab ride billed twice or two rides at the same fare, and only the
     /// person who took them knows. Invariant 6.
-    private func flaggingDuplicates(_ entries: [ProvisionalEntry]) async throws -> [ProvisionalEntry] {
+    private func flaggingDuplicates(
+        _ entries: [ProvisionalEntry],
+        existingLedger: [LedgerTransaction] = []
+    ) async throws -> [ProvisionalEntry] {
         var flagged = entries
         for index in flagged.indices {
             let entry = flagged[index]
+
+            // 1. Cross-rail or manual-entry match in canonical Google Sheets ledger
+            if let ledgerTwin = existingLedger.first(where: { Self.isPossibleLedgerDuplicate(entry, as: $0) }) {
+                let sourceDesc = ledgerTwin.source == .manual ? "manual entry" : ledgerTwin.source.rawValue
+                let dateStr = ledgerTwin.date.formatted(.dateTime.day().month(.abbreviated))
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .possibleDuplicate,
+                        detail: "Same amount and merchant as \(sourceDesc) in ledger on \(dateStr)"
+                    )
+                )
+                continue
+            }
+
+            // 2. Candidate match in local ProvisionalStore
             var stored: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
             for bucket in entry.transaction.fingerprint.widened(byDays: Self.manualDateSlackDays) {
                 for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
@@ -411,8 +444,7 @@ nonisolated struct GmailRail: Sendable {
                 }
             }
 
-            // Both directions: the pair usually arrives in the SAME sync, so
-            // checking only what is already stored would miss every one of them.
+            // 3. Batch twin in current sync
             let others = Array(stored.values) + entries.filter { $0.id != entry.id }
             guard let twin = others.first(where: { Self.isSameCharge($0, as: entry) }) else { continue }
 
@@ -426,46 +458,160 @@ nonisolated struct GmailRail: Sendable {
         return flagged
     }
 
-    /// Same money, within a day, seen by two different rails.
+    /// Checks if two entries represent the same purchase using amount, merchant, date, and timestamp.
     ///
-    /// The differing-source test is what keeps a genuine repeat out of it: two
-    /// Rp 13.000 coffees on one day, both read by `blu-receipt`, are two
-    /// coffees. The same figure arriving once from the merchant and once from
+    /// The differing-source test is what keeps genuine repeats out of it: two
+    /// coffees on one day, both read by `blu-receipt`, are two coffees if separated
+    /// in time. The same figure arriving once from the merchant and once from
     /// the bank is one purchase.
     ///
-    /// A day of slack, not none, for two AUTOMATED rails. Measured on the 137
-    /// real rows: same-day only caught 19 of Grab's 21, missing a ride whose
-    /// receipt arrived on the 10th and whose card charge posted on the 9th.
-    /// Widening to ±1 day caught 20 and flagged exactly one more row — its
-    /// twin. ±2 and ±3 caught nothing further, so the slack stops here rather
-    /// than at `Fingerprint`'s ±3.
+    /// Precise timestamp comparison distinguishes multiple distinct purchases on the same
+    /// day (e.g. morning vs afternoon coffee), while flagging rapid duplicate charges.
+    static func isSameCharge(_ lhs: ProvisionalEntry, as rhs: ProvisionalEntry) -> Bool {
+        guard lhs.transaction.amount == rhs.transaction.amount else { return false }
+        let lhsRule = ruleName(of: lhs)
+        let rhsRule = ruleName(of: rhs)
+
+        // Skipped when exactly one side was typed by hand — "salad" has no
+        // reason to resemble "HOKKY SUPERMARKET SURABAYA", and requiring it to
+        // is what let every manual-vs-email twin through. See
+        // `LedgerDeduplicator.isSemanticMatch`, which makes the same exception
+        // for the same reason.
+        if isManual(lhs) == isManual(rhs) {
+            guard isMerchantMatch(
+                lhsRaw: lhs.transaction.merchantRaw,
+                rhsRaw: rhs.transaction.merchantRaw,
+                lhsRule: lhsRule,
+                rhsRule: rhsRule
+            ) else { return false }
+        }
+
+        let cal = Calendar.current
+        let start1 = cal.startOfDay(for: min(lhs.transaction.date, rhs.transaction.date))
+        let start2 = cal.startOfDay(for: max(lhs.transaction.date, rhs.transaction.date))
+        let days = cal.dateComponents([.day], from: start1, to: start2).day ?? .max
+
+        let isManualPair = isManual(lhs) || isManual(rhs)
+        if isManualPair {
+            return days <= manualDateSlackDays
+        }
+
+        // Automated rails
+        guard days <= dateSlackDays else { return false }
+
+        let timeDiff = abs(lhs.transaction.date.timeIntervalSince(rhs.transaction.date))
+
+        // Same rail (e.g. two emails from blu-receipt, or two from the same pattern):
+        if lhsRule == rhsRule {
+            // Distinct days from same rail are separate purchases
+            if days > 0 { return false }
+            // On same day, if more than 15 minutes apart, they are separate purchases
+            return timeDiff <= 900
+        }
+
+        // Different rails (e.g. merchant receipt vs bank card charge):
+        // Up to 1 day slack (captured above with days <= dateSlackDays).
+        // On same day, if more than 2 hours apart, they are separate purchases
+        if days == 0 && timeDiff > 7200 {
+            return false
+        }
+
+        return true
+    }
+
+    /// Matches merchant across spelling differences, casing, trailing payment references,
+    /// and cross-rail representations (e.g. Grab driver receipt pattern vs Grab bank charge).
+    static func isMerchantMatch(
+        lhsRaw: String,
+        rhsRaw: String,
+        lhsRule: String? = nil,
+        rhsRule: String? = nil
+    ) -> Bool {
+        LedgerDeduplicator.isMerchantMatch(lhsRaw: lhsRaw, rhsRaw: rhsRaw, lhsRule: lhsRule, rhsRule: rhsRule)
+    }
+
+    /// Exact match against a canonical transaction in Google Sheets.
     ///
-    /// The 21st has no exact twin and cannot get one: blu split that fare into
-    /// Rp 5.000 and Rp 46.500 against Grab's single Rp 51.500. Matching sums of
-    /// charges is a different and much harder problem, and guessing at it would
-    /// merge unrelated purchases.
+    /// Exact amount, normalized merchant, same calendar day — and nothing
+    /// finer, because nothing finer survives the write to the sheet. See
+    /// `LedgerDeduplicator` for the measurement that settled that.
+    /// Used at the sync gate to skip re-queueing purchases already read and settled.
+    static func isExactLedgerMatch(
+        _ entry: ProvisionalEntry,
+        as tx: LedgerTransaction
+    ) -> Bool {
+        LedgerDeduplicator.isDuplicate(entry, as: tx)
+    }
+
+    /// Near match or cross-rail match against Google Sheets (e.g. an email
+    /// receipt matching an earlier manual entry).
     ///
-    /// Widened to `manualDateSlackDays` when either side is a MANUAL entry.
-    /// That measurement was about two rails that both timestamp at or near
-    /// the moment of purchase — a card charge and a receipt email. A hand
-    /// typed entry does not: `ManualEntry` has no way to backdate a row to
-    /// when the purchase actually happened, so it is stamped at whenever a
-    /// person happened to open the app and type it in, which can be days
-    /// after the fact. Reported directly: the same purchase landed once as a
-    /// manual entry and again from its own receipt email days later, and the
-    /// 1-day rule — correct for the case it was measured against — missed
-    /// the pair entirely.
-    private static func isSameCharge(_ lhs: ProvisionalEntry, as rhs: ProvisionalEntry) -> Bool {
-        guard lhs.transaction.amount == rhs.transaction.amount,
-              ruleName(of: lhs) != ruleName(of: rhs)
-        else { return false }
-        let days = Calendar.current.dateComponents(
-            [.day],
-            from: Calendar.current.startOfDay(for: min(lhs.transaction.date, rhs.transaction.date)),
-            to: Calendar.current.startOfDay(for: max(lhs.transaction.date, rhs.transaction.date))
-        ).day ?? .max
-        let slack = (Self.isManual(lhs) || Self.isManual(rhs)) ? manualDateSlackDays : dateSlackDays
-        return days <= slack
+    /// Looser than `isExactLedgerMatch` in the one dimension the stored row can
+    /// still support — a day of slack, five if the sheet's side was typed by
+    /// hand — because this one only ever raises a FLAG. It is the gate that
+    /// shows you a duplicate rather than the gate that acts on one, so being
+    /// early and wrong here costs a person one glance, while being silent costs
+    /// a double-counted purchase.
+    static func isPossibleLedgerDuplicate(
+        _ entry: ProvisionalEntry,
+        as tx: LedgerTransaction
+    ) -> Bool {
+        guard entry.transaction.amount == tx.amount else { return false }
+
+        let isManual = LedgerDeduplicator.isManualEntry(source: tx.source, provenance: tx.provenance)
+        let entryIsManual = LedgerDeduplicator.isManualEntry(
+            source: entry.transaction.source,
+            provenance: entry.provenance
+        )
+
+        // Skipped when exactly one side was typed by hand — see
+        // `LedgerDeduplicator.isSemanticMatch`. This is the gate that catches
+        // "I logged the salad myself and the supermarket emailed me too", and
+        // a merchant test is the one thing guaranteed to miss it.
+        if isManual == entryIsManual {
+            guard isMerchantMatch(
+                lhsRaw: entry.transaction.merchantRaw,
+                rhsRaw: tx.merchantRaw,
+                lhsRule: ruleName(of: entry),
+                rhsRule: provenanceRuleName(tx.provenance)
+            ) else { return false }
+        }
+
+        let cal = Calendar.current
+        let start1 = cal.startOfDay(for: min(entry.transaction.date, tx.date))
+        let start2 = cal.startOfDay(for: max(entry.transaction.date, tx.date))
+        let days = cal.dateComponents([.day], from: start1, to: start2).day ?? .max
+        let slack = isManual ? manualDateSlackDays : dateSlackDays
+        guard days <= slack else { return false }
+
+        // Same rail, different days is two purchases — not one billed twice.
+        // The only time-shaped question a STORED row can still answer, and it
+        // answers it with a date.
+        //
+        // There was a finer test here until 2026-09-12 and it was measuring
+        // nothing: it compared `entry.transaction.date` (a real purchase time,
+        // off the email) against `tx.capturedAt` (the time the SYNC ran), then
+        // refused the match at >15 min same-rail or >2 h cross-rail. A 19:58
+        // purchase against an 08:47 sync stamp is an 11-hour gap, so the arms
+        // fired on almost everything and this gate went quiet: measured over
+        // the real 137-row ledger, **2 rows flagged where 22 should have
+        // been**. `tx` has no purchase time to compare — `SheetsSchema` writes
+        // "yyyy-MM-dd" and the time of day does not survive the write. Same
+        // root cause, same removal, as `LedgerDeduplicator`; see `TESTING.md`.
+        //
+        // What that costs, measured rather than assumed: flagging rises to
+        // **22 of 137, 16% of the queue** — under `isSameCharge`'s own 39 and
+        // well under the 48 that was rejected as too noisy, so it stays below
+        // the bar this file already sets ("a flag that fires on a third of the
+        // queue trains people to approve past it"). 20 of the 22 are the
+        // cross-rail Grab double-count; the other 2 are three identical
+        // Rp 24.000 rows on one day, which is the case nothing can resolve and
+        // exactly what a flag — rather than a drop — is for.
+        if !isManual, ruleName(of: entry) == provenanceRuleName(tx.provenance), days > 0 {
+            return false
+        }
+
+        return true
     }
 
     private static func isManual(_ entry: ProvisionalEntry) -> Bool {
@@ -475,97 +621,79 @@ nonisolated struct GmailRail: Sendable {
 
     /// See `isSameCharge` — measured, not assumed.
     private static let dateSlackDays = 1
-    /// See `isSameCharge`. Unmeasured, unlike `dateSlackDays` — there is no
-    /// recorded corpus of manual-entry timing to tune this against, only the
-    /// one reported pair. Five days is a judgment call: wide enough to cover
-    /// "logged it a few days late", narrow enough that two unrelated
-    /// purchases of the same round amount within the same week stay rare.
-    /// Revisit once there are real pairs to measure instead of one report.
+    /// See `isSameCharge`. Unmeasured, unlike `dateSlackDays` — five days covers
+    /// "logged it a few days late" while keeping unrelated purchases rare.
     private static let manualDateSlackDays = 5
 
     // MARK: - Reversals
 
     /// **A refund is a dedup problem.** One purchase, two rows, arriving weeks
     /// apart instead of a day apart — so it is found the same way a duplicate
-    /// is, by the same fingerprint buckets, and settled the same way: flagged
-    /// for a person, never netted.
-    ///
-    /// Netting is what this deliberately does NOT do. A refund is `.nonSpend`
-    /// and excluded from every ceiling (Invariant 5), so a Rp 42.500 purchase
-    /// you were refunded still reads as Rp 42.500 of spending. Making the
-    /// refund reduce that total would be a non-spend row moving a spend figure,
-    /// which contradicts the invariant rather than extending it — and it would
-    /// need to be certain WHICH purchase was reversed, which is exactly the
-    /// judgement `possibleDuplicate` already refuses to make on its own. What
-    /// the person gets instead is the pair, named: "Reverses TOKO ROTI MANIS,
-    /// 12 Sep". They decide what it means.
-    ///
-    /// Three tests, and each one exists to stop a specific wrong pairing:
-    ///
-    /// · **Exact amount.** Same choice, same reason as `isSameCharge`. A
-    ///   partial refund therefore does not pair, and that is the honest state:
-    ///   a tolerance wide enough to catch partials is wide enough to pair a
-    ///   refund with an unrelated purchase of a similar size.
-    /// · **Same normalized merchant.** The one test duplicates don't use, and
-    ///   here it carries the weight: two Rp 50.000 charges a fortnight apart are
-    ///   common, and the merchant is what says the refund belongs to this one.
-    /// · **The charge came FIRST.** A reversal cannot precede what it reverses.
-    ///   Without this, two refunds in a window pair with each other.
-    private func flaggingReversals(_ entries: [ProvisionalEntry]) async throws -> [ProvisionalEntry] {
+    /// is, by fingerprint buckets, and settled the same way: flagged for a person.
+    private func flaggingReversals(
+        _ entries: [ProvisionalEntry],
+        existingLedger: [LedgerTransaction] = []
+    ) async throws -> [ProvisionalEntry] {
         var flagged = entries
         for index in flagged.indices {
             let refund = flagged[index]
             guard refund.resolution.nonSpendType == .refund else { continue }
 
-            // One fetch per bucket in the lookback, which is why this runs only
-            // for rows already known to be refunds. Those are rare — a handful
-            // of blu's 116 — and the alternative is widening `dateWindowDays`
-            // for every duplicate check in the app.
             var candidates: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
             for bucket in refund.transaction.fingerprint.lookingBack(days: Self.reversalWindowDays) {
                 for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
                     candidates[candidate.id] = candidate
                 }
             }
-            // The purchase may well be in this same batch — a fetch after two
-            // weeks away brings both — so the batch is searched too.
             for candidate in entries where candidate.id != refund.id {
                 candidates[candidate.id] = candidate
             }
 
             let charge = candidates.values
                 .filter { Self.isReversed(by: refund, $0) }
-                // Nearest first: if a merchant charged the same amount twice,
-                // the refund almost certainly undoes the more recent one.
                 .max { $0.transaction.date < $1.transaction.date }
 
-            guard let charge else { continue }
-            flagged[index].flags.append(
-                ReviewFlag(
-                    reason: .reversal,
-                    detail: "Undoes \(charge.transaction.merchantRaw) on "
-                        + charge.transaction.date.formatted(.dateTime.day().month(.abbreviated))
+            if let charge {
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .reversal,
+                        detail: "Undoes \(charge.transaction.merchantRaw) on "
+                            + charge.transaction.date.formatted(.dateTime.day().month(.abbreviated))
+                    )
                 )
-            )
+                continue
+            }
+
+            // Search canonical ledger if not found in provisional/batch
+            let ledgerCharge = existingLedger
+                .filter { Self.isReversedInLedger(by: refund, $0) }
+                .max { $0.date < $1.date }
+
+            if let ledgerCharge {
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .reversal,
+                        detail: "Undoes \(ledgerCharge.merchantRaw) on "
+                            + ledgerCharge.date.formatted(.dateTime.day().month(.abbreviated))
+                    )
+                )
+            }
         }
         return flagged
     }
 
-    /// Refunds are slow. blu's arrive same-week; a card reversal through an
-    /// acquirer can take a fortnight, and a disputed one longer. Thirty days is
-    /// wide enough to catch the ordinary case and short enough that a merchant
-    /// you use monthly doesn't pair with last month's identical charge.
-    ///
-    /// Unmeasured, unlike `dateSlackDays` — there are 4 refunds in the corpus
-    /// and none of them has its original charge in it, because the bodies were
-    /// stripped before this could be looked at. Revisit on real pairs.
+    /// Thirty days covers slow card acquirer chargebacks.
     private static let reversalWindowDays = 30
 
     private static func isReversed(by refund: ProvisionalEntry, _ candidate: ProvisionalEntry) -> Bool {
         guard candidate.resolution.kind == .spend,
               candidate.transaction.amount == refund.transaction.amount,
-              MerchantID(normalizing: candidate.transaction.merchantRaw)
-                  == MerchantID(normalizing: refund.transaction.merchantRaw)
+              isMerchantMatch(
+                  lhsRaw: candidate.transaction.merchantRaw,
+                  rhsRaw: refund.transaction.merchantRaw,
+                  lhsRule: ruleName(of: candidate),
+                  rhsRule: ruleName(of: refund)
+              )
         else { return false }
 
         let charged = candidate.transaction.date
@@ -579,8 +707,35 @@ nonisolated struct GmailRail: Sendable {
         return days <= reversalWindowDays
     }
 
+    private static func isReversedInLedger(by refund: ProvisionalEntry, _ candidate: LedgerTransaction) -> Bool {
+        guard candidate.kind == .spend,
+              candidate.amount == refund.transaction.amount,
+              isMerchantMatch(
+                  lhsRaw: candidate.merchantRaw,
+                  rhsRaw: refund.transaction.merchantRaw,
+                  lhsRule: provenanceRuleName(candidate.provenance),
+                  rhsRule: ruleName(of: refund)
+              )
+        else { return false }
+
+        let charged = candidate.date
+        let refunded = refund.transaction.date
+        guard charged <= refunded else { return false }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: charged),
+            to: Calendar.current.startOfDay(for: refunded)
+        ).day ?? .max
+        return days <= reversalWindowDays
+    }
+
     private static func ruleName(of entry: ProvisionalEntry) -> String {
         if case .rule(let id) = entry.provenance { return id.rawValue }
+        return "another source"
+    }
+
+    private static func provenanceRuleName(_ p: ProvisionalEntry.Provenance) -> String {
+        if case .rule(let id) = p { return id.rawValue }
         return "another source"
     }
 
@@ -645,7 +800,7 @@ nonisolated struct GmailRail: Sendable {
             provenance: .rule(parser.id),
             flags: flags,
             status: .pending,
-            createdAt: .now,
+            createdAt: receipt.date,
             // Kept apart from `provenance`, which a retag overwrites. These two
             // are what let the approval queue vouch for the parser that read
             // the email — see `PatternMemory`.

@@ -26,10 +26,18 @@ final class ApprovalQueueViewModel {
     private let ledger: LedgerStore
     /// Re-run on every load, deterministically. See `load()`.
     private let tagger: (any PurchaseTagger)?
+    /// Re-checked on every load, same reasoning as `tagger` — see
+    /// `reviseUnverifiedFlags`.
+    private let trust: (any PatternMemory)?
 
     private(set) var phase: LoadPhase = .idle
     private(set) var entries: [ProvisionalEntry] = []
     private(set) var categories: [SpendCategory] = []
+    private(set) var settlingIDs: Set<ProvisionalEntry.ID> = []
+
+    func isSettling(_ id: ProvisionalEntry.ID) -> Bool {
+        settlingIDs.contains(id)
+    }
 
     /// User-chosen, this screen only — not persisted. `needsAttention` always
     /// wins first regardless of this choice; flagged rows are not something a
@@ -64,12 +72,14 @@ final class ApprovalQueueViewModel {
         store: ProvisionalStore,
         approvals: ApprovalService,
         ledger: LedgerStore,
-        tagger: (any PurchaseTagger)? = nil
+        tagger: (any PurchaseTagger)? = nil,
+        trust: (any PatternMemory)? = nil
     ) {
         self.store = store
         self.approvals = approvals
         self.ledger = ledger
         self.tagger = tagger
+        self.trust = trust
     }
 
     // MARK: - Derived
@@ -208,6 +218,32 @@ final class ApprovalQueueViewModel {
         do {
             var pending = try await store.pending()
             categories = try await ledger.categories()
+            let existingLedger = (try? await ledger.all()) ?? []
+
+            // Auto-settle any pending rows that have already been recorded in canonical ledger
+            //
+            // These leave the queue without anyone seeing them, so each one
+            // says why and names the row it matched — a wrong match here takes
+            // real spending out of the queue silently, and the log is the only
+            // way back to it. See `LedgerDeduplicator` for the measurement
+            // behind the rule, including the one case it cannot resolve.
+            var alreadySettledIDs: [ProvisionalEntry.ID] = []
+            pending.removeAll { entry in
+                guard let twin = existingLedger.first(where: { LedgerDeduplicator.isDuplicate(entry, as: $0) })
+                else { return false }
+                PipelineDebugStub.recordSettlement(
+                    entryID: entry.id,
+                    merchant: entry.transaction.merchantRaw,
+                    parserOrigin: entry.readBy?.origin,
+                    verdict: "auto-settled at queue load: already in ledger as \(twin.id) "
+                        + "(\(twin.merchantRaw), \(twin.date.formatted(.dateTime.day().month(.abbreviated))))"
+                )
+                alreadySettledIDs.append(entry.id)
+                return true
+            }
+            if !alreadySettledIDs.isEmpty {
+                try? await store.markPromoted(alreadySettledIDs)
+            }
 
             if let tagger {
                 let changed = await tagger.refresh(pending, among: categories)
@@ -221,11 +257,65 @@ final class ApprovalQueueViewModel {
                 pending = pending.map { updates[$0.id] ?? $0 }
             }
 
+            pending = await reviseUnverifiedFlags(in: pending)
+
             entries = pending
             phase = .loaded
         } catch {
             phase = .failed(String(describing: error))
         }
+    }
+
+    /// Clears `unverifiedPattern` from a row whose pattern has, since
+    /// capture, earned the trust `PatternTrustPolicy` requires.
+    ///
+    /// Same lesson `tagger.refresh` above already applies to suggestions,
+    /// applied here to the flag instead: `GmailRail` stamps
+    /// `unverifiedPattern` once, at capture, based on whether the pattern
+    /// was vouched THEN — but vouching is a live, reversible number
+    /// (Invariant 10), and a row that has been sitting in the queue since
+    /// before its pattern crossed `PatternTrustPolicy`'s bar has no way to
+    /// find that out on its own. Freezing it there is the same shape of bug
+    /// as the tagger's first version, just in a different field.
+    ///
+    /// One direction only, deliberately: a pattern's trust DROPPING again
+    /// does not re-flag an already-pending row here. That needs the full
+    /// `ExtractionPattern` (to confirm `verifiedAgainst == 0` still holds,
+    /// same condition `GmailRail` checks at capture) rather than just its
+    /// id, and re-flagging a row someone may already be looking at is a
+    /// different judgment call than quietly clearing a stale caution. Left
+    /// as a follow-up rather than done by half.
+    private func reviseUnverifiedFlags(in pending: [ProvisionalEntry]) async -> [ProvisionalEntry] {
+        guard let trust else { return pending }
+
+        let flaggedPatternIDs = Set(
+            pending
+                .filter { $0.flags.contains { $0.reason == .unverifiedPattern } }
+                .compactMap { $0.readBy?.rawValue }
+        )
+        guard !flaggedPatternIDs.isEmpty else { return pending }
+
+        let vouched = await PatternTrustPolicy.vouched(among: Array(flaggedPatternIDs), using: trust)
+        guard !vouched.isEmpty else { return pending }
+
+        var revised: [ProvisionalEntry] = []
+        revised.reserveCapacity(pending.count)
+        for var entry in pending {
+            guard let patternID = entry.readBy?.rawValue,
+                  vouched.contains(patternID),
+                  entry.flags.contains(where: { $0.reason == .unverifiedPattern })
+            else {
+                revised.append(entry)
+                continue
+            }
+            entry.flags.removeAll { $0.reason == .unverifiedPattern }
+            // Best-effort, same reasoning as the tagger's refresh above: a
+            // failed write leaves the row exactly as flagged as it already
+            // was — not a reason to fail opening the queue.
+            try? await store.update(entry)
+            revised.append(entry)
+        }
+        return revised
     }
 
     func retag(_ entry: ProvisionalEntry, to option: TagOption) async {
@@ -254,6 +344,10 @@ final class ApprovalQueueViewModel {
     /// accrual the design describes, actually happening within one sitting
     /// rather than at the next fetch.
     func approve(_ entry: ProvisionalEntry) async {
+        guard !settlingIDs.contains(entry.id) else { return }
+        settlingIDs.insert(entry.id)
+        defer { settlingIDs.remove(entry.id) }
+
         do {
             let result = try await approvals.approve([entry.id])
             await load()
@@ -267,6 +361,10 @@ final class ApprovalQueueViewModel {
     }
 
     func drop(_ entry: ProvisionalEntry) async {
+        guard !settlingIDs.contains(entry.id) else { return }
+        settlingIDs.insert(entry.id)
+        defer { settlingIDs.remove(entry.id) }
+
         do {
             try await approvals.reject([entry.id])
             await load()
@@ -287,12 +385,17 @@ final class ApprovalQueueViewModel {
     func approveAll() async {
         let ids = bulkApprovable.map(\.id)
         guard !ids.isEmpty else { return }
+        let newIDs = ids.filter { !settlingIDs.contains($0) }
+        guard !newIDs.isEmpty else { return }
+        for id in newIDs { settlingIDs.insert(id) }
+        defer { for id in newIDs { settlingIDs.remove(id) } }
+
         do {
-            let result = try await approvals.approve(ids)
+            let result = try await approvals.approve(newIDs)
             await load()
             onSettled?()
             if !result.failed.isEmpty {
-                phase = .failed("\(result.failed.count) of \(ids.count) didn't go through — the rest are approved.")
+                phase = .failed("\(result.failed.count) of \(newIDs.count) didn't go through — the rest are approved.")
             }
         } catch {
             phase = .failed(String(describing: error))

@@ -131,7 +131,7 @@ private struct DebugHarness: View {
                         set: { environment.pureAgentMode = $0 }
                     )
                 )
-                Text("Drops blu's preset and its hand-written oracle. Takes effect on the next sync, not retroactively. Defaults ON right now for testing — see AppEnvironment.pureAgentMode.")
+                Text("Drops blu's preset and its hand-written oracle. Takes effect on the next sync, not retroactively.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

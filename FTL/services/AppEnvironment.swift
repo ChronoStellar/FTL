@@ -108,17 +108,14 @@ final class AppEnvironment {
     /// it takes effect on the NEXT sync with no environment rebuild needed.
     /// DEBUG-only surface (Settings → Developer).
     ///
-    /// ⚠️ **Defaults ON right now, for testing — flip back before relying on
-    /// blu's preset again.** The normal default is OFF (a preset exists
-    /// precisely to keep spend flowing while the loop is proven elsewhere),
-    /// but the point of asking for this right now is to SEE it, not to find
-    /// it in a menu first. The `object(forKey:) == nil` check is what makes
+    /// Defaults OFF (a preset exists precisely to keep spend flowing while the
+    /// loop is proven elsewhere). The `object(forKey:) == nil` check is what makes
     /// this only a fallback: the Debug toggle's explicit `set` below always
     /// wins over it, on either value, and persists across relaunches like any
     /// other UserDefaults write.
     var pureAgentMode: Bool {
         get {
-            guard UserDefaults.standard.object(forKey: Self.pureAgentModeKey) != nil else { return true }
+            guard UserDefaults.standard.object(forKey: Self.pureAgentModeKey) != nil else { return false }
             return UserDefaults.standard.bool(forKey: Self.pureAgentModeKey)
         }
         set { UserDefaults.standard.set(newValue, forKey: Self.pureAgentModeKey) }
@@ -348,7 +345,10 @@ final class AppEnvironment {
             // The queue is where the tagger earns its keep: every load
             // re-derives what you have settled, so a decision made on one row
             // is visible on the next one down. See `PurchaseTagger`.
-            tagger: makePurchaseTagger()
+            tagger: makePurchaseTagger(),
+            // Same reasoning, applied to `unverifiedPattern` instead of a tag
+            // suggestion — see `ApprovalQueueViewModel.reviseUnverifiedFlags`.
+            trust: patternMemory
         )
     }
 
@@ -381,6 +381,7 @@ final class AppEnvironment {
             parsers: [],
             provisional: provisional,
             log: captureLog,
+            ledger: ledger,
             patterns: patterns,
             presets: pureAgentMode ? [] : PresetPatterns.load(),
             tagger: makePurchaseTagger(),

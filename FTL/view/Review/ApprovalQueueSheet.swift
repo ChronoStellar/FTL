@@ -300,6 +300,8 @@ private struct QueueEntryCard: View {
 
     private var actions: some View {
         HStack(spacing: 9) {
+            let isSettling = viewModel.isSettling(entry.id)
+
             Button {
                 Task { await viewModel.drop(entry) }
             } label: {
@@ -313,17 +315,26 @@ private struct QueueEntryCard: View {
                     }
             }
             .buttonStyle(.plain)
+            .disabled(isSettling)
 
             Button {
                 Task { await viewModel.approve(entry) }
             } label: {
-                Text(viewModel.approveLabel(for: entry))
-                    .font(FTLTypography.body)
-                    .foregroundStyle(FTLColor.onLight)
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(FTLColor.textPrimary, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+                if isSettling {
+                    ProgressView()
+                        .tint(FTLColor.onLight)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(FTLColor.textPrimary, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+                } else {
+                    Text(viewModel.approveLabel(for: entry))
+                        .font(FTLTypography.body)
+                        .foregroundStyle(FTLColor.onLight)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(FTLColor.textPrimary, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+                }
             }
             .buttonStyle(.plain)
+            .disabled(isSettling)
         }
     }
 
