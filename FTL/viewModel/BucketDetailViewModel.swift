@@ -148,6 +148,18 @@ final class BucketDetailViewModel {
         }
     }
 
+    /// A corrected row can leave this bucket entirely — retagging it, or
+    /// marking it non-spend — so this reloads the whole screen rather than
+    /// patching the row in place. The ceiling, the meter and the list all move.
+    func updateTransaction(_ transaction: LedgerTransaction) async {
+        do {
+            try await ledger.update(transaction)
+            await load()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
     func deleteTransaction(_ transaction: LedgerTransaction) async {
         do {
             try await ledger.delete(transaction.id)

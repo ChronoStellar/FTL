@@ -362,6 +362,13 @@ final class AppEnvironment {
         )
     }
 
+    /// Handed `ledger` as a `CategorySource`, not a `LedgerStore`. The editor
+    /// needs to know what the buckets are and has no business being able to
+    /// write a transaction — the screen that owns the list does that.
+    func makeEditTransactionViewModel(for transaction: LedgerTransaction) -> EditTransactionViewModel {
+        EditTransactionViewModel(transaction: transaction, categories: ledger)
+    }
+
     func makeGoalViewModel() -> GoalViewModel {
         GoalViewModel(goals: goals)
     }

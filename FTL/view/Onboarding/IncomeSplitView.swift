@@ -25,8 +25,7 @@ struct IncomeSplitView: View {
             Group {
                 switch viewModel.phase {
                 case .idle, .loading:
-                    ProgressView()
-                        .tint(FTLColor.textTertiary)
+                    BeamActivity()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .failed(let message):
                     failure(message)
@@ -100,7 +99,7 @@ struct IncomeSplitView: View {
                     }
                 }
             }
-            Text("Every bucket below is a percentage of this. Saving writes each ceiling straight to your Sheet — same as setting one by hand, just all at once.")
+            Text("Every bucket below is a percentage of this. Raising one draws from Unallocated and lowering one puts it back — no other bucket moves. Saving writes each ceiling straight to your Sheet.")
                 .font(FTLTypography.captionSmall)
                 .foregroundStyle(FTLColor.textQuaternary)
         }
@@ -111,9 +110,15 @@ struct IncomeSplitView: View {
             HStack {
                 SectionLabel(text: "Split")
                 Spacer()
-                Text("\(viewModel.totalPercent)%")
-                    .font(FTLTypography.captionSmall)
-                    .foregroundStyle(viewModel.isOverAllocated ? FTLColor.budgetOverCeiling : FTLColor.textQuaternary)
+                // Only offered when there is something to match. On a mailbox
+                // with no history the starting split is even, and a button
+                // that would re-derive it from nothing is a dead control.
+                if viewModel.hasSpendHistory {
+                    Button("Match my spending") { viewModel.matchSpending() }
+                        .font(FTLTypography.captionSmall)
+                        .foregroundStyle(FTLColor.textTertiary)
+                        .buttonStyle(.plain)
+                }
             }
 
             SplitBar(segments: viewModel.rows.map {
@@ -129,41 +134,61 @@ struct IncomeSplitView: View {
                 }
             }
 
-            if viewModel.isOverAllocated {
-                Text("\(-viewModel.remainingPercent)% more than the income — take some back before saving.")
-                    .font(FTLTypography.captionSmall)
-                    .foregroundStyle(FTLColor.budgetOverCeiling)
-            } else if viewModel.remainingPercent > 0 {
-                // Not an error: the budget tree already carries an implicit
-                // unallocated child, and this is exactly what it's for.
-                Text("\(viewModel.remainingPercent)% unallocated · \(MoneyFormatter.rp(viewModel.unallocatedAmount))")
-                    .font(FTLTypography.captionSmall)
-                    .foregroundStyle(FTLColor.textQuaternary)
-            }
+            // No over-allocated warning: the total is pinned at 100% and that
+            // state is unreachable. What IS reachable, and needs saying, is a
+            // drag that stops moving — which happens for exactly one reason.
+            Text(viewModel.unallocatedPercent == 0
+                 ? "Unallocated is empty, so no bucket can grow until another one comes down."
+                 : "Unallocated is money you haven't apportioned — it stays in the total and stays visible.")
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
         }
     }
 
+    /// Name and figures on one line, the slider under it full width.
+    ///
+    /// The steppers this replaced were a pair of 44pt buttons competing with
+    /// the name and two numbers for one row's width, and each tap moved five
+    /// points of one bucket — six rows meant a lot of tapping to land a split.
+    /// Deliberately no animation on `percent`: the number and the knob have to
+    /// track the thumb, and easing either one puts them behind the finger.
     private func splitRow(_ row: IncomeSplitViewModel.SplitRow) -> some View {
-        HStack(spacing: FTLSpacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: FTLSpacing.sm) {
                 Text(row.name)
                     .font(FTLTypography.rowTitle)
-                    .foregroundStyle(FTLColor.textPrimary)
+                    .foregroundStyle(row.isUnallocated ? FTLColor.textSecondary : FTLColor.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: FTLSpacing.sm)
                 Text(MoneyFormatter.rp(viewModel.amount(for: row)))
-                    .font(FTLTypography.captionSmall)
+                    .font(FTLTypography.amountSmall)
                     .foregroundStyle(FTLColor.textQuaternary)
+                    .lineLimit(1)
+                Text("\(row.percent)%")
+                    .font(FTLTypography.amountEmphasis)
+                    .foregroundStyle(row.isUnallocated ? FTLColor.textTertiary : FTLColor.textPrimary)
+                    // Fixed width so a row doesn't reflow as the figure crosses
+                    // 9 → 10 → 100 under the thumb.
+                    .frame(minWidth: 44, alignment: .trailing)
             }
-            Spacer(minLength: FTLSpacing.sm)
-            Text("\(row.percent)%")
-                .font(FTLTypography.amountEmphasis)
-                .foregroundStyle(FTLColor.textSecondary)
-                .contentTransition(.numericText())
-                .animation(.snappy, value: row.percent)
-            StepperPair(
-                label: "\(row.name) share",
-                onDecrement: { viewModel.adjust(row, by: -IncomeSplitViewModel.step) },
-                onIncrement: { viewModel.adjust(row, by: IncomeSplitViewModel.step) }
-            )
+            // Unallocated gets a bar and no thumb. It is `100 − Σ named` by
+            // definition, so a thumb on it would be a second, contradictory way
+            // to set the same number — and the missing thumb is itself the
+            // clearest statement of which rows you drive and which one reports.
+            if row.isUnallocated {
+                MeterBar(
+                    fraction: Double(row.percent) / 100,
+                    height: FTLMeter.heroHeight,
+                    fill: FTLColor.unallocated
+                )
+                .frame(height: FTLSpacing.minTapTarget)
+            } else {
+                RatioSlider(
+                    value: row.percent,
+                    label: "\(row.name) share",
+                    onChange: { viewModel.setPercent(row, to: $0) }
+                )
+            }
         }
     }
 

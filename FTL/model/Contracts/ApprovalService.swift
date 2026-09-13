@@ -26,6 +26,31 @@ nonisolated protocol ApprovalService: Sendable {
     /// Sets provenance to `.manual`, because a corrected row is no longer the
     /// model's verdict and must not be counted as one when measuring accuracy.
     func amend(_ id: ProvisionalEntry.ID, to resolution: ProvisionalEntry.Resolution) async throws
+
+    /// Correct the FIGURE before approving — the parser read the wrong number
+    /// out of the email and you are fixing it.
+    ///
+    /// Separate from `amend` because it changes the transaction rather than the
+    /// resolution, and because the two mean different things about different
+    /// tools: a retag is evidence about the tagger, a corrected amount is
+    /// evidence about the parser that read the email. Both set provenance to
+    /// `.manual`; only this one recomputes the fingerprint, which is derived
+    /// from the amount and would otherwise leave the row blocking against
+    /// candidates for a figure it no longer carries.
+    func correctAmount(_ id: ProvisionalEntry.ID, to amount: Money) async throws
+
+    /// Correct the merchant NAME before approving — the parser grabbed the
+    /// wrong string, or a legible one nobody would recognise.
+    ///
+    /// This never touches `merchantRaw` and could not if it wanted to
+    /// (Invariant 3, enforced by `let`). It sets the display name the ledger
+    /// row will carry; the string the email actually said is preserved beside
+    /// it forever, which is what makes the correction auditable rather than a
+    /// rewrite of history.
+    ///
+    /// Passing nil, or the name the parser already produced, clears the
+    /// correction rather than recording an empty one.
+    func correctMerchant(_ id: ProvisionalEntry.ID, to name: String?) async throws
 }
 
 nonisolated struct ApprovalResult: Sendable {

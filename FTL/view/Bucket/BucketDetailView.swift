@@ -9,6 +9,9 @@ import SwiftUI
 
 struct BucketDetailView: View {
     @Bindable var viewModel: BucketDetailViewModel
+    /// Presented by `BucketScreen`, which owns the environment the editor's
+    /// view model is built from.
+    let onEditTransaction: (LedgerTransaction) -> Void
 
     var body: some View {
         ScrollView {
@@ -134,6 +137,7 @@ struct BucketDetailView: View {
                     LedgerRow(
                         transaction: transaction,
                         showsDivider: index < viewModel.transactions.count - 1,
+                        onEdit: { onEditTransaction(transaction) },
                         onDelete: {
                             Task { await viewModel.deleteTransaction(transaction) }
                         }

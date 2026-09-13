@@ -116,6 +116,13 @@ actor InMemoryLedgerStore: LedgerStore {
         rows.first { $0.id == id }
     }
 
+    func update(_ transaction: LedgerTransaction) async throws {
+        guard let index = rows.firstIndex(where: { $0.id == transaction.id }) else {
+            throw LedgerError.rowNotFound(id: transaction.id)
+        }
+        rows[index] = transaction
+    }
+
     func delete(_ id: LedgerTransaction.ID) async throws {
         rows.removeAll { $0.id == id }
     }

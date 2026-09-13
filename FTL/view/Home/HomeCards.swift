@@ -195,81 +195,111 @@ struct GoalCard: View {
 
 // MARK: - Ledger
 
+/// One row of the ledger, and the way into correcting it.
+///
+/// Tapping opens the editor; the context menu carries the same Edit plus a
+/// Delete. The always-visible trash can that used to sit at the trailing edge
+/// is gone: a destructive control permanently parked in every row of a list
+/// people scroll is a mis-tap waiting to happen, it is not how any list on this
+/// platform behaves, and delete now lives in the two places it belongs — behind
+/// a long press, and at the bottom of the editor.
 struct LedgerRow: View {
     let transaction: LedgerTransaction
     var showsAccent: Bool = false
     var showsDivider: Bool = true
+    var onEdit: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
 
     @State private var showingDeleteConfirmation = false
 
     var body: some View {
         PanelRow(showsDivider: showsDivider) {
-            HStack(spacing: FTLSpacing.md) {
-                if showsAccent {
-                    Capsule()
-                        .fill(FTLColor.forKind(transaction.kind))
-                        .frame(width: 3, height: 32)
-                }
-                VStack(alignment: .leading, spacing: FTLSpacing.xxs) {
-                    Text(transaction.merchant ?? transaction.merchantRaw)
-                        .font(FTLTypography.rowTitleTight)
-                        .foregroundStyle(FTLColor.textPrimary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(FTLTypography.captionSmall)
-                        .foregroundStyle(FTLColor.textQuaternary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: FTLSpacing.sm)
-                Text(MoneyFormatter.grouped(transaction.amount))
-                    .font(FTLTypography.amount)
-                    .foregroundStyle(FTLColor.forKind(transaction.kind))
-
-                if onDelete != nil {
-                    Button(role: .destructive) {
-                        showingDeleteConfirmation = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 13))
-                            .foregroundStyle(FTLColor.textDisabled)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 4)
+            Group {
+                if let onEdit {
+                    Button(action: onEdit) { line }
+                        .buttonStyle(.plain)
+                } else {
+                    line
                 }
             }
             .contentShape(Rectangle())
             .contextMenu {
+                if let onEdit {
+                    Button("Edit", systemImage: "pencil", action: onEdit)
+                }
                 if onDelete != nil {
-                    Button(role: .destructive) {
+                    Button("Delete", systemImage: "trash", role: .destructive) {
                         showingDeleteConfirmation = true
-                    } label: {
-                        Label("Delete Transaction", systemImage: "trash")
                     }
                 }
             }
             .confirmationDialog(
-                "Delete Transaction?",
+                "Delete this transaction?",
                 isPresented: $showingDeleteConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Delete", role: .destructive) {
-                    onDelete?()
-                }
+                Button("Delete", role: .destructive) { onDelete?() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will remove \"\(transaction.merchant ?? transaction.merchantRaw)\" (\(MoneyFormatter.rp(transaction.amount))) from your Google Sheet.")
+                Text("\(transaction.merchant ?? transaction.merchantRaw) (\(MoneyFormatter.rp(transaction.amount))) will be removed from your Google Sheet.")
             }
         }
     }
 
-    /// "Food · email · today" — bucket, rail, and when.
+    private var line: some View {
+        HStack(spacing: FTLSpacing.md) {
+            if showsAccent {
+                Capsule()
+                    .fill(FTLColor.forKind(transaction.kind))
+                    .frame(width: 3, height: 32)
+            }
+            VStack(alignment: .leading, spacing: FTLSpacing.xxs) {
+                Text(transaction.merchant ?? transaction.merchantRaw)
+                    .font(FTLTypography.rowTitleTight)
+                    .foregroundStyle(FTLColor.textPrimary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.textQuaternary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: FTLSpacing.sm)
+            Text(MoneyFormatter.grouped(transaction.amount))
+                .font(FTLTypography.amount)
+                .foregroundStyle(FTLColor.forKind(transaction.kind))
+            if onEdit != nil { Chevron() }
+        }
+    }
+
+    /// "Refund · Food · email · today" — what it is, where it lands, how it got
+    /// here, and when.
+    ///
+    /// The non-spend label leads, and only appears on a non-spend row. Kind is
+    /// editable now, so the row has to say which one it is: without it the only
+    /// difference between a purchase and the refund reversing it is a colour,
+    /// and Invariant 5 turns on the distinction.
     private var subtitle: String {
         var parts: [String] = []
+        if transaction.kind == .nonSpend {
+            parts.append(transaction.nonSpendType.map(Self.label(for:)) ?? "Not a spend")
+        }
         if let category = transaction.categoryID { parts.append(category.rawValue.capitalized) }
         parts.append(transaction.source.rawValue)
-        parts.append(transaction.date.formatted(.relative(presentation: .named)))
+        // Abbreviated units, because the non-spend label above costs a word
+        // and "17 hours ago" is what got pushed off the end of the row.
+        parts.append(transaction.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
         return parts.joined(separator: " · ")
+    }
+
+    private static func label(for type: NonSpendType) -> String {
+        switch type {
+        case .transfer: return "Transfer"
+        case .topup: return "Top-up"
+        case .creditCardPayment: return "Card payment"
+        case .cashback: return "Cashback"
+        case .refund: return "Refund"
+        case .incoming: return "Money in"
+        }
     }
 }
 

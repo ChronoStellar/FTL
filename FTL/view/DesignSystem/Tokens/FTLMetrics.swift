@@ -41,6 +41,22 @@ enum FTLRadius {
     static let sheet: CGFloat = 20
 }
 
+/// Widths for the saucer mark — see `Saucer.swift`. One entry per place the
+/// mark is allowed to appear, so the list of sanctioned placements is this enum
+/// and adding a fifth means adding a line here first.
+enum FTLMarkSize {
+    /// Beside the FTL wordmark in the nav bar.
+    static let wordmark: CGFloat = 17
+    /// The sign-in hero, the only one drawn at size.
+    static let hero: CGFloat = 76
+    /// The approval queue's empty state.
+    static let emptyState: CGFloat = 44
+    /// `BeamActivity` in a screen that has nothing on it yet.
+    static let activity: CGFloat = 46
+    /// `BeamActivity` on the launch placeholder, which has the whole screen.
+    static let launch: CGFloat = 56
+}
+
 enum FTLMeter {
     /// The hero meter.
     static let heroHeight: CGFloat = 6

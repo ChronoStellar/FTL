@@ -30,8 +30,28 @@ enum IndonesianMoney {
     /// over all 1,000 emails in the export: **11 parses change, every one of
     /// them Steam, every one a 1000× correction — and 0 blu emails move**, so
     /// the 116/116 parser is untouched.
+    ///
+    /// **Commas group thousands too, and that one is worse.** Some senders
+    /// write US-style: `IDR 10,000,000` from bankmandiri, `Rp 25,600` from
+    /// kai.id, `Rp260,000` from Traveloka. Under the old rule those read as
+    /// **Rp 10**, **Rp 25** and **Rp 260** — a millionfold error, out of a
+    /// bank.
+    ///
+    /// This is genuinely ambiguous in Indonesian, where the comma is the
+    /// DECIMAL separator — and it is resolvable only because IDR has no minor
+    /// unit (Invariant 4, `Money`). `,600` therefore cannot be a fraction of
+    /// anything, so: **comma + exactly 3 digits is a group separator, comma +
+    /// one or two digits stays the decimal** it has always been. `Rp18.000,00`
+    /// is unaffected — `,00` is two digits and still falls to the fractional
+    /// arm, which is still dropped.
+    ///
+    /// Measured the same way before changing it: **13 parses change — 9
+    /// Traveloka, 3 bankmandiri, 1 kai.id — and 0 blu, 0 grab**, the only two
+    /// senders with live patterns. Latent rather than active today, and
+    /// `PatternDiscovery`'s near-miss top-up makes those senders more likely
+    /// to be learned, not less.
     private static let pattern = try! NSRegularExpression(
-        pattern: #"(?:Rp|IDR)\s*([\d.]+(?:[ \x{00A0}]\d{3})*)(?:,(\d{1,2}))?"#,
+        pattern: #"(?:Rp|IDR)\s*([\d.]+(?:[ \x{00A0}]\d{3})*(?:,\d{3})*)(?:,(\d{1,2}))?"#,
         options: [.caseInsensitive]
     )
 
@@ -46,8 +66,12 @@ enum IndonesianMoney {
         let range = NSRange(text.startIndex..., in: text)
         return pattern.matches(in: text, range: range).compactMap { match in
             guard let r = Range(match.range(at: 1), in: text) else { return nil }
+            // Every separator this pattern can match is a GROUP separator by
+            // the time it reaches here — the decimal comma is captured
+            // separately and deliberately discarded (IDR has no minor unit).
             let digits = text[r]
                 .replacingOccurrences(of: ".", with: "")
+                .replacingOccurrences(of: ",", with: "")
                 .replacingOccurrences(of: " ", with: "")
                 .replacingOccurrences(of: "\u{00A0}", with: "")
             guard let whole = Int(digits) else { return nil }

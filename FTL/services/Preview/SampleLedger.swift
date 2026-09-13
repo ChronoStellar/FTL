@@ -112,6 +112,16 @@ enum SampleLedger {
                   provenance: .rule(RuleID(rawValue: "no-amount")),
                   kind: .nonSpend,
                   flags: [ReviewFlag(reason: .unparseable, detail: "promo, no amount found")]),
+            // Never reaches the stack — the rail dropped it at capture. Here so
+            // the queue's "dropped as duplicates" section has something to show
+            // without a live sync, which is the only other way to produce one.
+            entry(daysAgo: 0, amount: 289_000, raw: "TOKOPEDIA", category: shopping, source: .email,
+                  provenance: .rule(RuleID(rawValue: "tokopedia-receipt")),
+                  flags: [ReviewFlag(
+                      reason: .possibleDuplicate,
+                      detail: "Same amount and merchant as a row already in the queue, dated today"
+                  )],
+                  status: .autoDropped),
         ]
     }
 
@@ -176,7 +186,8 @@ enum SampleLedger {
         source: CaptureSource,
         provenance: ProvisionalEntry.Provenance,
         kind: TransactionKind = .spend,
-        flags: [ReviewFlag] = []
+        flags: [ReviewFlag] = [],
+        status: ProvisionalEntry.Status = .pending
     ) -> ProvisionalEntry {
         let when = Calendar.current.date(byAdding: .day, value: -daysAgo, to: .now) ?? .now
         let money = Money.idr(amount)
@@ -204,7 +215,7 @@ enum SampleLedger {
             ),
             provenance: provenance,
             flags: flags,
-            status: .pending,
+            status: status,
             createdAt: when
         )
     }

@@ -122,6 +122,19 @@ final class HomeViewModel {
         }
     }
 
+    /// Same reload as a delete, and for the same reason: an edited amount or
+    /// kind moves the hero total, the bucket meters and the month summaries,
+    /// not just the row that was touched.
+    func updateTransaction(_ transaction: LedgerTransaction) async {
+        do {
+            try await ledger.update(transaction)
+            months = try await calc.monthSummaries(limit: 6)
+            try await reloadSelectedMonth()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
     func deleteTransaction(_ transaction: LedgerTransaction) async {
         do {
             try await ledger.delete(transaction.id)

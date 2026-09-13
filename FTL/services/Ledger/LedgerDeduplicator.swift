@@ -14,13 +14,37 @@ import Foundation
 
 nonisolated enum LedgerDeduplicator {
 
-    /// Exact idempotency match, or a 3-part semantic match:
-    /// 1. ID match (exact UUID)
-    /// 2. Amount match (exact minor units AND currency)
-    /// 3. Merchant match (normalized name, or a cross-rail alias)
-    /// 4. Same calendar day
+    /// How much evidence there is, because not all of it is worth the same
+    /// action. The gates that DELETE a row act only on `.corroborated` and
+    /// `.identical`; `.uncorroborated` is enough to raise a flag and not
+    /// enough to take a transaction away from somebody.
+    nonisolated enum Verdict: Sendable, Equatable {
+        case distinct
+        /// The same row, by id. A retried append, not a judgement.
+        case identical
+        /// Amount, merchant and day all agree — two rails describing one
+        /// purchase, each naming the merchant in its own words.
+        case corroborated
+        /// Amount and day agree and the merchant was never asked, because one
+        /// side was typed by hand (see `isSemanticMatch`). Real evidence, and
+        /// weaker: nothing here rules out "you typed Rp 50,000 on a Tuesday an
+        /// unrelated Rp 50,000 email also landed on". Unmeasurable today —
+        /// the recorded ledger has no manual rows at all — so it flags.
+        case uncorroborated
+
+        /// Strong enough to remove a row without asking.
+        var isDropStrength: Bool { self == .identical || self == .corroborated }
+    }
+
+    /// Drop-strength only — see `Verdict`. Every caller that removes a row
+    /// goes through this, so weak evidence cannot delete anything by
+    /// reaching one of them directly.
     static func isDuplicate(_ lhs: LedgerTransaction, _ rhs: LedgerTransaction) -> Bool {
-        if lhs.id == rhs.id { return true }
+        verdict(lhs, rhs).isDropStrength
+    }
+
+    static func verdict(_ lhs: LedgerTransaction, _ rhs: LedgerTransaction) -> Verdict {
+        if lhs.id == rhs.id { return .identical }
         return isSemanticMatch(
             amount1: lhs.amount,
             merchantRaw1: lhs.merchantRaw,
@@ -36,8 +60,13 @@ nonisolated enum LedgerDeduplicator {
     }
 
     /// Match a provisional entry against an existing ledger transaction.
+    /// Drop-strength only — see `Verdict` and `verdict(_:as:)`.
     static func isDuplicate(_ entry: ProvisionalEntry, as tx: LedgerTransaction) -> Bool {
-        if entry.id == tx.id { return true }
+        verdict(entry, as: tx).isDropStrength
+    }
+
+    static func verdict(_ entry: ProvisionalEntry, as tx: LedgerTransaction) -> Verdict {
+        if entry.id == tx.id { return .identical }
         return isSemanticMatch(
             amount1: entry.transaction.amount,
             merchantRaw1: entry.transaction.merchantRaw,
@@ -97,9 +126,9 @@ nonisolated enum LedgerDeduplicator {
         date2: Date,
         source2: CaptureSource?,
         provenance2: ProvisionalEntry.Provenance?
-    ) -> Bool {
+    ) -> Verdict {
         // 1. Amount — exact, including currency. Invariant 4: never a tolerance.
-        guard amount1 == amount2 else { return false }
+        guard amount1 == amount2 else { return .distinct }
 
         // 2. Merchant — unless exactly one side was typed by hand.
         //
@@ -124,13 +153,14 @@ nonisolated enum LedgerDeduplicator {
         // merchant in the merchant's own words.
         let manual1 = isManualEntry(source: source1, provenance: provenance1)
         let manual2 = isManualEntry(source: source2, provenance: provenance2)
-        if manual1 == manual2 {
+        let crossesManualBoundary = manual1 != manual2
+        if !crossesManualBoundary {
             guard isMerchantMatch(
                 lhsRaw: merchantRaw1,
                 rhsRaw: merchantRaw2,
                 lhsRule: provenanceRuleName(provenance1),
                 rhsRule: provenanceRuleName(provenance2)
-            ) else { return false }
+            ) else { return .distinct }
         }
 
         // 3. Same calendar day — the finest the ledger can still answer.
@@ -143,8 +173,13 @@ nonisolated enum LedgerDeduplicator {
         // there for the boundary, not for reach.
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC")!
-        return utc.isDate(date1, inSameDayAs: date2)
+        let sameDay = utc.isDate(date1, inSameDayAs: date2)
             || Calendar.current.isDate(date1, inSameDayAs: date2)
+        guard sameDay else { return .distinct }
+
+        // A pair that never had to agree on a merchant has one fact behind it
+        // — the amount — and that is not enough to delete anything with.
+        return crossesManualBoundary ? .uncorroborated : .corroborated
     }
 
     static func isMerchantMatch(

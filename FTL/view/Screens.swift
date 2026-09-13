@@ -19,9 +19,16 @@ import SwiftUI
 struct BucketScreen: View {
     @State private var viewModel: BucketDetailViewModel
     private let name: String
+    private let environment: AppEnvironment
+
+    /// The row being corrected, or nil. `.sheet(item:)` rather than
+    /// `isPresented` so the editor is rebuilt per row — see
+    /// `EditTransactionScreen`.
+    @State private var editing: LedgerTransaction?
 
     init(environment: AppEnvironment, categoryID: CategoryID, name: String, interval: DateInterval) {
         self.name = name
+        self.environment = environment
         _viewModel = State(
             wrappedValue: environment.makeBucketDetailViewModel(
                 categoryID: categoryID,
@@ -32,8 +39,23 @@ struct BucketScreen: View {
     }
 
     var body: some View {
-        BucketDetailView(viewModel: viewModel)
+        BucketDetailView(viewModel: viewModel, onEditTransaction: { editing = $0 })
             .background(GlowBackground())
+            .sheet(item: $editing) { transaction in
+                EditTransactionScreen(
+                    environment: environment,
+                    transaction: transaction,
+                    onCancel: { editing = nil },
+                    onSave: { edited in
+                        editing = nil
+                        Task { await viewModel.updateTransaction(edited) }
+                    },
+                    onDelete: {
+                        editing = nil
+                        Task { await viewModel.deleteTransaction(transaction) }
+                    }
+                )
+            }
             .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
@@ -120,6 +142,40 @@ struct IncomeSplitScreen: View {
 
     var body: some View {
         IncomeSplitView(viewModel: viewModel, onSkip: onSkip, onSaved: onSaved)
+    }
+}
+
+/// Owns the editor's view model, keyed by the row being edited.
+///
+/// Presented with `.sheet(item:)` so a NEW view model is built for each row —
+/// the `@State` warning at the top of this file cuts the other way here: the
+/// draft must not survive from one transaction to the next.
+struct EditTransactionScreen: View {
+    @State private var viewModel: EditTransactionViewModel
+    let onCancel: () -> Void
+    let onSave: (LedgerTransaction) -> Void
+    let onDelete: () -> Void
+
+    init(
+        environment: AppEnvironment,
+        transaction: LedgerTransaction,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (LedgerTransaction) -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.onCancel = onCancel
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _viewModel = State(wrappedValue: environment.makeEditTransactionViewModel(for: transaction))
+    }
+
+    var body: some View {
+        EditTransactionSheet(
+            viewModel: viewModel,
+            onCancel: onCancel,
+            onSave: onSave,
+            onDelete: onDelete
+        )
     }
 }
 

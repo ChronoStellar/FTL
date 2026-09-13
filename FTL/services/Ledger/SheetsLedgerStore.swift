@@ -106,6 +106,44 @@ actor SheetsLedgerStore: LedgerStore {
         cache = nil
     }
 
+    /// Rewrites one row in place, located by its id in column A.
+    ///
+    /// Deliberately NOT the clear-then-rewrite that `delete` below does. That is
+    /// a whole-tab replace, and spending it on a one-cell amount correction
+    /// means every edit briefly empties the ledger and then depends on the
+    /// second call landing — a failure between the two takes the sheet with it.
+    /// Finding the row costs one read and lets the write touch sixteen cells.
+    ///
+    /// The row number cannot come from `all()`: that drops the header and skips
+    /// rows it can't parse, so its indices stop matching the sheet's the moment
+    /// somebody half-types a row by hand — which the sheet being user-editable
+    /// makes an expected state, not an edge case.
+    func update(_ transaction: LedgerTransaction) async throws {
+        try await bootstrap()
+        let rows = try await sheets.read(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange)
+        )
+
+        // A slice keeps its base's indices, so this IS the 0-based row index
+        // even though the header was dropped; +1 makes it a 1-based A1 row.
+        guard let index = rows.dropFirst().firstIndex(where: { row in
+            guard let first = row.first else { return false }
+            return UUID(uuidString: first.trimmingCharacters(in: .whitespaces)) == transaction.id
+        }) else {
+            throw LedgerError.rowNotFound(id: transaction.id)
+        }
+        let number = index + 1
+
+        try await sheets.write(
+            range: SheetsService.a1(tab: SheetsSchema.Tab.transactions, "A\(number):P\(number)"),
+            values: [SheetsSchema.row(from: transaction)],
+            inputOption: "RAW"
+        )
+        // Patch the cache rather than dropping it: the row that changed is the
+        // one in hand, and every screen behind this sheet is about to re-read.
+        cache = cache?.map { $0.id == transaction.id ? transaction : $0 }
+    }
+
     /// Deletes a transaction by its UUID from the transactions tab.
     func delete(_ id: LedgerTransaction.ID) async throws {
         try await bootstrap()

@@ -30,6 +30,17 @@ struct SignInView: View {
             Spacer()
 
             VStack(spacing: FTLSpacing.md) {
+                // The beam is on here and nowhere else on this screen: the two
+                // capability rows below spell out that the app reaches into a
+                // mailbox, and this is the same sentence in one picture.
+                FTLMark(
+                    width: FTLMarkSize.hero,
+                    tint: FTLColor.textTertiary,
+                    showsBeam: true,
+                    lineWidth: 1.4
+                )
+                .padding(.bottom, FTLSpacing.xs)
+
                 Text("FTL")
                     .font(.system(size: 34, weight: .semibold, design: .monospaced))
                     .tracking(10)

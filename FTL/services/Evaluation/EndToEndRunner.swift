@@ -277,7 +277,7 @@ nonisolated struct EndToEndRunner: Sendable {
         let atBar = try await patternMemory.records(for: [nusabankRows[0].readBy!.rawValue])
         log.check("vouched at \(policy.minimumSettled)",
                   policy.isVouchedFor(atBar.values.first), true,
-                  evidence: atBar.values.map { "\($0.patternID): \($0.accepted) kept, \($0.correctedKind) kind-corrected, \($0.dropped) dropped" })
+                  evidence: atBar.values.map { "\($0.patternID): \($0.accepted) kept, \($0.correctedKind) kind-corrected, \($0.correctedAmount) amount-corrected, \($0.correctedMerchant) name-corrected, \($0.dropped) dropped" })
         log.say("  · \(atBar.values.first?.accepted ?? 0) kept of \(atBar.values.first?.settled ?? 0) settled")
 
         // And the flag stops, which is the whole visible payoff.

@@ -17,7 +17,18 @@ nonisolated struct LedgerTransaction: Sendable, Hashable, Identifiable, Codable 
     let id: UUID
 
     let date: Date
-    let amount: Money
+
+    /// `var` so a person can correct a figure the parser got wrong — the one
+    /// field on this row where "what the app read" and "what was actually
+    /// charged" can differ and only a human can say which is right. Written
+    /// through `LedgerStore.update`; still never by the model (Invariant 1),
+    /// and still never a `Double` (Invariant 4).
+    ///
+    /// Everything around it stays `let` on purpose. `id`, `merchantRaw`,
+    /// `source`, `capturedAt` and `approvedAt` are records of how this row came
+    /// to exist, not judgements about it, and a correction is not allowed to
+    /// rewrite its own history.
+    var amount: Money
 
     /// Invariant 3 — preserved forever, per source.
     let merchantRaw: String

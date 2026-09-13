@@ -46,7 +46,7 @@ actor DefaultApprovalService: ApprovalService {
                 date: entry.transaction.date,
                 amount: entry.transaction.amount,
                 merchantRaw: entry.transaction.merchantRaw,
-                merchant: entry.transaction.merchantRaw.capitalized,
+                merchant: Self.displayMerchant(for: entry),
                 categoryID: entry.resolution.categoryID,
                 kind: entry.resolution.kind,
                 nonSpendType: entry.resolution.nonSpendType,
@@ -95,17 +95,9 @@ actor DefaultApprovalService: ApprovalService {
         }
         try await store.markPromoted(written.map(\.id))
         await recordDecisions(from: pending)
-        await observePatterns(pending) { entry in
-            // The parser's reading survived, or the person flipped the
-            // direction on the way through. Either is a verdict about how the
-            // email was READ — unlike a category change, which is a verdict
-            // about a budget and belongs to the other tool.
-            entry.resolution.kind == (entry.readAs ?? entry.resolution.kind)
-                ? .accepted
-                : .correctedKind
-        }
+        await observePatterns(pending) { Self.verdict(for: $0) }
         for entry in pending {
-            let v = entry.resolution.kind == (entry.readAs ?? entry.resolution.kind) ? "accepted" : "correctedKind"
+            let v = Self.verdict(for: entry).rawValue
             PipelineDebugStub.recordSettlement(
                 entryID: entry.id,
                 merchant: entry.transaction.merchantRaw,
@@ -133,6 +125,31 @@ actor DefaultApprovalService: ApprovalService {
                 verdict: "dropped"
             )
         }
+    }
+
+    /// What an approved row says about the pattern that read the email.
+    ///
+    /// Both tests compare against what was READ, not against what the row now
+    /// says — a verdict about how the email was parsed, unlike a category
+    /// change, which is a verdict about a budget and belongs to the other tool.
+    ///
+    /// Ordered worst-first, and the order is a claim about the pattern:
+    ///
+    /// 1. `correctedAmount` — it could not find the number, which is the one
+    ///    thing the email states outright and nothing else can excuse.
+    /// 2. `correctedMerchant` — it found the number and put the wrong name on
+    ///    it. Bad, and recoverable by eye in a way a wrong figure is not.
+    /// 3. `correctedKind` — direction is inferred rather than stated, so this
+    ///    is the miss with the best excuse.
+    ///
+    /// Every test compares against what was READ, by VALUE, so correcting a row
+    /// and then correcting it back is not counted as a miss — because it isn't
+    /// one.
+    static func verdict(for entry: ProvisionalEntry) -> PatternObservation.Verdict {
+        if let read = entry.readAmount, read != entry.transaction.amount { return .correctedAmount }
+        if displayMerchant(for: entry) != parsedMerchant(for: entry) { return .correctedMerchant }
+        if entry.resolution.kind != (entry.readAs ?? entry.resolution.kind) { return .correctedKind }
+        return .accepted
     }
 
     /// Attributes a settled row to the learned pattern that produced it.
@@ -215,6 +232,57 @@ actor DefaultApprovalService: ApprovalService {
             )
         }
         try? await tags.record(decisions)
+    }
+
+    /// What the ledger row's `merchant` column gets: the corrected name if
+    /// somebody typed one, otherwise the parser's reading of the raw string.
+    ///
+    /// One definition, used by promotion above and by `verdict` below, so "was
+    /// the name corrected" and "what name gets written" can never disagree.
+    static func displayMerchant(for entry: ProvisionalEntry) -> String {
+        entry.resolution.merchantName ?? parsedMerchant(for: entry)
+    }
+
+    /// The name the pipeline produced with nobody's help.
+    static func parsedMerchant(for entry: ProvisionalEntry) -> String {
+        entry.transaction.merchantRaw.capitalized
+    }
+
+    func correctMerchant(_ id: ProvisionalEntry.ID, to name: String?) async throws {
+        guard var entry = try await store.entries(withStatus: .pending).first(where: { $0.id == id }) else { return }
+
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Empty, or the same string the parser already produced, is not a
+        // correction — storing it would record a miss nobody made and would
+        // leave the row permanently looking edited.
+        let corrected = (trimmed?.isEmpty == false && trimmed != Self.parsedMerchant(for: entry)) ? trimmed : nil
+        guard corrected != entry.resolution.merchantName else { return }
+
+        entry.resolution.merchantName = corrected
+        entry.provenance = .manual
+
+        try await store.update(entry)
+    }
+
+    func correctAmount(_ id: ProvisionalEntry.ID, to amount: Money) async throws {
+        guard var entry = try await store.entries(withStatus: .pending).first(where: { $0.id == id }) else { return }
+        guard amount != entry.transaction.amount else { return }
+
+        // Stamped once, on the FIRST correction, so the record is what the
+        // parser read rather than whatever the previous edit left behind. A
+        // second correction back to the original then reads as untouched,
+        // which is the truth about the parser even though two edits happened.
+        if entry.readAmount == nil { entry.readAmount = entry.transaction.amount }
+
+        entry.transaction.amount = amount
+        // The fingerprint is f(amount, date) — the blocking key dedup and
+        // refund pairing both search on. Leaving it stale would keep this row
+        // filed under a figure it no longer has, so the duplicate it was
+        // supposed to collide with never turns up in the same bucket.
+        entry.transaction.fingerprint = Fingerprint(amount: amount, date: entry.transaction.date)
+        entry.provenance = .manual  // a corrected row is no longer the pipeline's verdict
+
+        try await store.update(entry)
     }
 
     func amend(_ id: ProvisionalEntry.ID, to resolution: ProvisionalEntry.Resolution) async throws {

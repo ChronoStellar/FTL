@@ -48,6 +48,19 @@ nonisolated struct PatternObservation: Sendable, Hashable, Codable, Identifiable
         /// Approved, but you changed spend ↔ non-spend on the way through. The
         /// amount and merchant stood; the direction did not.
         case correctedKind
+        /// Approved, but you fixed the FIGURE on the way through — the pattern
+        /// pulled the wrong number out of the email.
+        ///
+        /// This is the verdict the note on `acceptanceRate` was waiting for, and
+        /// the most damning one available: a direction can be inferred from
+        /// context and a category is a matter of opinion, but an amount is
+        /// stated in the email and the pattern either read it or did not. It
+        /// outranks `correctedKind` when a row got both, because a pattern that
+        /// cannot find the number has a problem its direction cannot excuse.
+        case correctedAmount
+        /// Approved, but you fixed the NAME on the way through — the pattern
+        /// found the number and pulled the wrong string to put beside it.
+        case correctedMerchant
         /// Dropped.
         ///
         /// Deliberately NOT called "wrong". A dropped row may be a misread, or
@@ -63,18 +76,26 @@ nonisolated struct PatternRecord: Sendable, Hashable {
     let patternID: String
     let accepted: Int
     let correctedKind: Int
+    let correctedAmount: Int
+    let correctedMerchant: Int
     let dropped: Int
 
-    var settled: Int { accepted + correctedKind + dropped }
+    var settled: Int { accepted + correctedKind + correctedAmount + correctedMerchant + dropped }
 
     /// Share of settled rows you kept with the reading intact.
     ///
-    /// **An acceptance rate, not an accuracy.** The queue cannot currently edit
-    /// an amount or a merchant, so approving a row is a vote that it looked
-    /// right — not a check that it was. Reading it as accuracy would overclaim
-    /// in the one direction that matters, so it is named for what it measures.
-    /// The moment the queue lets a person correct a figure, this becomes the
-    /// real thing and `labels.json` stops being anything anyone needs.
+    /// **This is an accuracy now, not an acceptance rate.** The note that used
+    /// to sit here said the queue could not edit an amount or a merchant, so
+    /// approving a row was a vote that it looked right rather than a check that
+    /// it was — and that the moment the queue let a person correct a figure,
+    /// this would become the real thing. The queue now lets a person correct
+    /// both (`correctAmount`, `correctMerchant`), so every field a pattern
+    /// actually extracts — figure, name, direction — lands here as a miss when
+    /// it was wrong, instead of passing as a keep because nobody could say
+    /// otherwise.
+    ///
+    /// What it still cannot see is an error nobody noticed. A rubber-stamped
+    /// queue measures nothing, and no amount of machinery here changes that.
     var acceptanceRate: Double {
         settled == 0 ? 0 : Double(accepted) / Double(settled)
     }

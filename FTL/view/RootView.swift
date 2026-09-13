@@ -59,7 +59,7 @@ struct RootView: View {
     private var launchPlaceholder: some View {
         ZStack {
             GlowBackground()
-            ProgressView().tint(FTLColor.textTertiary)
+            BeamActivity(width: FTLMarkSize.launch)
         }
     }
 }

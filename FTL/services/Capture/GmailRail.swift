@@ -323,6 +323,8 @@ nonisolated struct GmailRail: Sendable {
                 result.reversals = entries.filter { entry in
                     entry.flags.contains { $0.reason == .reversal }
                 }.count
+
+                entries = Self.droppingDuplicates(entries)
             }
             try await log.record(logEntries)
         }
@@ -351,10 +353,23 @@ nonisolated struct GmailRail: Sendable {
         // than earlier for the same reason — before this sync's own new rows
         // are inserted, so they cannot appear in it twice.
         if let tagger {
+            // Auto-dropped rows are held OUT of the batch rather than merely
+            // ignored inside it. The note above says a row about to be dropped
+            // is not worth a model call; now that such a row really is dropped,
+            // that has a price — the tagger is bounded at 8 calls a sync, and
+            // one spent on a row nobody will ever see is one the rest of the
+            // queue does not get. Keeping them out also means the tagger can
+            // never hand back a copy that has quietly lost its status.
+            let taggable = entries.filter { $0.status == .pending }
             let backlog = (try? await provisional.pending()) ?? []
-            let taggedAll = await tagger.tag(entries + backlog)
-            entries = Array(taggedAll.prefix(entries.count))
-            result.tagged = entries.filter { $0.resolution.suggestedTag != nil }.count
+            let taggedAll = await tagger.tag(taggable + backlog)
+            let taggedNew = Array(taggedAll.prefix(taggable.count))
+
+            // Stitched back by id, so the dropped rows keep their place in the
+            // batch that gets inserted.
+            let byID = Dictionary(uniqueKeysWithValues: taggedNew.map { ($0.id, $0) })
+            entries = entries.map { byID[$0.id] ?? $0 }
+            result.tagged = taggedNew.filter { $0.resolution.suggestedTag != nil }.count
 
             for (before, after) in zip(backlog, taggedAll.suffix(backlog.count))
             where after.resolution.suggestedTag != before.resolution.suggestedTag {
@@ -425,12 +440,22 @@ nonisolated struct GmailRail: Sendable {
 
             // 1. Cross-rail or manual-entry match in canonical Google Sheets ledger
             if let ledgerTwin = existingLedger.first(where: { Self.isPossibleLedgerDuplicate(entry, as: $0) }) {
-                let sourceDesc = ledgerTwin.source == .manual ? "manual entry" : ledgerTwin.source.rawValue
-                let dateStr = ledgerTwin.date.formatted(.dateTime.day().month(.abbreviated))
                 flagged[index].flags.append(
                     ReviewFlag(
                         reason: .possibleDuplicate,
-                        detail: "Same amount and merchant as \(sourceDesc) in ledger on \(dateStr)"
+                        detail: Self.duplicateDetail(
+                            twinMerchantRaw: ledgerTwin.merchantRaw,
+                            twinOrigin: ledgerTwin.source == .manual
+                                ? "manual entry"
+                                : (Self.provenanceRuleName(ledgerTwin.provenance) ?? ledgerTwin.source.rawValue),
+                            twinDate: ledgerTwin.date,
+                            where: "the ledger",
+                            merchantWasCompared: LedgerDeduplicator.isManualEntry(
+                                source: entry.transaction.source, provenance: entry.provenance
+                            ) == LedgerDeduplicator.isManualEntry(
+                                source: ledgerTwin.source, provenance: ledgerTwin.provenance
+                            )
+                        )
                     )
                 )
                 continue
@@ -451,11 +476,86 @@ nonisolated struct GmailRail: Sendable {
             flagged[index].flags.append(
                 ReviewFlag(
                     reason: .possibleDuplicate,
-                    detail: "Same amount and day as \(Self.ruleName(of: twin))"
+                    detail: Self.duplicateDetail(
+                        twinMerchantRaw: twin.transaction.merchantRaw,
+                        twinOrigin: Self.isManual(twin) ? "manual entry" : (Self.ruleName(of: twin) ?? "another source"),
+                        twinDate: twin.transaction.date,
+                        where: "the queue",
+                        merchantWasCompared: Self.isManual(twin) == Self.isManual(entry)
+                    )
                 )
             )
         }
         return flagged
+    }
+
+    /// Marks possible duplicates `.autoDropped` so they never reach the queue.
+    ///
+    /// They are still INSERTED, carrying the flag whose detail names the twin.
+    /// Not inserting them would make a captured charge vanish with no record
+    /// anywhere that it was ever seen, and "spend that silently disappears" is
+    /// the failure this rail's own cache-before-log ordering exists to avoid.
+    /// The queue lists these under "Dropped as duplicates" with a Restore, so
+    /// the decision is visible and one tap from being undone.
+    ///
+    /// ⚠️ The test behind the flag is deliberately LOOSE — `isSameCharge` blocks
+    /// on a fingerprint bucket (±3 days, ±5.000) and compares amount and
+    /// merchant, never direction. It is named `possibleDuplicate` because two
+    /// Grab rides at the same fare on the same day are genuinely
+    /// indistinguishable from one ride billed twice, and this now resolves that
+    /// ambiguity by discarding the second one. That is the trade this makes: a
+    /// quiet queue, paid for with the occasional real charge landing in the
+    /// dropped list instead of the ledger.
+    ///
+    /// A row also flagged `.reversal` is never dropped. `isSameCharge` ignores
+    /// direction, so a refund matches the charge it reverses on amount and
+    /// merchant alike — and auto-dropping refunds would delete exactly the rows
+    /// Invariant 5 exists to keep.
+    static func droppingDuplicates(_ entries: [ProvisionalEntry]) -> [ProvisionalEntry] {
+        entries.map { entry in
+            guard entry.flags.contains(where: { $0.reason == .possibleDuplicate }),
+                  !entry.flags.contains(where: { $0.reason == .reversal })
+            else { return entry }
+
+            var dropped = entry
+            dropped.status = .autoDropped
+            PipelineDebugStub.recordSettlement(
+                entryID: entry.id,
+                merchant: entry.transaction.merchantRaw,
+                parserOrigin: entry.readBy?.origin,
+                verdict: "auto-dropped at capture: possible duplicate"
+            )
+            return dropped
+        }
+    }
+
+    /// The one sentence a person reads before deciding whether two rows are one
+    /// purchase — so it names the OTHER row and says what actually matched.
+    ///
+    /// It used to read "Same amount and merchant as manual entry in ledger on
+    /// 29 Aug", and after the manual-boundary exception landed that was false:
+    /// for exactly those pairs the merchant is deliberately NOT compared (see
+    /// `LedgerDeduplicator.isSemanticMatch`). Asserting a check that did not
+    /// happen, in the sentence the human gate turns on, is worse than saying
+    /// nothing.
+    ///
+    /// It also never named the twin. "Same amount and day as blu-receipt" tells
+    /// you a rule fired; **"already in the ledger as 'glazed donut'"** tells you
+    /// what you bought, which is the thing you actually know the answer to. The
+    /// amount is deliberately absent — it is identical on both rows by
+    /// definition, and the card already shows it.
+    private static func duplicateDetail(
+        twinMerchantRaw: String,
+        twinOrigin: String,
+        twinDate: Date,
+        where location: String,
+        merchantWasCompared: Bool
+    ) -> String {
+        let day = twinDate.formatted(.dateTime.day().month(.abbreviated))
+        let matched = merchantWasCompared
+            ? "Same amount, merchant and day."
+            : "Same amount and day — merchants not compared."
+        return "Already in \(location) as \"\(twinMerchantRaw)\" (\(twinOrigin), \(day)). \(matched)"
     }
 
     /// Checks if two entries represent the same purchase using amount, merchant, date, and timestamp.

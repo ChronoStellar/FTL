@@ -38,6 +38,26 @@ nonisolated protocol LedgerStore: CategorySource {
 
     func transaction(id: LedgerTransaction.ID) async throws -> LedgerTransaction?
 
+    /// Replaces the row carrying the same `id`, in place.
+    ///
+    /// A second write path into the canonical store, and deliberately so — but
+    /// read Invariant 1 before adding a third. What that invariant forbids is
+    /// the MODEL writing, and what `ApprovalService` is sole owner of is
+    /// PROMOTION: provisional → canonical. This is neither. It is a person
+    /// correcting a row they are already looking at, which is exactly the
+    /// authority `delete` below already carries — and correcting a figure is
+    /// strictly less destructive than removing it.
+    ///
+    /// Invariant 3 is carried by the TYPE, not by this comment: `merchantRaw`,
+    /// `id`, `source`, `capturedAt` and `approvedAt` are all `let` on
+    /// `LedgerTransaction`, so an edit physically cannot rewrite the raw string
+    /// the reconciliation join key depends on.
+    ///
+    /// Throws `.rowNotFound` rather than no-op'ing when the id is absent. An
+    /// edit that silently saves nothing is the worst outcome available here:
+    /// the user watches the sheet close over a figure that never changed.
+    func update(_ transaction: LedgerTransaction) async throws
+
     /// Removes a transaction from the canonical store.
     func delete(_ id: LedgerTransaction.ID) async throws
 
@@ -55,5 +75,7 @@ nonisolated enum LedgerError: Error, Sendable {
     case notAuthenticated
     case rateLimited(retryAfter: TimeInterval?)
     case schemaMismatch(expected: [String], found: [String])
+    /// An update or delete named an id the store no longer has.
+    case rowNotFound(id: UUID)
     case transport(String)
 }

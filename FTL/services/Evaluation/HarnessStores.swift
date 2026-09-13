@@ -110,6 +110,8 @@ actor InMemoryPatternMemory: PatternMemory {
                 patternID: $0[0].patternID,
                 accepted: $0.filter { $0.verdict == .accepted }.count,
                 correctedKind: $0.filter { $0.verdict == .correctedKind }.count,
+                correctedAmount: $0.filter { $0.verdict == .correctedAmount }.count,
+                correctedMerchant: $0.filter { $0.verdict == .correctedMerchant }.count,
                 dropped: $0.filter { $0.verdict == .dropped }.count
             )
         }

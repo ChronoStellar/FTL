@@ -29,6 +29,7 @@ struct ApprovalQueueSheet: View {
     let onDone: () -> Void
 
     @State private var isConfirmingApproveAll = false
+    @State private var isShowingDropped = false
 
     var body: some View {
         NavigationStack {
@@ -41,12 +42,14 @@ struct ApprovalQueueSheet: View {
 
                     if viewModel.isEmpty {
                         allClear
+                        droppedSection
                     } else {
                         if !viewModel.bulkApprovable.isEmpty {
                             approveAllRow
                         }
                         progressLine
                         stack
+                        droppedSection
                     }
                 }
                 .padding(.horizontal, FTLSpacing.screenMargin)
@@ -172,8 +175,68 @@ struct ApprovalQueueSheet: View {
         }
     }
 
+    /// Possible duplicates the rail discarded before they ever reached the
+    /// stack above, with a way back.
+    ///
+    /// Below the fold and collapsed by default: the whole point of the
+    /// auto-drop is that these are not decisions anybody has to make. But the
+    /// test that produced them is a loose one — two identical fares on one day
+    /// are a real thing — so "the app threw one away" has to be a sentence a
+    /// person can actually read, and undo.
+    @ViewBuilder
+    private var droppedSection: some View {
+        if !viewModel.autoDropped.isEmpty {
+            DisclosureGroup(isExpanded: $isShowingDropped) {
+                PanelCard {
+                    ForEach(Array(viewModel.autoDropped.enumerated()), id: \.element.id) { index, entry in
+                        PanelRow(showsDivider: index < viewModel.autoDropped.count - 1) {
+                            HStack(spacing: FTLSpacing.md) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(viewModel.merchantName(for: entry))
+                                        .font(FTLTypography.rowTitleTight)
+                                        .foregroundStyle(FTLColor.textSecondary)
+                                        .lineLimit(1)
+                                    if let detail = entry.flags.first(where: { $0.reason == .possibleDuplicate })?.detail {
+                                        Text(detail)
+                                            .font(FTLTypography.captionSmall)
+                                            .foregroundStyle(FTLColor.textQuaternary)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                Spacer(minLength: FTLSpacing.sm)
+                                Text(MoneyFormatter.grouped(entry.transaction.amount))
+                                    .font(FTLTypography.amountSmall)
+                                    .foregroundStyle(FTLColor.textQuaternary)
+                                Button("Restore") {
+                                    Task { await viewModel.restore(entry) }
+                                }
+                                .font(FTLTypography.captionSmall)
+                                .buttonStyle(.plain)
+                                .foregroundStyle(FTLColor.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, FTLSpacing.sm)
+            } label: {
+                Text(viewModel.autoDropped.count == 1
+                     ? "1 dropped as a duplicate"
+                     : "\(viewModel.autoDropped.count) dropped as duplicates")
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.textQuaternary)
+            }
+            .tint(FTLColor.textQuaternary)
+            .padding(.top, FTLSpacing.lg)
+        }
+    }
+
     private var allClear: some View {
         VStack(spacing: FTLSpacing.xs) {
+            // An empty state is the one place a mark costs nothing — there is
+            // no data here for it to compete with. No beam: nothing is waiting.
+            FTLMark(width: FTLMarkSize.emptyState, tint: FTLColor.textDisabled)
+                .padding(.bottom, FTLSpacing.sm)
+
             Text("All clear")
                 .font(FTLTypography.rowTitle)
                 .foregroundStyle(FTLColor.textPrimary)
@@ -194,6 +257,13 @@ private struct QueueEntryCard: View {
     let entry: ProvisionalEntry
     @Bindable var viewModel: ApprovalQueueViewModel
 
+    /// Digits typed into the correction alert. Empty when it is closed.
+    @State private var amountDigits = ""
+    @State private var isCorrectingAmount = false
+    /// The name typed into the correction alert. Empty when it is closed.
+    @State private var merchantDraft = ""
+    @State private var isCorrectingMerchant = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -213,17 +283,104 @@ private struct QueueEntryCard: View {
     private var header: some View {
         HStack(alignment: .top, spacing: FTLSpacing.md) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(entry.transaction.merchantRaw)
-                    .font(FTLTypography.amountEmphasis)
-                    .foregroundStyle(FTLColor.textPrimary)
+                merchant
                 Text(provenanceLine)
                     .font(FTLTypography.captionSmall)
                     .foregroundStyle(FTLColor.textQuaternary)
             }
             Spacer(minLength: FTLSpacing.sm)
-            Text(MoneyFormatter.rp(entry.transaction.amount))
-                .font(FTLTypography.amountEmphasis)
-                .foregroundStyle(FTLColor.textPrimary)
+            amount
+        }
+    }
+
+    /// The name, and the way to fix it.
+    ///
+    /// Correcting it never rewrites `merchantRaw` — that string is `let` and
+    /// stays the reconciliation join key forever (Invariant 3). What changes is
+    /// the name the ledger row will carry, and once it differs the raw appears
+    /// underneath: NOT struck through, because unlike a corrected figure it was
+    /// not replaced. It is still what the email said, and still what everything
+    /// downstream matches on.
+    private var merchant: some View {
+        Button {
+            merchantDraft = viewModel.merchantName(for: entry)
+            isCorrectingMerchant = true
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(viewModel.merchantName(for: entry))
+                    .font(FTLTypography.amountEmphasis)
+                    .foregroundStyle(FTLColor.textPrimary)
+                    .multilineTextAlignment(.leading)
+                if let raw = viewModel.rawMerchant(for: entry) {
+                    Text("read \(raw)")
+                        .font(FTLTypography.captionSmall)
+                        .foregroundStyle(FTLColor.textQuaternary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Merchant \(viewModel.merchantName(for: entry)). Correct it")
+        .alert("Correct the merchant", isPresented: $isCorrectingMerchant) {
+            TextField("Merchant", text: $merchantDraft)
+                .textInputAutocapitalization(.words)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                Task { await viewModel.correctMerchant(entry, to: merchantDraft) }
+            }
+        } message: {
+            Text("The email said \"\(entry.transaction.merchantRaw)\". That string is kept exactly as it is — this only changes the name written to your Sheet.")
+        }
+    }
+
+    /// The figure, and the way to fix it.
+    ///
+    /// A native `.alert` with a text field rather than a sheet or an inline
+    /// field. This is a one-number correction on a card that already carries a
+    /// merchant, a provenance line, flags, five tag chips and two buttons —
+    /// a sixth interactive region embedded in that would be the busiest thing
+    /// on screen for the rarest action on it. An alert costs one tap, states
+    /// what it is changing, and leaves the card alone.
+    ///
+    /// It is the queue's whole claim to measuring accuracy rather than
+    /// agreement: `PatternRecord.acceptanceRate` counts a corrected figure as
+    /// a miss, and before this there was no way to record one.
+    private var amount: some View {
+        Button {
+            amountDigits = String(entry.transaction.amount.minorUnits)
+            isCorrectingAmount = true
+        } label: {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(MoneyFormatter.rp(entry.transaction.amount))
+                    .font(FTLTypography.amountEmphasis)
+                    .foregroundStyle(FTLColor.textPrimary)
+                // Only after a correction, and it says what it was. The queue
+                // is the parser's report card; a figure that silently changed
+                // would be the one edit on this screen that left no trace.
+                if let read = viewModel.correctedFrom(entry) {
+                    Text("read \(MoneyFormatter.rp(read))")
+                        .font(FTLTypography.captionSmall)
+                        .foregroundStyle(FTLColor.textQuaternary)
+                        .strikethrough()
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Amount \(MoneyFormatter.rp(entry.transaction.amount)). Correct it")
+        .alert("Correct the amount", isPresented: $isCorrectingAmount) {
+            TextField("0", text: $amountDigits)
+                .keyboardType(.numberPad)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                let digits = amountDigits.filter(\.isNumber).prefix(9)
+                let corrected = Money(
+                    minorUnits: Int(digits) ?? 0,
+                    currency: entry.transaction.amount.currency
+                )
+                Task { await viewModel.correctAmount(entry, to: corrected) }
+            }
+        } message: {
+            Text("\(entry.transaction.merchantRaw) was read as \(MoneyFormatter.rp(entry.transaction.amount)). This corrects the row before it reaches your Sheet, and records that the parser got the figure wrong.")
         }
     }
 

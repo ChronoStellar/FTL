@@ -489,6 +489,33 @@ in the sheet at 1/1000th of their value** and no dedup pass will pair them with
 the bank row. Those need finding and fixing by hand; the parser fix only
 corrects what arrives from here.
 
+**Comma grouping, and evidence strength · 2026-09-13.** Two follow-ups from the
+audit.
+
+`IndonesianMoney` had a second separator bug, worse than Steam's: some senders
+write US-style. `IDR 10,000,000` (bankmandiri) read as **Rp 10**; `Rp 25,600`
+(kai.id) as **Rp 25**; `Rp260,000` (Traveloka) as **Rp 260**. Resolvable only
+because IDR has no minor unit, so `,600` cannot be a decimal — comma + exactly
+3 digits is a separator, comma + 1–2 digits stays the decimal it always was.
+Measured before the change: **13 parses move — 9 Traveloka, 3 bankmandiri, 1
+kai.id — and 0 blu, 0 grab.** `Rp18.000,00` still reads 18,000.
+
+`LedgerDeduplicator.Verdict` replaces the bool, because the manual-boundary arm
+is not worth the same action as the rest:
+
+| verdict | evidence | action |
+|---|---|---|
+| `identical` | same id | drop |
+| `corroborated` | amount + merchant + day | drop |
+| `uncorroborated` | amount + day, merchant never asked | **flag only** |
+
+`isDuplicate` now means drop-strength, so all three delete sites
+(`DefaultApprovalService`, `SheetsLedgerStore.append`,
+`ApprovalQueueViewModel.load`) got safe in one edit rather than three. The
+capture gate is unchanged and still flags the weak pairs — which is where the
+person sees them. Verified: the 137-row ledger is unchanged, and the three live
+manual↔email pairs come back `uncorroborated`.
+
 ⚠️ **Not tested:** whether the two rails ever disagree on the AMOUNT for one
 purchase. On this corpus all 21 pairs agree exactly, so exact-amount matching
 costs nothing here. A rail that rounds differently would slip through, and the

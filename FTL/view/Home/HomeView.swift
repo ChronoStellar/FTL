@@ -13,14 +13,16 @@ struct HomeView: View {
     let onOpenBucket: (BudgetPosition) -> Void
     let onOpenGoal: () -> Void
     let onOpenQueue: () -> Void
+    /// Presented by `ContentView`, which owns the environment the editor's view
+    /// model is built from.
+    let onEditTransaction: (LedgerTransaction) -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 switch viewModel.phase {
                 case .idle, .loading:
-                    ProgressView()
-                        .tint(FTLColor.textTertiary)
+                    BeamActivity()
                         .frame(maxWidth: .infinity)
                         .padding(.top, FTLSpacing.xxl)
                 case .failed(let message):
@@ -93,6 +95,7 @@ struct HomeView: View {
                     LedgerRow(
                         transaction: transaction,
                         showsDivider: index < viewModel.recent.count - 1,
+                        onEdit: { onEditTransaction(transaction) },
                         onDelete: {
                             Task { await viewModel.deleteTransaction(transaction) }
                         }

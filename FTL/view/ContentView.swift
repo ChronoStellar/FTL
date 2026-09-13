@@ -39,7 +39,8 @@ struct ContentView: View {
                 viewModel: home,
                 onOpenBucket: { path.append(.bucket(id: $0.id, name: $0.node.name)) },
                 onOpenGoal: { path.append(.goal) },
-                onOpenQueue: { sheet = .queue }
+                onOpenQueue: { sheet = .queue },
+                onEditTransaction: { sheet = .edit($0) }
             )
             .background(GlowBackground())
             .navigationDestination(for: Route.self, destination: destination)
@@ -65,6 +66,20 @@ struct ContentView: View {
             // REPEAT foregrounds below, so opening the app is always a fresh
             // look — which is the whole behaviour a person notices.
             await syncMail(force: true)
+        }
+        // Home sits behind every pushed screen, and a bucket can change the
+        // ledger under it — an amount corrected, a row retagged out of the
+        // bucket, a row deleted. The pushed screen reloads itself; the hero
+        // total, the meters and the recent list behind it do not, so popping
+        // back used to reveal a Home describing the ledger as it was before
+        // the edit.
+        //
+        // `load()` rather than `load(forceReload:)`: whatever wrote already
+        // invalidated the store's cache, so this re-reads without a second
+        // round trip to the Sheet. Guarded on the pop so a push costs nothing.
+        .onChange(of: path) { previous, current in
+            guard current.isEmpty, !previous.isEmpty else { return }
+            Task { await home.load() }
         }
         // Coming back to the app is the trigger. Throttled inside `AutoSync`,
         // so flicking between apps costs nothing.
@@ -107,10 +122,18 @@ struct ContentView: View {
             // other affordance for it, and burying it behind a gesture would make
             // Sign out unreachable.
             Button { sheet = .settings } label: {
-                Text("FTL")
-                    .font(FTLTypography.wordmark)
-                    .tracking(FTLTypography.wordmarkTracking)
-                    .foregroundStyle(FTLColor.textTertiary)
+                HStack(spacing: 7) {
+                    FTLMark(width: FTLMarkSize.wordmark, tint: FTLColor.textTertiary)
+                    Text("FTL")
+                        .font(FTLTypography.wordmark)
+                        .tracking(FTLTypography.wordmarkTracking)
+                        .foregroundStyle(FTLColor.textTertiary)
+                }
+                // The bar hands the leading item a width that fitted the
+                // wordmark alone; the mark pushed it over and the wordmark
+                // silently truncated to "F". There is room either side of the
+                // month pill — the item just has to refuse to be squeezed.
+                .fixedSize()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
@@ -216,6 +239,21 @@ struct ContentView: View {
                 Task { await home.load(forceReload: true) }
             })
 
+        case .edit(let transaction):
+            EditTransactionScreen(
+                environment: environment,
+                transaction: transaction,
+                onCancel: { sheet = nil },
+                onSave: { edited in
+                    sheet = nil
+                    Task { await home.updateTransaction(edited) }
+                },
+                onDelete: {
+                    sheet = nil
+                    Task { await home.deleteTransaction(transaction) }
+                }
+            )
+
         case .incomeSplit:
             IncomeSplitScreen(
                 environment: environment,
@@ -240,8 +278,22 @@ struct ContentView: View {
         case goal
     }
 
-    enum SheetRoute: String, Identifiable {
+    enum SheetRoute: Identifiable {
         case months, queue, add, settings, incomeSplit
-        var id: String { rawValue }
+        /// Carries the row, so the editor's view model is built from it once —
+        /// see `EditTransactionScreen`. This is why the enum can no longer be
+        /// `String`-backed.
+        case edit(LedgerTransaction)
+
+        var id: String {
+            switch self {
+            case .months: "months"
+            case .queue: "queue"
+            case .add: "add"
+            case .settings: "settings"
+            case .incomeSplit: "incomeSplit"
+            case .edit(let transaction): "edit-\(transaction.id.uuidString)"
+            }
+        }
     }
 }

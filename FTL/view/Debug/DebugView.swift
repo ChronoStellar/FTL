@@ -791,18 +791,20 @@ private struct DebugHarness: View {
             lines.append("\(board.settled) settled row(s) across \(board.byPattern.count) pattern(s)")
             lines.append(String(format: "vouched at ≥%.0f%% over ≥%d rows", policy.acceptanceThreshold * 100, policy.minimumSettled))
             lines.append("")
-            lines.append("pattern                              kept  fixed  dropped  accept  vouched")
+            lines.append("pattern                              kept  kind  amt  name  dropped  accept  vouched")
             for record in board.byPattern {
                 let name = String(record.patternID.prefix(34)).padding(toLength: 34, withPad: " ", startingAt: 0)
                 lines.append(String(
-                    format: "%@ %5d %6d %8d %6.0f%%  %@",
-                    name, record.accepted, record.correctedKind, record.dropped,
+                    format: "%@ %5d %5d %4d %5d %8d %6.0f%%  %@",
+                    name, record.accepted, record.correctedKind, record.correctedAmount,
+                    record.correctedMerchant, record.dropped,
                     record.acceptanceRate * 100,
                     policy.isVouchedFor(record) ? "yes" : "not yet"
                 ))
             }
             lines.append("")
-            lines.append("kept = approved as read · fixed = you flipped spend/non-spend")
+            lines.append("kept = approved as read · kind = you flipped spend/non-spend")
+            lines.append("amt = you corrected the figure · name = you corrected the merchant")
             lines.append("⚠︎ acceptance, not accuracy — the queue can't correct a figure yet")
         } catch {
             lines = ["⚠︎ \(error)"]

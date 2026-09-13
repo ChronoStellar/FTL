@@ -217,6 +217,14 @@ final class ApprovalQueueViewModel {
         if case .idle = phase { phase = .loading }
         do {
             var pending = try await store.pending()
+            // Newest first, and capped: this is a safety net, not a second
+            // queue. An unbounded list of everything ever auto-dropped would
+            // sit under the thing this screen is actually for.
+            autoDropped = Array(
+                (try? await store.entries(withStatus: .autoDropped))?
+                    .sorted { $0.createdAt > $1.createdAt }
+                    .prefix(Self.autoDroppedShown) ?? []
+            )
             categories = try await ledger.categories()
             let existingLedger = (try? await ledger.all()) ?? []
 
@@ -316,6 +324,84 @@ final class ApprovalQueueViewModel {
             revised.append(entry)
         }
         return revised
+    }
+
+    /// Correct the figure the parser read, before approving.
+    ///
+    /// The reload afterwards is not optional bookkeeping: `correctAmount`
+    /// recomputes the row's fingerprint, and the queue's own duplicate and
+    /// pairing notes are derived from it.
+    func correctAmount(_ entry: ProvisionalEntry, to amount: Money) async {
+        guard amount.minorUnits > 0, amount != entry.transaction.amount else { return }
+        do {
+            try await approvals.correctAmount(entry.id, to: amount)
+            await load()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
+    /// How many recent auto-drops the queue is willing to show at once.
+    static let autoDroppedShown = 10
+
+    /// Rows the rail discarded on its own as possible duplicates.
+    ///
+    /// Surfaced rather than hidden, because the test that produced them is a
+    /// loose one and the cost of it being wrong is a real charge missing from
+    /// the ledger — see `GmailRail.droppingDuplicates`. A drop nobody can see
+    /// is indistinguishable from spend going missing.
+    private(set) var autoDropped: [ProvisionalEntry] = []
+
+    /// Put one back in the queue. The flag stays on it, so the card still
+    /// explains what it collided with and the person can settle it knowing
+    /// exactly what the rail thought.
+    func restore(_ entry: ProvisionalEntry) async {
+        var restored = entry
+        restored.status = .pending
+        do {
+            try await store.update(restored)
+            await load()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
+    /// Correct the merchant name the parser pulled out of the email.
+    ///
+    /// `merchantRaw` is untouched and untouchable — Invariant 3 — so this only
+    /// changes the name the ledger row will display. Passing the parsed name
+    /// back, or an empty string, clears the correction.
+    func correctMerchant(_ entry: ProvisionalEntry, to name: String?) async {
+        do {
+            try await approvals.correctMerchant(entry.id, to: name)
+            await load()
+        } catch {
+            phase = .failed(String(describing: error))
+        }
+    }
+
+    /// The name to show, and to write on approval.
+    func merchantName(for entry: ProvisionalEntry) -> String {
+        entry.resolution.merchantName ?? parsedMerchant(for: entry)
+    }
+
+    func parsedMerchant(for entry: ProvisionalEntry) -> String {
+        entry.transaction.merchantRaw.capitalized
+    }
+
+    /// The string the email actually said, shown only once a correction has
+    /// moved the title away from it. Not struck through anywhere it appears:
+    /// unlike a corrected figure, the raw is not replaced by the edit — it is
+    /// kept forever, and it is the join key everything reconciles against.
+    func rawMerchant(for entry: ProvisionalEntry) -> String? {
+        entry.resolution.merchantName == nil ? nil : entry.transaction.merchantRaw
+    }
+
+    /// What the parser read, when that is no longer what the row says. Nil on
+    /// every untouched row, which is nearly all of them.
+    func correctedFrom(_ entry: ProvisionalEntry) -> Money? {
+        guard let read = entry.readAmount, read != entry.transaction.amount else { return nil }
+        return read
     }
 
     func retag(_ entry: ProvisionalEntry, to option: TagOption) async {

@@ -60,6 +60,8 @@ actor SwiftDataPatternMemory: PatternMemory {
                 patternID: group[0].patternID,
                 accepted: group.filter { $0.verdict == .accepted }.count,
                 correctedKind: group.filter { $0.verdict == .correctedKind }.count,
+                correctedAmount: group.filter { $0.verdict == .correctedAmount }.count,
+                correctedMerchant: group.filter { $0.verdict == .correctedMerchant }.count,
                 dropped: group.filter { $0.verdict == .dropped }.count
             )
         }
