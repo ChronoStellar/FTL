@@ -16,6 +16,11 @@ final class GoalViewModel {
     private let goals: GoalStore
     private let calendar: Calendar
 
+    /// Something the user did that did not work — a failed write, not a failed
+    /// load. Settable from the view so dismissing the alert clears it; kept off
+    /// `phase` so a failed save never blanks a screen that loaded fine.
+    var actionError: String?
+
     private(set) var phase: LoadPhase = .idle
     private(set) var goal: SavingsGoal?
     private(set) var goalBeforeEdit: SavingsGoal?
@@ -92,7 +97,7 @@ final class GoalViewModel {
             try await goals.save(goal)
             self.goal = goal
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 

@@ -2,7 +2,10 @@
 //  BucketDetailView.swift
 //  FTL — view/Bucket · Phase 1
 //
-//  One bucket's spend, its editable ceiling, and the month's rows for it.
+//  One bucket's spend, its ceiling, and the month's rows for it.
+//
+//  The ceiling is a readout. See `BucketDetailViewModel` for why the editor that
+//  used to live here was removed.
 //
 
 import SwiftUI
@@ -16,6 +19,9 @@ struct BucketDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                if let message = viewModel.phase.errorMessage {
+                    loadFailure(message)
+                }
                 hero
 
                 SectionLabel(text: "Ceiling")
@@ -32,7 +38,23 @@ struct BucketDetailView: View {
             .padding(.bottom, FTLSpacing.xxl)
         }
         .scrollContentBackground(.hidden)
+        .actionFailureAlert($viewModel.actionError)
         .task { await viewModel.load() }
+    }
+
+    /// A bucket that could not load shows zeros, which read as a real position
+    /// rather than as a missing one. This says which it is.
+    private func loadFailure(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: FTLSpacing.xs) {
+            Text("Couldn't load this bucket")
+                .font(FTLTypography.rowTitle)
+                .foregroundStyle(FTLColor.textPrimary)
+            Text(message)
+                .font(FTLTypography.caption)
+                .foregroundStyle(FTLColor.error)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, FTLSpacing.lg)
     }
 
     private var hero: some View {
@@ -70,7 +92,7 @@ struct BucketDetailView: View {
 
     private var ceilingPanel: some View {
         PanelCard {
-            PanelRow(showsDivider: viewModel.isEditingCeiling) {
+            PanelRow(showsDivider: false) {
                 HStack(spacing: FTLSpacing.md) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(viewModel.name) ceiling")
@@ -83,42 +105,7 @@ struct BucketDetailView: View {
                     Spacer(minLength: FTLSpacing.sm)
                     Text(MoneyFormatter.grouped(viewModel.ceiling))
                         .font(FTLTypography.amountEmphasis)
-                        .foregroundStyle(viewModel.isEditingCeiling ? FTLColor.textPrimary : FTLColor.textSecondary)
-                        .contentTransition(.numericText())
-                        .animation(.snappy, value: viewModel.ceiling)
-
-                    if viewModel.isEditingCeiling {
-                        StepperPair(
-                            label: "\(viewModel.name) ceiling",
-                            onDecrement: { Task { await viewModel.step(by: -BucketDetailViewModel.ceilingStep) } },
-                            onIncrement: { Task { await viewModel.step(by: BucketDetailViewModel.ceilingStep) } }
-                        )
-                    } else {
-                        Button("Tap to change") { viewModel.beginEditing() }
-                            .font(FTLTypography.caption)
-                            .foregroundStyle(FTLColor.textTertiary)
-                            .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            if viewModel.isEditingCeiling {
-                PanelRow(showsDivider: false) {
-                    presetsRow
-                }
-            }
-        }
-    }
-
-    private var presetsRow: some View {
-        FlowLayout(spacing: FTLSpacing.sm) {
-            ForEach(BucketDetailViewModel.ceilingPresets, id: \.self) { minorUnits in
-                SelectableChip(
-                    title: MoneyFormatter.compact(Money(minorUnits: minorUnits, currency: viewModel.ceiling.currency)),
-                    isSelected: viewModel.ceiling.minorUnits == minorUnits,
-                    isCompact: true
-                ) {
-                    Task { await viewModel.setCeiling(preset: minorUnits) }
+                        .foregroundStyle(FTLColor.textSecondary)
                 }
             }
         }

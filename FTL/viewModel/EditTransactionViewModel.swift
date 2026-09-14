@@ -2,8 +2,13 @@
 //  EditTransactionViewModel.swift
 //  FTL — viewModel · Phase 1
 //
-//  A ledger row, opened for correction. Amount, kind, bucket and note — the
-//  four fields that can be wrong on a row the app captured for you.
+//  A ledger row, opened for correction. Amount, merchant, kind, bucket and note
+//  — the five fields that can be wrong on a row the app captured for you.
+//
+//  Merchant is here because the approval queue can correct one and this could
+//  not, which meant a name was fixable right up until you approved it and
+//  permanent forever after. Same rule as the queue: `merchantRaw` is `let` and
+//  untouched (Invariant 3); what changes is the display name.
 //
 //  `date` is deliberately NOT offered. It stays `let` on `LedgerTransaction`
 //  alongside `merchantRaw` and `source`: when a receipt was dated is a fact
@@ -45,6 +50,7 @@ final class EditTransactionViewModel {
     /// Only meaningful while `kind == .nonSpend`. Kept across a toggle to spend
     /// and back so flipping the control twice doesn't lose the choice.
     var nonSpendType: NonSpendType
+    var merchant: String
     var categoryID: CategoryID?
     var note: String
 
@@ -57,6 +63,7 @@ final class EditTransactionViewModel {
         self.amountDigits = String(transaction.amount.minorUnits)
         self.kind = transaction.kind
         self.nonSpendType = transaction.nonSpendType ?? .transfer
+        self.merchant = transaction.merchant ?? transaction.merchantRaw.capitalized
         self.categoryID = transaction.categoryID
         self.note = transaction.notes ?? ""
     }
@@ -69,6 +76,12 @@ final class EditTransactionViewModel {
 
     var title: String { original.merchant ?? original.merchantRaw }
 
+    /// Blank falls back to the parsed name rather than writing an empty column.
+    var resolvedMerchant: String {
+        let trimmed = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? original.merchantRaw.capitalized : trimmed
+    }
+
     /// Zero is not a correction, it is a row that should be deleted instead —
     /// and Delete is on this screen, so there is somewhere to send it.
     var canSave: Bool { amount.minorUnits > 0 && hasChanges }
@@ -80,6 +93,7 @@ final class EditTransactionViewModel {
     var edited: LedgerTransaction {
         var copy = original
         copy.amount = amount
+        copy.merchant = resolvedMerchant
         copy.kind = kind
         // Invariant 5: a non-spend row is LABELLED. Clearing the type when a row
         // goes back to spend keeps the two fields from disagreeing — a spend row

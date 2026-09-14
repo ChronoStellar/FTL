@@ -197,8 +197,12 @@ struct GoalCard: View {
 
 /// One row of the ledger, and the way into correcting it.
 ///
-/// Tapping opens the editor; the context menu carries the same Edit plus a
-/// Delete. The always-visible trash can that used to sit at the trailing edge
+/// Tapping opens the editor. The context menu carries Delete and nothing else:
+/// it used to carry an Edit too, which was a second gesture for the thing a tap
+/// already does — long-press, aim, tap, to open the sheet that tapping the row
+/// opens. Delete earns its place there because no tap does it.
+///
+/// The always-visible trash can that used to sit at the trailing edge
 /// is gone: a destructive control permanently parked in every row of a list
 /// people scroll is a mis-tap waiting to happen, it is not how any list on this
 /// platform behaves, and delete now lives in the two places it belongs — behind
@@ -224,9 +228,6 @@ struct LedgerRow: View {
             }
             .contentShape(Rectangle())
             .contextMenu {
-                if let onEdit {
-                    Button("Edit", systemImage: "pencil", action: onEdit)
-                }
                 if onDelete != nil {
                     Button("Delete", systemImage: "trash", role: .destructive) {
                         showingDeleteConfirmation = true

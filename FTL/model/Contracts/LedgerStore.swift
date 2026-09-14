@@ -71,11 +71,35 @@ extension LedgerStore {
     }
 }
 
-nonisolated enum LedgerError: Error, Sendable {
+/// `LocalizedError` because these now reach a person. Action failures surface in
+/// an alert via `localizedDescription`, and the default for a bare Swift enum is
+/// its case name — `rowNotFound(id: 9F2C…)` is a stack trace wearing a sentence's
+/// clothes.
+nonisolated enum LedgerError: Error, Sendable, LocalizedError {
     case notAuthenticated
     case rateLimited(retryAfter: TimeInterval?)
     case schemaMismatch(expected: [String], found: [String])
     /// An update or delete named an id the store no longer has.
     case rowNotFound(id: UUID)
     case transport(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated:
+            return "You're signed out of Google. Sign in again from Settings."
+        case .rateLimited(let retryAfter):
+            guard let retryAfter else { return "Google is rate-limiting the sheet. Try again shortly." }
+            return "Google is rate-limiting the sheet. Try again in \(Int(retryAfter.rounded())) seconds."
+        case .schemaMismatch(let expected, let found):
+            return "The sheet's columns don't match what the app writes.\n"
+                + "Expected \(expected.count) (\(expected.prefix(3).joined(separator: ", "))…), "
+                + "found \(found.count)."
+        case .rowNotFound:
+            // Almost always a real race: the row was deleted or the sheet was
+            // edited by hand between this screen loading and the write.
+            return "That row is no longer in the sheet — it may have been deleted or edited elsewhere. Pull to refresh."
+        case .transport(let detail):
+            return "Couldn't reach the sheet. \(detail)"
+        }
+    }
 }

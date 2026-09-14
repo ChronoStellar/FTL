@@ -16,6 +16,18 @@ struct GoalDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                if let message = viewModel.phase.errorMessage {
+                    VStack(alignment: .leading, spacing: FTLSpacing.xs) {
+                        Text("Couldn't load the goal")
+                            .font(FTLTypography.rowTitle)
+                            .foregroundStyle(FTLColor.textPrimary)
+                        Text(message)
+                            .font(FTLTypography.caption)
+                            .foregroundStyle(FTLColor.error)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, FTLSpacing.lg)
+                }
                 hero
 
                 SectionLabel(text: "Target")
@@ -32,6 +44,7 @@ struct GoalDetailView: View {
             .padding(.bottom, FTLSpacing.xxl)
         }
         .scrollContentBackground(.hidden)
+        .actionFailureAlert($viewModel.actionError)
         .task { await viewModel.load() }
     }
 

@@ -46,6 +46,8 @@ final class AppEnvironment {
     /// and on a mailbox with no hand-written parser, the only oracle tool 1
     /// has. See `PatternMemory`.
     let patternMemory: PatternMemory?
+    /// What you call each shop. See `MerchantMemory`.
+    let merchantMemory: MerchantMemory?
 
     /// False when the on-disk store couldn't be opened and the queue is running
     /// in memory for this session. Surfaced in Settings: a cache that silently
@@ -146,6 +148,7 @@ final class AppEnvironment {
         patterns: PatternStore? = nil,
         tagMemory: TagMemory? = nil,
         patternMemory: PatternMemory? = nil,
+        merchantMemory: MerchantMemory? = nil,
         isProvisionalStorePersistent: Bool = true,
         ledgerBackend: LedgerBackend = .sheets
     ) {
@@ -159,6 +162,7 @@ final class AppEnvironment {
         self.patterns = patterns
         self.tagMemory = tagMemory
         self.patternMemory = patternMemory
+        self.merchantMemory = merchantMemory
         self.isProvisionalStorePersistent = isProvisionalStorePersistent
         self.ledgerBackend = ledgerBackend
         self.calc = LedgerCalcTool(budgets: budgets, ledger: ledger)
@@ -166,7 +170,8 @@ final class AppEnvironment {
             store: provisional,
             ledger: ledger,
             tags: tagMemory,
-            patterns: patternMemory
+            patterns: patternMemory,
+            merchants: merchantMemory
         )
     }
 
@@ -198,6 +203,7 @@ final class AppEnvironment {
             patterns: SwiftDataPatternStore(modelContainer: store.container),
             tagMemory: SwiftDataTagMemory(modelContainer: store.container),
             patternMemory: SwiftDataPatternMemory(modelContainer: store.container),
+            merchantMemory: SwiftDataMerchantMemory(modelContainer: store.container),
             isProvisionalStorePersistent: store.isPersistent,
             ledgerBackend: .sheets
         )
@@ -225,6 +231,7 @@ final class AppEnvironment {
             // decision history is everything the tagger learned about your
             // buckets, gone. See SwiftDataTagMemory.
             TagDecisionRecord.self,
+            MerchantNameRecord.self,
             PatternObservationRecord.self,
         ])
         do {
@@ -253,6 +260,7 @@ final class AppEnvironment {
             provisional: InMemoryProvisionalStore(),
             goals: InMemoryGoalStore(),
             isLive: false,
+            merchantMemory: InMemoryMerchantMemory(),
             ledgerBackend: .sample
         )
     }
@@ -294,6 +302,7 @@ final class AppEnvironment {
             patterns: base.patterns,
             tagMemory: base.tagMemory,
             patternMemory: base.patternMemory,
+            merchantMemory: base.merchantMemory,
             isProvisionalStorePersistent: base.isProvisionalStorePersistent,
             ledgerBackend: .local
         )
@@ -332,7 +341,6 @@ final class AppEnvironment {
             name: name,
             interval: interval,
             calc: calc,
-            budgets: budgets,
             ledger: ledger
         )
     }
@@ -348,17 +356,19 @@ final class AppEnvironment {
             tagger: makePurchaseTagger(),
             // Same reasoning, applied to `unverifiedPattern` instead of a tag
             // suggestion — see `ApprovalQueueViewModel.reviseUnverifiedFlags`.
-            trust: patternMemory
+            trust: patternMemory,
+            merchants: merchantMemory
         )
     }
 
-    func makeAddSpendViewModel(interval: DateInterval) -> AddSpendViewModel {
+    func makeAddSpendViewModel(interval: DateInterval, initialAmount: Int? = nil) -> AddSpendViewModel {
         AddSpendViewModel(
             provisional: provisional,
             approvals: approvals,
             ledger: ledger,
             calc: calc,
-            interval: interval
+            interval: interval,
+            initialAmount: initialAmount
         )
     }
 
@@ -375,7 +385,15 @@ final class AppEnvironment {
 
     /// The Gmail rail, when there is a mailbox and a place to log what it has
     /// seen. Nil in `sample()`.
-    func makeGmailRail() -> GmailRail? {
+    /// `tagged: false` drops the tagger from the rail.
+    ///
+    /// For a background run, which gets roughly 30 seconds before iOS kills it.
+    /// `FoundationModelTagger` is bounded at 8 model calls and the measured p95
+    /// is 3.82s each — up to 30 seconds on its own, spent before a single row is
+    /// written. Nothing is lost by skipping it: the tagger's memory half runs on
+    /// every queue load (`PurchaseTagger.refresh`), so rows captured in the
+    /// background arrive tagged the moment the queue is opened.
+    func makeGmailRail(tagged: Bool = true) -> GmailRail? {
         guard isLive, let captureLog else { return nil }
         return GmailRail(
             exporter: GmailExporter(auth: auth),
@@ -391,7 +409,7 @@ final class AppEnvironment {
             ledger: ledger,
             patterns: patterns,
             presets: pureAgentMode ? [] : PresetPatterns.load(),
-            tagger: makePurchaseTagger(),
+            tagger: tagged ? makePurchaseTagger() : nil,
             trust: patternMemory
         )
     }

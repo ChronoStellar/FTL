@@ -21,17 +21,21 @@ actor DefaultApprovalService: ApprovalService {
     /// Where the LOOP's accuracy accrues, and on an unseen mailbox the only
     /// oracle it has. See `PatternMemory`.
     private let patterns: PatternMemory?
+    /// What you call each shop, so a rename outlives the row it was typed on.
+    private let merchants: MerchantMemory?
 
     init(
         store: ProvisionalStore,
         ledger: LedgerStore,
         tags: TagMemory? = nil,
-        patterns: PatternMemory? = nil
+        patterns: PatternMemory? = nil,
+        merchants: MerchantMemory? = nil
     ) {
         self.store = store
         self.ledger = ledger
         self.tags = tags
         self.patterns = patterns
+        self.merchants = merchants
     }
 
     func approve(_ ids: [ProvisionalEntry.ID]) async throws -> ApprovalResult {
@@ -133,6 +137,30 @@ actor DefaultApprovalService: ApprovalService {
     /// says — a verdict about how the email was parsed, unlike a category
     /// change, which is a verdict about a budget and belongs to the other tool.
     ///
+    /// A corrected name only counts against the PATTERN when it changes which
+    /// shop the row is about.
+    ///
+    /// `MerchantID(normalizing:)` already folds case, punctuation and the
+    /// trailing payment reference, so `GRAB* A-9MVBRDUGW7GDAV` → `Grab` keys to
+    /// the same merchant either way: the pattern found the right string and a
+    /// person tidied it. Cosmetic, not a miss. Renaming a row the pattern read
+    /// as `Total Belanja` to `Hokky Supermarket` keys somewhere else entirely —
+    /// it grabbed a label instead of a shop, and that is a miss.
+    ///
+    /// Without this split `MerchantMemory` would be self-defeating: it fills the
+    /// name in on every future row from that shop, and every one of those would
+    /// then score as a fresh failure for a pattern nobody had to correct —
+    /// pinning its acceptance rate at zero forever.
+    ///
+    /// Known imprecision: adding detail the email never carried — `INDOMARET` →
+    /// `Indomaret Kemang` — keys differently and so reads as a miss. Harsh, and
+    /// the right side to err on, because the app cannot tell "you grabbed the
+    /// wrong string" from "the string was incomplete".
+    static func merchantWasMisread(_ entry: ProvisionalEntry) -> Bool {
+        guard let corrected = entry.resolution.merchantName else { return false }
+        return MerchantID(normalizing: corrected) != MerchantID(normalizing: entry.transaction.merchantRaw)
+    }
+
     /// Ordered worst-first, and the order is a claim about the pattern:
     ///
     /// 1. `correctedAmount` — it could not find the number, which is the one
@@ -147,7 +175,7 @@ actor DefaultApprovalService: ApprovalService {
     /// one.
     static func verdict(for entry: ProvisionalEntry) -> PatternObservation.Verdict {
         if let read = entry.readAmount, read != entry.transaction.amount { return .correctedAmount }
-        if displayMerchant(for: entry) != parsedMerchant(for: entry) { return .correctedMerchant }
+        if merchantWasMisread(entry) { return .correctedMerchant }
         if entry.resolution.kind != (entry.readAs ?? entry.resolution.kind) { return .correctedKind }
         return .accepted
     }
@@ -262,6 +290,20 @@ actor DefaultApprovalService: ApprovalService {
         entry.provenance = .manual
 
         try await store.update(entry)
+
+        // The point of the whole exercise: say it once. Keyed on the normalized
+        // merchant, so the next receipt from this shop — with a different
+        // booking reference glued on, as every one of them has — arrives
+        // already named. Best-effort: a memory write that fails must not fail
+        // the correction the person is looking at.
+        let merchant = MerchantID(normalizing: entry.transaction.merchantRaw)
+        if let corrected {
+            try? await merchants?.remember(corrected, for: merchant)
+        } else {
+            // Cleared the override — "actually, the raw was fine". Leaving the
+            // old name remembered would put it straight back.
+            try? await merchants?.forget(merchant)
+        }
     }
 
     func correctAmount(_ id: ProvisionalEntry.ID, to amount: Money) async throws {
@@ -280,6 +322,18 @@ actor DefaultApprovalService: ApprovalService {
         // filed under a figure it no longer has, so the duplicate it was
         // supposed to collide with never turns up in the same bucket.
         entry.transaction.fingerprint = Fingerprint(amount: amount, date: entry.transaction.date)
+
+        // Both of these flags assert a COMPARISON — "same amount and merchant as
+        // <row>" — and the amount they compared just changed. Left on, the card
+        // goes on naming a twin it no longer matches, which is worse than no
+        // flag: it is a specific claim that is now false, sitting on the row a
+        // person is about to approve.
+        //
+        // Dropping them does not lose the check. `approve` still tests every row
+        // against the ledger and against its own batch with `LedgerDeduplicator`
+        // before anything is written, and the next sync re-flags from scratch.
+        entry.flags.removeAll { $0.reason == .possibleDuplicate || $0.reason == .reversal }
+
         entry.provenance = .manual  // a corrected row is no longer the pipeline's verdict
 
         try await store.update(entry)

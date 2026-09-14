@@ -96,14 +96,14 @@ enum FTLColor {
     static let unallocated = Color(.unallocated)
 
     // MARK: - Mapping
-
-    static func forStanding(_ standing: BudgetPosition.Standing) -> Color {
-        switch standing {
-        case .underCeiling: return budgetUnderCeiling
-        case .atCeiling: return budgetAtCeiling
-        case .overCeiling: return budgetOverCeiling
-        }
-    }
+    //
+    // There is no `forStanding`. It existed, mapped all three standings to their
+    // own colour, and had no callers — because the app deliberately does the
+    // opposite: `BucketRow` and `SpendHeroCard` paint everything that is not
+    // over its ceiling in `textPrimary`, and spend colour only on the one thing
+    // that needs pointing at. A three-way mapping sitting here unused is an
+    // invitation to "fix" a row by calling it, which would put two more hues on
+    // screen and break the one-signal-colour rule it looks like it supports.
 
     static func forKind(_ kind: TransactionKind) -> Color {
         switch kind {

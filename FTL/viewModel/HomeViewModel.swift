@@ -150,5 +150,18 @@ final class HomeViewModel {
         buckets = try await calc.budgetPositions(for: month.interval)
         recent = try await calc.transactions(in: month.interval, categoryID: nil, limit: 5)
         pending = try await provisional.pending()
+        await updateWidgetSnapshot()
+    }
+
+    /// Delegates to `WidgetSnapshotWriter` — the same builder
+    /// `BackgroundRefresh` uses, so a fetch that happens while the app is shut
+    /// updates the home screen exactly the way opening the app does.
+    private func updateWidgetSnapshot() async {
+        await WidgetSnapshotWriter(calc: calc, provisional: provisional).write()
+        // The daily reminder quotes this count, so it is re-pointed wherever the
+        // count is recomputed rather than only where it is displayed. Every
+        // settle path — approve, drop, the queue sheet closing — comes back
+        // through here.
+        await NotificationSchedule.refreshDigest(pendingCount: pending.count)
     }
 }

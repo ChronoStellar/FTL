@@ -130,6 +130,25 @@ actor InMemoryLedgerStore: LedgerStore {
     func categories() async throws -> [SpendCategory] { SampleLedger.categories }
 }
 
+// MARK: - Merchant names
+
+/// Lets the debug-skip path exercise a correction sticking, which is otherwise
+/// only observable against a real SwiftData container.
+actor InMemoryMerchantMemory: MerchantMemory {
+    private var names: [MerchantID: String] = [:]
+
+    func remember(_ name: String, for merchant: MerchantID) async throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { names[merchant] = nil } else { names[merchant] = trimmed }
+    }
+
+    func forget(_ merchant: MerchantID) async throws { names[merchant] = nil }
+
+    func names(for merchants: [MerchantID]) async throws -> [MerchantID: String] {
+        names.filter { merchants.contains($0.key) }
+    }
+}
+
 // MARK: - Goal
 
 actor InMemoryGoalStore: GoalStore {

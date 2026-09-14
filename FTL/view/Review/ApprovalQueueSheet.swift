@@ -40,7 +40,12 @@ struct ApprovalQueueSheet: View {
                         .foregroundStyle(FTLColor.textQuaternary)
                         .padding(.bottom, FTLSpacing.xs)
 
-                    if viewModel.isEmpty {
+                    // A queue that could not load is not an empty queue, and
+                    // showing "All clear" for one is the same lie the missing
+                    // alert was telling.
+                    if let message = viewModel.phase.errorMessage {
+                        loadFailure(message)
+                    } else if viewModel.isEmpty {
                         allClear
                         droppedSection
                     } else {
@@ -57,6 +62,7 @@ struct ApprovalQueueSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(FTLColor.sheetBackground)
+            .actionFailureAlert($viewModel.actionError)
             .navigationTitle("To approve")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.sheetBackground, for: .navigationBar)
@@ -228,6 +234,19 @@ struct ApprovalQueueSheet: View {
             .tint(FTLColor.textQuaternary)
             .padding(.top, FTLSpacing.lg)
         }
+    }
+
+    private func loadFailure(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: FTLSpacing.sm) {
+            Text("Couldn't load the queue")
+                .font(FTLTypography.rowTitle)
+                .foregroundStyle(FTLColor.textPrimary)
+            Text(message)
+                .font(FTLTypography.caption)
+                .foregroundStyle(FTLColor.error)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, FTLSpacing.xxl)
     }
 
     private var allClear: some View {

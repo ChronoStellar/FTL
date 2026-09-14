@@ -36,13 +36,17 @@ final class AddSpendViewModel {
         approvals: ApprovalService? = nil,
         ledger: LedgerStore,
         calc: CalcTool,
-        interval: DateInterval
+        interval: DateInterval,
+        initialAmount: Int? = nil
     ) {
         self.provisional = provisional
         self.approvals = approvals
         self.ledger = ledger
         self.calc = calc
         self.interval = interval
+        if let initialAmount, initialAmount > 0 {
+            self.digits = String(initialAmount)
+        }
     }
 
     // MARK: - Derived

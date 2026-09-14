@@ -88,6 +88,9 @@ struct ContentView: View {
             Task { await syncMail() }
         }
         .sheet(item: $sheet, content: sheetContent)
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
     }
 
     /// Fetches in the background and refreshes Home only if something landed.
@@ -160,7 +163,7 @@ struct ContentView: View {
         .sharedBackgroundVisibility(.hidden)
 
         ToolbarItem(placement: .topBarTrailing) {
-            Button { sheet = .add } label: {
+            Button { sheet = .add() } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(FTLColor.textPrimary)
@@ -222,10 +225,11 @@ struct ContentView: View {
             )
             .onDisappear { Task { await home.load(forceReload: true) } }
 
-        case .add:
+        case .add(let initialAmount):
             AddSpendScreen(
                 environment: environment,
                 interval: home.month?.interval ?? .init(start: .now, duration: 0),
+                initialAmount: initialAmount,
                 onCancel: { sheet = nil },
                 onCommit: {
                     sheet = nil
@@ -271,6 +275,27 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Deep Linking
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "ftl" else { return }
+        switch url.host {
+        case "add":
+            var initialAmount: Int? = nil
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let queryItems = components.queryItems,
+               let amountStr = queryItems.first(where: { $0.name == "amount" })?.value,
+               let parsed = Int(amountStr) {
+                initialAmount = parsed
+            }
+            sheet = .add(initialAmount: initialAmount)
+        case "home", "budget", "daily":
+            sheet = nil
+        default:
+            break
+        }
+    }
+
     // MARK: - Routes
 
     enum Route: Hashable {
@@ -279,7 +304,9 @@ struct ContentView: View {
     }
 
     enum SheetRoute: Identifiable {
-        case months, queue, add, settings, incomeSplit
+        case months, queue
+        case add(initialAmount: Int? = nil)
+        case settings, incomeSplit
         /// Carries the row, so the editor's view model is built from it once —
         /// see `EditTransactionScreen`. This is why the enum can no longer be
         /// `String`-backed.
@@ -287,12 +314,16 @@ struct ContentView: View {
 
         var id: String {
             switch self {
-            case .months: "months"
-            case .queue: "queue"
-            case .add: "add"
-            case .settings: "settings"
-            case .incomeSplit: "incomeSplit"
-            case .edit(let transaction): "edit-\(transaction.id.uuidString)"
+            case .months: return "months"
+            case .queue: return "queue"
+            case .add(let initialAmount):
+                if let initialAmount {
+                    return "add-\(initialAmount)"
+                }
+                return "add"
+            case .settings: return "settings"
+            case .incomeSplit: return "incomeSplit"
+            case .edit(let transaction): return "edit-\(transaction.id.uuidString)"
             }
         }
     }

@@ -30,6 +30,11 @@ struct SettingsView: View {
     /// see `loadMissingCategories()`.
     @State private var missingCategories: [CategoryID] = []
     @State private var isShowingIncomeSplit: Bool = false
+    @State private var isBackgroundRefreshOn: Bool = BackgroundRefresh.isEnabled
+    @State private var isDigestOn: Bool = NotificationSchedule.isEnabled
+    @State private var digestHour: Int = NotificationSchedule.hour
+    @State private var notificationsDenied: Bool = false
+    @State private var widgetRefreshMessage: String? = nil
 
     #if DEBUG
     @State private var developerTool: DeveloperTool?
@@ -62,10 +67,20 @@ struct SettingsView: View {
                         .padding(.bottom, FTLSpacing.labelGap)
                     budgetPanel
 
+                    SectionLabel(text: "Background")
+                        .padding(.top, FTLSpacing.xl)
+                        .padding(.bottom, FTLSpacing.labelGap)
+                    backgroundPanel
+
                     SectionLabel(text: "Trust")
                         .padding(.top, FTLSpacing.xl)
                         .padding(.bottom, FTLSpacing.labelGap)
                     trustPanel
+
+                    SectionLabel(text: "Home Screen Widgets")
+                        .padding(.top, FTLSpacing.xl)
+                        .padding(.bottom, FTLSpacing.labelGap)
+                    widgetsPanel
 
                     #if DEBUG
                     SectionLabel(text: "Developer")
@@ -118,12 +133,18 @@ struct SettingsView: View {
             valueRow("Name", auth.name ?? "—")
             valueRow("Email", auth.email ?? "—")
             PanelRow(showsDivider: false) {
+                // `.tint` does not reach a `role: .destructive` button under the
+                // default style — the system paints it its own red and ignores
+                // the tint, which is why this was the one hue in the app that
+                // was not `FTLColor`. The role stays for the accessibility
+                // semantics; `.plain` is what lets the token win.
                 Button("Sign out", role: .destructive) {
                     auth.signOut()
                     onDone()
                 }
+                .buttonStyle(.plain)
                 .font(FTLTypography.rowTitle)
-                .tint(FTLColor.destructive)
+                .foregroundStyle(FTLColor.destructive)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -374,6 +395,82 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Home Screen Widgets Panel
+
+    private var widgetsPanel: some View {
+        VStack(alignment: .leading, spacing: FTLSpacing.sm) {
+            PanelCard {
+                PanelRow(showsDivider: true) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "gauge.with.needle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(FTLColor.accent)
+                            .frame(width: 28)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Budget of the Day")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Text("Daily allowance, spent today, remaining balance & progress")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                        }
+                        Spacer()
+                    }
+                }
+
+                PanelRow(showsDivider: true) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(FTLColor.accent)
+                            .frame(width: 28)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add Spending")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Text("Quick shortcuts (+25k, +50k, +100k) & keypad link")
+                                .font(FTLTypography.captionSmall)
+                                .foregroundStyle(FTLColor.textQuaternary)
+                        }
+                        Spacer()
+                    }
+                }
+
+                PanelRow(showsDivider: widgetRefreshMessage != nil) {
+                    Button {
+                        let snapshot = WidgetDataManager.shared.loadSnapshot()
+                        WidgetDataManager.shared.saveSnapshot(snapshot)
+                        widgetRefreshMessage = "Widgets refreshed at \(Date.now.formatted(date: .omitted, time: .standard))"
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(FTLColor.accent)
+                            Text("Refresh Widget Timelines")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.accent)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let widgetRefreshMessage {
+                    PanelRow(showsDivider: false) {
+                        Text(widgetRefreshMessage)
+                            .font(FTLTypography.captionSmall)
+                            .foregroundStyle(FTLColor.accent)
+                    }
+                }
+            }
+
+            Text("Both widgets support Small, Medium, and Lock Screen accessories. Add them from your iOS Home Screen or Lock Screen widget gallery.")
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
+        }
+    }
+
     #if DEBUG
     private var debugPanel: some View {
         PanelCard {
@@ -494,6 +591,143 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
         }
+    }
+
+    // MARK: - Background Panel
+
+    /// One toggle, and copy that does not promise what iOS will not deliver.
+    ///
+    /// Off by default: scheduling background work and posting notifications are
+    /// both things to ask for. Turning it on is also where notification
+    /// permission is requested — a prompt cannot be shown from a background
+    /// task, so this is the only place it can happen.
+    private var backgroundPanel: some View {
+        VStack(alignment: .leading, spacing: FTLSpacing.labelGap) {
+            PanelCard {
+                PanelRow(showsDivider: false) {
+                    // A Button row, not a `Toggle`. The switch rendered fine in
+                    // `PanelRow` and swallowed every tap — its hit area does not
+                    // survive that container, and rather than keep fighting it
+                    // this follows the idiom every other row on this screen
+                    // already uses, including "Mode · Assist" directly below:
+                    // tap the row, state on the trailing edge.
+                    Button {
+                        Task { await setBackgroundRefresh(!isBackgroundRefreshOn) }
+                    } label: {
+                        HStack {
+                            Text("Fetch in the background")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Spacer()
+                            Text(isBackgroundRefreshOn ? "On" : "Off")
+                                .font(FTLTypography.body)
+                                .foregroundStyle(isBackgroundRefreshOn ? FTLColor.textPrimary : FTLColor.textTertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text(backgroundHint)
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
+
+            PanelCard {
+                PanelRow(showsDivider: isDigestOn) {
+                    Button {
+                        Task { await setDigest(!isDigestOn) }
+                    } label: {
+                        HStack {
+                            Text("Daily reminder")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Spacer()
+                            Text(isDigestOn ? NotificationSchedule.label(forHour: digestHour) : "Off")
+                                .font(FTLTypography.body)
+                                .foregroundStyle(isDigestOn ? FTLColor.textPrimary : FTLColor.textTertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if isDigestOn {
+                    PanelRow(showsDivider: false) {
+                        FlowLayout(spacing: FTLSpacing.sm) {
+                            ForEach(NotificationSchedule.selectableHours, id: \.self) { hour in
+                                SelectableChip(
+                                    title: NotificationSchedule.label(forHour: hour),
+                                    isSelected: hour == digestHour,
+                                    isCompact: true
+                                ) {
+                                    Task { await setDigestHour(hour) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.top, FTLSpacing.md)
+
+            Text("Fires at the hour you pick, every day, and only when something is actually waiting. Unlike the fetch above, this one iOS does keep to the minute.")
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
+
+            Text("For a fetch at an exact time, add \"Check for Receipts\" to a Time of Day automation in Shortcuts — that is the only scheduling iOS lets an app rely on.")
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
+        }
+    }
+
+    private func setDigest(_ wanted: Bool) async {
+        guard wanted else {
+            NotificationSchedule.isEnabled = false
+            NotificationSchedule.cancel()
+            isDigestOn = false
+            return
+        }
+        let granted = await BackgroundRefresh.requestAuthorization()
+        notificationsDenied = !granted
+        NotificationSchedule.isEnabled = true
+        isDigestOn = true
+        await refreshDigest()
+    }
+
+    private func setDigestHour(_ hour: Int) async {
+        NotificationSchedule.hour = hour
+        digestHour = hour
+        await refreshDigest()
+    }
+
+    /// The reminder quotes a count, so it is re-pointed at the live queue every
+    /// time it is touched — see `NotificationSchedule`.
+    private func refreshDigest() async {
+        let pending = (try? await environment.provisional.pending())?.count ?? 0
+        await NotificationSchedule.refreshDigest(pendingCount: pending)
+    }
+
+    private var backgroundHint: String {
+        if notificationsDenied {
+            return "Notifications are turned off for FTL in iOS Settings. The fetch can still run, but nothing will tell you about it."
+        }
+        return "Notifies you when receipts arrive. iOS decides when to run this — usually when you tend to open the app, never in Low Power Mode, and not at all if the app is force-quit. Opening FTL always checks immediately, which is the reliable path."
+    }
+
+    private func setBackgroundRefresh(_ wanted: Bool) async {
+        guard wanted else {
+            BackgroundRefresh.isEnabled = false
+            BackgroundRefresh.cancel()
+            isBackgroundRefreshOn = false
+            return
+        }
+        // Permission first: enabling a fetch whose whole point is to tell you
+        // something, without the ability to tell you, is a dead switch.
+        let granted = await BackgroundRefresh.requestAuthorization()
+        notificationsDenied = !granted
+        BackgroundRefresh.isEnabled = true
+        BackgroundRefresh.schedule()
+        isBackgroundRefreshOn = true
     }
 
     // MARK: - Sheets & Actions

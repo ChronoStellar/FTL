@@ -29,6 +29,14 @@ final class ApprovalQueueViewModel {
     /// Re-checked on every load, same reasoning as `tagger` — see
     /// `reviseUnverifiedFlags`.
     private let trust: (any PatternMemory)?
+    /// What you call each shop. A lookup, never a model call — same reasoning
+    /// as the tagger's memory half, which is why it runs on every load.
+    private let merchants: (any MerchantMemory)?
+
+    /// Something the user did that did not work — a failed write, not a failed
+    /// load. Settable from the view so dismissing the alert clears it; kept off
+    /// `phase` so a failed save never blanks a screen that loaded fine.
+    var actionError: String?
 
     private(set) var phase: LoadPhase = .idle
     private(set) var entries: [ProvisionalEntry] = []
@@ -73,13 +81,15 @@ final class ApprovalQueueViewModel {
         approvals: ApprovalService,
         ledger: LedgerStore,
         tagger: (any PurchaseTagger)? = nil,
-        trust: (any PatternMemory)? = nil
+        trust: (any PatternMemory)? = nil,
+        merchants: (any MerchantMemory)? = nil
     ) {
         self.store = store
         self.approvals = approvals
         self.ledger = ledger
         self.tagger = tagger
         self.trust = trust
+        self.merchants = merchants
     }
 
     // MARK: - Derived
@@ -220,6 +230,7 @@ final class ApprovalQueueViewModel {
             // Newest first, and capped: this is a safety net, not a second
             // queue. An unbounded list of everything ever auto-dropped would
             // sit under the thing this screen is actually for.
+            pending = await applyingRememberedNames(to: pending)
             autoDropped = Array(
                 (try? await store.entries(withStatus: .autoDropped))?
                     .sorted { $0.createdAt > $1.createdAt }
@@ -337,12 +348,42 @@ final class ApprovalQueueViewModel {
             try await approvals.correctAmount(entry.id, to: amount)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
     /// How many recent auto-drops the queue is willing to show at once.
     static let autoDroppedShown = 10
+
+    /// Fills in the name you chose for a shop, on every row that hasn't been
+    /// named by hand yet.
+    ///
+    /// Runs on every load rather than once at capture, and that is the whole
+    /// difference between a correction that sticks and one that doesn't: a row
+    /// already sitting in the queue when you rename its merchant gets the name
+    /// too, on the very next load, without waiting for a fetch it will never
+    /// get. Same shape as `PurchaseTagger.refresh` and for the same reason.
+    ///
+    /// A row whose `merchantName` is already set is left alone — that is either
+    /// a correction made on this row, or this function's own work from a
+    /// previous load. Writes back only what changed.
+    private func applyingRememberedNames(to entries: [ProvisionalEntry]) async -> [ProvisionalEntry] {
+        guard let merchants, !entries.isEmpty else { return entries }
+        let keys = entries.map { MerchantID(normalizing: $0.transaction.merchantRaw) }
+        guard let remembered = try? await merchants.names(for: keys), !remembered.isEmpty else { return entries }
+
+        var updated = entries
+        for index in updated.indices where updated[index].resolution.merchantName == nil {
+            let key = MerchantID(normalizing: updated[index].transaction.merchantRaw)
+            guard let name = remembered[key] else { continue }
+            updated[index].resolution.merchantName = name
+            // Persisted so the name survives to promotion, where the ledger row
+            // takes `resolution.merchantName`. Best-effort: a failed write just
+            // means the next load fills it in again.
+            try? await store.update(updated[index])
+        }
+        return updated
+    }
 
     /// Rows the rail discarded on its own as possible duplicates.
     ///
@@ -362,7 +403,7 @@ final class ApprovalQueueViewModel {
             try await store.update(restored)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -376,7 +417,7 @@ final class ApprovalQueueViewModel {
             try await approvals.correctMerchant(entry.id, to: name)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -419,7 +460,7 @@ final class ApprovalQueueViewModel {
             try await approvals.amend(entry.id, to: resolution)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -439,10 +480,10 @@ final class ApprovalQueueViewModel {
             await load()
             onSettled?()
             if let failure = result.failed.first {
-                phase = .failed(failure.error)
+                actionError = failure.error
             }
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -456,7 +497,7 @@ final class ApprovalQueueViewModel {
             await load()
             onSettled?()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -481,10 +522,10 @@ final class ApprovalQueueViewModel {
             await load()
             onSettled?()
             if !result.failed.isEmpty {
-                phase = .failed("\(result.failed.count) of \(newIDs.count) didn't go through — the rest are approved.")
+                actionError = "\(result.failed.count) of \(newIDs.count) didn't go through — the rest are approved."
             }
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 

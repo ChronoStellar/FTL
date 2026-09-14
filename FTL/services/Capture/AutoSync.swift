@@ -22,17 +22,20 @@
 //  and that is unchanged — this moves no row into the ledger and touches no
 //  trust level. `TrustLevel` is still pinned to `.assist`.
 //
-//  ## Foreground, not background
+//  ## Foreground — and no longer the only trigger
 //
-//  Deliberately started at the smallest thing that is genuinely automatic: a
-//  sync when the app becomes active. No entitlement, no `UIBackgroundModes`, no
-//  `BGTaskScheduler` registration — and the behaviour a person actually notices
-//  is "I opened the app and my receipts were already there", which this gives.
+//  This is the sync that runs when the app becomes active, and it remains the
+//  RELIABLE one: it happens every time, immediately, with no permission and
+//  nothing for iOS to decide. The behaviour a person notices is "I opened the
+//  app and my receipts were already there".
 //
-//  `BGAppRefreshTask` is the obvious next step and is deliberately NOT taken
-//  yet: it adds Info.plist surgery and a scheduler whose failure mode is silent,
-//  on top of a capture path that has never run unattended even once. Prove this
-//  first.
+//  This header used to say `BGAppRefreshTask` was deliberately not taken yet,
+//  on the grounds that the capture path had never run unattended even once.
+//  It has now, so it was taken — see `BackgroundRefresh`, which runs the same
+//  rail (minus the tagger, which cannot fit in a ~30s budget) when iOS grants a
+//  window, and `CheckReceiptsIntent`, which is how a fetch gets scheduled at an
+//  hour a person actually chose. Neither changes the boundary: both stop at the
+//  provisional cache, exactly like this one.
 //
 
 import Foundation

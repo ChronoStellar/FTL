@@ -2,12 +2,19 @@
 //  BucketDetailViewModel.swift
 //  FTL — viewModel · Phase 1
 //
-//  One bucket: spend against its ceiling, an editable ceiling, and the month's
-//  rows for it.
+//  One bucket: spend against its ceiling, and the month's rows for it.
 //
-//  Editing steps by a fixed amount with an Undo in the title bar rather than a
-//  text field — a ceiling is a decision the user adjusts, not a value they type,
-//  and a reversible nudge invites the adjustment.
+//  The ceiling is REPORTED here, not set. It used to be editable — an edit mode,
+//  a ±50.000 stepper, six preset chips and an Undo in the title bar — and that
+//  was the third place in the app that wrote the same number, after Settings →
+//  Budget Ceilings and the income split. It was also the worst of the three:
+//  a bucket's ceiling is a share of one income, and this screen is the only one
+//  that let you move it with the other buckets out of sight, so the number most
+//  in need of context was edited with none of it.
+//
+//  Set-up-by-income owns apportioning; Settings owns a one-off absolute figure.
+//  This screen reports position against what they decided, which is what the
+//  rest of it already did.
 //
 
 import Foundation
@@ -16,7 +23,6 @@ import Observation
 @Observable @MainActor
 final class BucketDetailViewModel {
     private let calc: CalcTool
-    private let budgets: BudgetStore
     private let ledger: LedgerStore
     private let interval: DateInterval
     private let calendar: Calendar
@@ -24,29 +30,20 @@ final class BucketDetailViewModel {
     let categoryID: CategoryID
     let name: String
 
+    /// Something the user did that did not work — a failed write, not a failed
+    /// load. Settable from the view so dismissing the alert clears it; kept off
+    /// `phase` so a failed save never blanks a screen that loaded fine.
+    var actionError: String?
+
     private(set) var phase: LoadPhase = .idle
     private(set) var position: BudgetPosition?
     private(set) var transactions: [LedgerTransaction] = []
-
-    var isEditingCeiling = false
-    /// The ceiling before editing began. Non-nil means Undo is available.
-    private(set) var ceilingBeforeEdit: Money?
-
-    /// Rp 50.000 — large enough that a tap moves the number visibly, small enough
-    /// that landing on a specific figure doesn't take a dozen taps.
-    static let ceilingStep = 50_000
-
-    /// Common ceilings, so setting one from scratch is a tap instead of twenty.
-    /// Still a choice among fixed options, not typed — the stepper's reasoning
-    /// applies here too.
-    static let ceilingPresets = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000]
 
     init(
         categoryID: CategoryID,
         name: String,
         interval: DateInterval,
         calc: CalcTool,
-        budgets: BudgetStore,
         ledger: LedgerStore,
         calendar: Calendar = .current
     ) {
@@ -54,7 +51,6 @@ final class BucketDetailViewModel {
         self.name = name
         self.interval = interval
         self.calc = calc
-        self.budgets = budgets
         self.ledger = ledger
         self.calendar = calendar
     }
@@ -64,7 +60,6 @@ final class BucketDetailViewModel {
     var spent: Money { position?.actual ?? .zero }
     var ceiling: Money { position?.node.ceiling ?? .zero }
     var isOverCeiling: Bool { position?.standing == .overCeiling }
-    var canUndo: Bool { ceilingBeforeEdit != nil }
 
     var fraction: Double {
         guard ceiling.minorUnits > 0 else { return 0 }
@@ -86,11 +81,8 @@ final class BucketDetailViewModel {
         return MoneyFormatter.perDay(Money(minorUnits: remaining / daysLeft, currency: ceiling.currency))
     }
 
-    var ceilingHint: String {
-        isEditingCeiling
-            ? "Steps \(MoneyFormatter.rp(Money.idr(Self.ceilingStep))) · Undo is in the title bar"
-            : "What you set for \(name) each month"
-    }
+    /// Says where the number comes from, because this screen no longer sets it.
+    var ceilingHint: String { "Set in Settings, or all at once by income" }
 
     private var daysRemaining: Int {
         let now = Date.now
@@ -112,42 +104,6 @@ final class BucketDetailViewModel {
         }
     }
 
-    func beginEditing() { isEditingCeiling = true }
-
-    func step(by delta: Int) async {
-        guard let current = position?.node.ceiling else { return }
-        if ceilingBeforeEdit == nil { ceilingBeforeEdit = current }
-        let next = Money(
-            minorUnits: max(0, current.minorUnits + delta),
-            currency: current.currency
-        )
-        await apply(next)
-    }
-
-    /// Jumps straight to a preset, same Undo semantics as `step(by:)` — the first
-    /// tap in an editing session captures the pre-edit ceiling once.
-    func setCeiling(preset minorUnits: Int) async {
-        guard let current = position?.node.ceiling else { return }
-        if ceilingBeforeEdit == nil { ceilingBeforeEdit = current }
-        await apply(Money(minorUnits: minorUnits, currency: current.currency))
-    }
-
-    func undo() async {
-        guard let original = ceilingBeforeEdit else { return }
-        ceilingBeforeEdit = nil
-        isEditingCeiling = false
-        await apply(original)
-    }
-
-    private func apply(_ ceiling: Money) async {
-        do {
-            try await budgets.setCeiling(ceiling, for: categoryID, in: interval)
-            await load()
-        } catch {
-            phase = .failed(String(describing: error))
-        }
-    }
-
     /// A corrected row can leave this bucket entirely — retagging it, or
     /// marking it non-spend — so this reloads the whole screen rather than
     /// patching the row in place. The ceiling, the meter and the list all move.
@@ -156,7 +112,7 @@ final class BucketDetailViewModel {
             try await ledger.update(transaction)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 
@@ -165,7 +121,7 @@ final class BucketDetailViewModel {
             try await ledger.delete(transaction.id)
             await load()
         } catch {
-            phase = .failed(String(describing: error))
+            actionError = error.localizedDescription
         }
     }
 

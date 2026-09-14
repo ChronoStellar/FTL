@@ -33,11 +33,17 @@ struct EditTransactionSheet: View {
 
     @FocusState private var isAmountFocused: Bool
     @State private var isConfirmingDelete = false
+    /// Save dismisses this sheet and starts the write on the parent, so the two
+    /// are not atomic — two taps inside that window queue two writes. The
+    /// queue's own settle buttons guard this with `settlingIDs`; this is the
+    /// same guard, one screen down.
+    @State private var isSaving = false
 
     var body: some View {
         NavigationStack {
             Form {
                 amountSection
+                merchantSection
                 typeSection
                 bucketSection
                 noteSection
@@ -56,10 +62,14 @@ struct EditTransactionSheet: View {
                         .tint(FTLColor.textTertiary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(viewModel.edited) }
-                        .font(FTLTypography.navTitle)
-                        .tint(viewModel.canSave ? FTLColor.textSecondary : FTLColor.textDisabled)
-                        .disabled(!viewModel.canSave)
+                    Button("Save") {
+                        guard !isSaving else { return }
+                        isSaving = true
+                        onSave(viewModel.edited)
+                    }
+                    .font(FTLTypography.navTitle)
+                    .tint(viewModel.canSave && !isSaving ? FTLColor.textSecondary : FTLColor.textDisabled)
+                    .disabled(!viewModel.canSave || isSaving)
                 }
                 // The number pad has no return key. Same trap as the income
                 // sheet: without this the keyboard covers the form forever.
@@ -104,7 +114,20 @@ struct EditTransactionSheet: View {
         } header: {
             Text("Amount")
         } footer: {
-            Text("What was actually charged. Correcting this rewrites the row in your Sheet — the merchant it was parsed from is kept as-is.")
+            Text("What was actually charged. Correcting this rewrites the row in your Sheet.")
+        }
+        .listRowBackground(FTLColor.panel)
+    }
+
+    private var merchantSection: some View {
+        Section {
+            TextField("Merchant", text: $viewModel.merchant)
+                .textInputAutocapitalization(.words)
+                .foregroundStyle(FTLColor.textPrimary)
+        } header: {
+            Text("Merchant")
+        } footer: {
+            Text("The name written to your Sheet. What the receipt actually said is kept beside it, under Origin below.")
         }
         .listRowBackground(FTLColor.panel)
     }

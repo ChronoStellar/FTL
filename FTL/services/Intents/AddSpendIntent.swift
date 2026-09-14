@@ -129,5 +129,17 @@ struct FTLShortcuts: AppShortcutsProvider {
             shortTitle: "Add Spend",
             systemImageName: "plus.circle"
         )
+        // The one a Time of Day automation is meant to call — see
+        // `CheckReceiptsIntent` for why scheduling lives in Shortcuts rather
+        // than in a background task that cannot promise an hour.
+        AppShortcut(
+            intent: CheckReceiptsIntent(),
+            phrases: [
+                "Check for receipts in \(.applicationName)",
+                "Check \(.applicationName) receipts",
+            ],
+            shortTitle: "Check for Receipts",
+            systemImageName: "tray.and.arrow.down"
+        )
     }
 }

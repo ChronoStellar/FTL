@@ -39,6 +39,8 @@ struct BucketScreen: View {
     }
 
     var body: some View {
+        // No Undo in this toolbar any more: the only thing it could undo was a
+        // ceiling edit, and this screen no longer makes one.
         BucketDetailView(viewModel: viewModel, onEditTransaction: { editing = $0 })
             .background(GlowBackground())
             .sheet(item: $editing) { transaction in
@@ -59,16 +61,6 @@ struct BucketScreen: View {
             .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
-            .toolbar {
-                // Editing a ceiling is reversible, and the hint under the row
-                // says so. Undo has to actually be here.
-                if viewModel.canUndo {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Undo") { Task { await viewModel.undo() } }
-                            .tint(FTLColor.textSecondary)
-                    }
-                }
-            }
     }
 }
 
@@ -187,12 +179,13 @@ struct AddSpendScreen: View {
     init(
         environment: AppEnvironment,
         interval: DateInterval,
+        initialAmount: Int? = nil,
         onCancel: @escaping () -> Void,
         onCommit: @escaping () -> Void
     ) {
         self.onCancel = onCancel
         self.onCommit = onCommit
-        _viewModel = State(wrappedValue: environment.makeAddSpendViewModel(interval: interval))
+        _viewModel = State(wrappedValue: environment.makeAddSpendViewModel(interval: interval, initialAmount: initialAmount))
     }
 
     var body: some View {

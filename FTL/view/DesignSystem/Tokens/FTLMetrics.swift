@@ -90,7 +90,6 @@ enum FTLTypography {
     // MARK: Text
 
     static let navTitle = Font.system(size: 17, weight: .semibold)
-    static let sheetTitle = Font.system(size: 19, weight: .semibold)
     static let rowTitle = Font.system(size: 16, weight: .medium)
     static let rowTitleTight = Font.system(size: 15.5, weight: .medium)
     static let body = Font.system(size: 15, weight: .medium)
