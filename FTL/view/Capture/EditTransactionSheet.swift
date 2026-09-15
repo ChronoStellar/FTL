@@ -51,7 +51,13 @@ struct EditTransactionSheet: View {
                 deleteSection
             }
             .scrollContentBackground(.hidden)
-            .background(FTLColor.sheetBackground)
+            .background(
+                FTLColor.sheetBackground
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .tint(FTLColor.textPrimary)
             .navigationTitle(viewModel.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -70,12 +76,6 @@ struct EditTransactionSheet: View {
                     .font(FTLTypography.navTitle)
                     .tint(viewModel.canSave && !isSaving ? FTLColor.textSecondary : FTLColor.textDisabled)
                     .disabled(!viewModel.canSave || isSaving)
-                }
-                // The number pad has no return key. Same trap as the income
-                // sheet: without this the keyboard covers the form forever.
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { isAmountFocused = false }
                 }
             }
             .task { await viewModel.load() }

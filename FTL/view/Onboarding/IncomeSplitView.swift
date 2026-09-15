@@ -38,11 +38,6 @@ struct IncomeSplitView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.sheetBackground, for: .navigationBar)
             .toolbar {
-                // The number pad's only way out.
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { isIncomeFocused = false }
-                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Skip", action: onSkip)
                         .foregroundStyle(FTLColor.textTertiary)
@@ -75,11 +70,15 @@ struct IncomeSplitView: View {
             .padding(.bottom, FTLSpacing.xxl)
         }
         .scrollContentBackground(.hidden)
-        // Dragging the page down dismisses it, and the keyboard toolbar has a
-        // Done. Deliberately NOT an .onTapGesture on the ScrollView: that
-        // competes with the stepper buttons inside it, and trading "keyboard
-        // won't dismiss" for "steppers don't respond" is not a fix.
+        // Dragging the page down dismisses it.
         .scrollDismissesKeyboard(.interactively)
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+        )
     }
 
     private var incomeSection: some View {

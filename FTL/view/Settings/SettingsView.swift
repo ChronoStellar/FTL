@@ -98,7 +98,13 @@ struct SettingsView: View {
                 .padding(.bottom, FTLSpacing.xxl)
             }
             .scrollContentBackground(.hidden)
-            .background(FTLColor.sheetBackground)
+            .background(
+                FTLColor.sheetBackground
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.sheetBackground, for: .navigationBar)
@@ -796,7 +802,13 @@ struct SettingsView: View {
                 .padding(.horizontal, FTLSpacing.screenMargin)
             }
             .scrollContentBackground(.hidden)
-            .background(FTLColor.sheetBackground)
+            .background(
+                FTLColor.sheetBackground
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .navigationTitle("Set Ceiling")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -859,7 +871,13 @@ struct SettingsView: View {
                 .padding(.top, FTLSpacing.lg)
             }
             .scrollContentBackground(.hidden)
-            .background(FTLColor.sheetBackground)
+            .background(
+                FTLColor.sheetBackground
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .navigationTitle("New Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

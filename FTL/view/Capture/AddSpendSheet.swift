@@ -192,7 +192,13 @@ struct AddSpendSheet: View {
             .padding(.horizontal, FTLSpacing.screenMargin)
             .padding(.top, FTLSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(FTLColor.sheetBackground)
+            .background(
+                FTLColor.sheetBackground
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .navigationTitle("Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(FTLColor.sheetBackground, for: .navigationBar)
