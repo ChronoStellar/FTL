@@ -1,0 +1,929 @@
+//
+//  GmailRail.swift
+//  FTL — services/Capture · Phase 1 · Stage 1 #4
+//
+//  Gmail → deterministic parser → provisional cache. One sender to start.
+//
+//  What this does NOT do, deliberately:
+//
+//  · It does not approve anything. Manual entry auto-approves because a person
+//    typed the number; nothing here was typed by anyone, so every row lands
+//    `.pending` and waits for the human gate. Invariant 1, and the reason the
+//    trust ladder is pinned to Assist.
+//  · It does not call the model TO READ AN EMAIL. A parser either recognises its
+//    template or it doesn't. `PurchaseClassifier` is Phase 2 and is not wired
+//    here. What it now does do is ask the tagger which BUCKET a row belongs in,
+//    once the reading is finished and only for rows a parser already understood
+//    — a different question, answered after the fact, and answered by a lookup
+//    rather than a model for every merchant you have settled before. See
+//    `PurchaseTagger`; the suggestion lands on a `.pending` row and changes
+//    nothing about the gate.
+//  · It does not drop mail it can't read. A recognised template with a missing
+//    field becomes a FLAGGED row, not a silent skip (Invariant 6).
+//
+//  Idempotency comes from `CaptureLog` — a record of every message id already
+//  handled — rather than a `historyId` cursor. A cursor is an optimisation with
+//  a failure mode: Gmail expires `startHistoryId` after roughly a week, and a
+//  lost or stale one silently re-imports or skips. Asking "have I seen this
+//  message?" is correct whether the sync window overlaps, restarts, or runs
+//  twice at once. Worth revisiting when the volume justifies it; at a hundred
+//  messages a month it does not.
+//
+
+import Foundation
+
+nonisolated struct GmailRail: Sendable {
+    private let exporter: any CapturedEmailSource
+    /// Hand-written reference parsers.
+    ///
+    /// Empty in the live app as of 2026-09-09 — see `activeParsers()`. A
+    /// reference parser's job is to be the ORACLE the verifier scores proposals
+    /// against, not to read mail in front of the loop.
+    private let parsers: [any ReceiptParser]
+
+    /// Patterns that ship with the app, merged with whatever the loop has
+    /// learned. Same artifact, same executor — see `PresetPatterns`.
+    private let presets: [ExtractionPattern]
+    private let provisional: ProvisionalStore
+    private let log: CaptureLog
+    private let ledger: (any LedgerStore)?
+    /// Patterns the loop has learned and promoted. Nil before Stage 4 is wired.
+    private let patterns: PatternStore?
+
+    /// The second tool. Nil leaves every row untagged for the approver to
+    /// settle, which is what the rail did before it existed and remains the
+    /// correct behaviour for a fixture run — a suggestion is the one part of
+    /// this pipeline that has no deterministic answer to assert against.
+    private let tagger: (any PurchaseTagger)?
+
+    /// What the queue has said about each learned pattern's rows. Nil leaves
+    /// every unverified pattern permanently flagged, which is the behaviour
+    /// before this existed and the right default for a fixture run.
+    private let trust: PatternMemory?
+
+    /// How far back a sync looks. Overlap is free — the capture log dedupes —
+    /// so this is sized to survive a week of not opening the app rather than
+    /// tuned to the last run.
+    private let window = "newer_than:14d"
+    private let fetchLimit: Int
+
+    init(
+        exporter: any CapturedEmailSource,
+        parsers: [any ReceiptParser],
+        provisional: ProvisionalStore,
+        log: CaptureLog,
+        ledger: (any LedgerStore)? = nil,
+        patterns: PatternStore? = nil,
+        presets: [ExtractionPattern] = [],
+        tagger: (any PurchaseTagger)? = nil,
+        trust: PatternMemory? = nil,
+        fetchLimit: Int = 50
+    ) {
+        self.fetchLimit = fetchLimit
+        self.exporter = exporter
+        self.parsers = parsers
+        self.provisional = provisional
+        self.log = log
+        self.ledger = ledger
+        self.patterns = patterns
+        self.presets = presets
+        self.tagger = tagger
+        self.trust = trust
+    }
+
+    /// Patterns read the mail. Hand-written parsers, if any are passed, sit
+    /// behind them.
+    ///
+    /// **This order was reversed on 2026-09-09, and the reversal is the point.**
+    /// It used to be `handWritten + learned`, justified as protecting real
+    /// accuracy from the appearance of progress — `BluReceiptParser` reads
+    /// 112/112 where its synthesized equivalent scored ~97%. The justification
+    /// was sound and the consequence was fatal: the caller takes the FIRST
+    /// parser that claims an email, so a learned pattern never read a blu email,
+    /// so the loop was shut out of the one sender it could be verified against
+    /// and no evidence ever accrued. The safety argument had quietly become the
+    /// reason nothing could improve.
+    ///
+    /// What makes agent-first safe is not a reference parser winning — it is the
+    /// approval queue, which every row passes through anyway (Invariant 1). A
+    /// misread amount costs a person seeing a wrong number in a queue built
+    /// for exactly that. And the accuracy argument turned out to be moot: a
+    /// preset reproduces the hand-written parser EXACTLY (116/116), so nothing
+    /// was traded away to get here.
+    ///
+    /// Loaded per sync rather than at init, so a pattern promoted while the app
+    /// is running is live on the next fetch.
+    ///
+    /// Internal, not private: `DiscoverySync` needs the same precedence to
+    /// decide what counts as "unread" — an unknown sender that discovery has
+    /// already learned, but that hasn't synced yet, should not be re-offered
+    /// to the model on the next launch. Duplicating this logic instead of
+    /// sharing it is how the two definitions of "already readable" drift.
+    func activeParsers() async -> [any ReceiptParser] {
+        let learned = (try? await patterns?.active()) ?? []
+        // A learned pattern outranks a preset for the same sender and layout:
+        // the preset is a starting point, and something measured against real
+        // mail should be able to replace it.
+        let learnedKeys = Set(learned.map { [$0.senderDomain, $0.template] })
+        let survivingPresets = presets.filter { !learnedKeys.contains([$0.senderDomain, $0.template]) }
+
+        // Most specific layout first. One sender can have several patterns, and
+        // one of them may carry no `bodyContains` at all — the layout that is a
+        // subset of another is matched by subject alone, so it claims everything
+        // from that sender if it is asked first. Sorting by how many body
+        // markers a pattern requires makes "ride receipt" outrank "any blu
+        // email", without either pattern needing to know the other exists.
+        let specificFirst = (learned + survivingPresets)
+            .sorted { $0.bodyContains.count > $1.bodyContains.count }
+        return specificFirst.map(PatternDrivenParser.init(pattern:)) + parsers
+    }
+
+    struct Result: Sendable {
+        var fetched = 0
+        var alreadySeen = 0
+        var queued = 0
+        var flagged = 0
+        /// Rows that look like the other rail's copy of the same purchase.
+        var duplicates = 0
+        /// Refunds paired with the charge they undo.
+        var reversals = 0
+        /// Rows that arrived with a bucket already suggested. Reported because
+        /// the difference between "the tagger is off" and "the tagger had
+        /// nothing to say" is otherwise invisible from the queue.
+        var tagged = 0
+        /// Rows already sitting in the queue from an EARLIER sync that just
+        /// got a suggestion for the first time — see the note above the
+        /// tagging step in `sync()`. Separate from `tagged`, which counts only
+        /// this sync's own newly-captured rows.
+        var backlogTagged = 0
+        var notAPurchase = 0
+        var skipped = 0
+
+        var summary: String {
+            if fetched == 0 {
+                return backlogTagged > 0
+                    ? "No new mail — \(backlogTagged) older row(s) freshly tagged."
+                    : "No new mail in the window."
+            }
+            var parts = ["\(queued) queued"]
+            if tagged > 0 { parts.append("\(tagged) pre-tagged") }
+            if backlogTagged > 0 { parts.append("\(backlogTagged) older rows tagged") }
+            if flagged > 0 { parts.append("\(flagged) flagged") }
+            if duplicates > 0 { parts.append("\(duplicates) possible duplicates") }
+            if reversals > 0 { parts.append("\(reversals) reversals") }
+            if skipped + notAPurchase > 0 { parts.append("\(skipped + notAPurchase) not receipts") }
+            return parts.joined(separator: " · ")
+        }
+    }
+
+    /// One pass. Safe to run repeatedly and concurrently-ish: anything already
+    /// in the capture log is skipped before it costs a parse or a write.
+    @discardableResult
+    func sync() async throws -> Result {
+        var result = Result()
+
+        let parsers = await activeParsers()
+        let query = ([window] + [Self.senderQuery(for: parsers)]).joined(separator: " ")
+        let emails = try await exporter.fetchCaptured(query: query, limit: fetchLimit)
+        result.fetched = emails.count
+
+        var entries: [ProvisionalEntry] = []
+
+        if !emails.isEmpty {
+            let unseen = try await log.unseen(from: emails.map(\.id))
+            result.alreadySeen = emails.count - unseen.count
+
+            // One read for the batch: which learned patterns the queue has already
+            // stood behind often enough to stop flagging.
+            let vouched = await Self.vouchedPatterns(among: parsers, using: trust)
+
+            var logEntries: [CaptureLogEntry] = []
+            var parsedItems: [(entry: ProvisionalEntry, emailID: String, parserID: String?)] = []
+
+            for email in emails where unseen.contains(email.id) {
+                guard let parser = parsers.first(where: { $0.canParse(email) }) else {
+                    // Money mail from a sender the app already reads
+                    // something from — `senderQuery` restricts the fetch
+                    // itself to known domains, so this email was never a
+                    // brochure or an unrelated sender — but no active LAYOUT
+                    // claims it: a refund, or a minority template too rare
+                    // to have cleared the evidence floor yet.
+                    //
+                    // Silently skipping it is exactly what Invariant 6 exists
+                    // to prevent. The existing exception below only covers a
+                    // template that matched but had one field missing
+                    // (`.incomplete`) — this is the gap one level earlier,
+                    // "nothing matched at all", which used to fall all the
+                    // way through to a bare `.skipped` log entry with no
+                    // queue row and no way for a person to ever see it.
+                    if email.hasCurrencyMarker {
+                        let entry = ProvisionalEntry(
+                            id: UUID(),
+                            transaction: NormalizedTransaction(
+                                id: UUID(),
+                                documentID: UUID(),
+                                source: .email,
+                                date: email.date,
+                                amount: .zero,
+                                merchantRaw: email.subject,
+                                merchant: nil,
+                                lineItems: [],
+                                fingerprint: Fingerprint(amount: .zero, date: email.date)
+                            ),
+                            resolution: ProvisionalEntry.Resolution(
+                                kind: .spend,
+                                nonSpendType: nil,
+                                categoryID: nil,
+                                merchantID: nil,
+                                splits: [],
+                                mergedFrom: []
+                            ),
+                            provenance: .rule(.unclaimed),
+                            flags: [ReviewFlag(reason: .unparseable, detail: "no active pattern claimed this layout")],
+                            status: .pending,
+                            createdAt: email.date,
+                            readBy: .unclaimed,
+                            readAs: .spend
+                        )
+                        entries.append(entry)
+                        logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: nil))
+                        result.flagged += 1
+                        continue
+                    }
+                    logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: nil))
+                    result.skipped += 1
+                    PipelineDebugStub.recordParserSkipped(email: email, activeParserIDs: parsers.map(\.id.rawValue))
+                    continue
+                }
+
+                let isVouched = (parser as? PatternDrivenParser).map { vouched.contains($0.pattern.id) } ?? false
+                let parseResult = parser.parse(email)
+                PipelineDebugStub.recordParserMatch(email: email, parser: parser, result: parseResult, isVouched: isVouched)
+
+                switch parseResult {
+                case .parsed(let receipt):
+                    let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
+                    parsedItems.append((entry: entry, emailID: email.id, parserID: parser.id.rawValue))
+
+                case .incomplete(let missing):
+                    // The template matched but a field didn't. Queue it flagged so a
+                    // person sees it, rather than dropping a real purchase because
+                    // one regex moved.
+                    let receipt = ParsedReceipt(
+                        date: email.date,
+                        amount: .zero,
+                        merchantRaw: email.subject,
+                        kind: .spend,
+                        nonSpendType: nil,
+                        flags: [ReviewFlag(reason: .unparseable, detail: "missing \(missing)")]
+                    )
+                    let entry = Self.entry(from: receipt, email: email, parser: parser, vouched: vouched)
+                    entries.append(entry)
+                    logEntries.append(.init(messageID: email.id, verdict: .flagged, entryID: entry.id, parserID: parser.id.rawValue))
+                    result.flagged += 1
+
+                case .notAPurchase:
+                    logEntries.append(.init(messageID: email.id, verdict: .notAPurchase, entryID: nil, parserID: parser.id.rawValue))
+                    result.notAPurchase += 1
+
+                case .notApplicable:
+                    logEntries.append(.init(messageID: email.id, verdict: .skipped, entryID: nil, parserID: parser.id.rawValue))
+                    result.skipped += 1
+                }
+            }
+
+            // Deduplicate at the gate against canonical Google Sheets ledger:
+            // If an email purchase was already read and settled to Google Sheets before
+            // (matching amount, normalized merchant, date, and exact timestamp),
+            // record it as handled in CaptureLog and skip re-queueing to prevent duplicate sheet rows.
+            let existingLedger = (try? await ledger?.all()) ?? []
+            for item in parsedItems {
+                if let exact = existingLedger.first(where: { Self.isExactLedgerMatch(item.entry, as: $0) }) {
+                    logEntries.append(.init(messageID: item.emailID, verdict: .skipped, entryID: exact.id, parserID: item.parserID))
+                    result.alreadySeen += 1
+                } else {
+                    entries.append(item.entry)
+                    logEntries.append(.init(messageID: item.emailID, verdict: .queued, entryID: item.entry.id, parserID: item.parserID))
+                    result.queued += 1
+                }
+            }
+
+            // Cache first, log second. If the log write fails the worst case is a
+            // duplicate on the next run, which a person can reject. The other order
+            // risks marking mail handled that never made it into the queue — spend
+            // that silently disappears, which is the failure this app cares most
+            // about avoiding.
+            if !entries.isEmpty {
+                entries = try await flaggingDuplicates(entries, existingLedger: existingLedger)
+                result.duplicates = entries.filter { entry in
+                    entry.flags.contains { $0.reason == .possibleDuplicate }
+                }.count
+
+                entries = try await flaggingReversals(entries, existingLedger: existingLedger)
+                result.reversals = entries.filter { entry in
+                    entry.flags.contains { $0.reason == .reversal }
+                }.count
+
+                entries = Self.droppingDuplicates(entries)
+            }
+            try await log.record(logEntries)
+        }
+
+        // Tag whatever is new here, AND give rows still sitting untagged from
+        // an EARLIER sync another shot at the SAME budget — one `tag()` call
+        // over the union, so `DefaultPurchaseTagger`'s row-count priority
+        // weighs an old backlog row exactly like a new one instead of always
+        // favouring whichever happened to be newest.
+        //
+        // This used to run only inside "if there is new mail", on only the
+        // batch just parsed. Two consequences, both silent: a merchant whose
+        // rows missed the budget on the sync that captured them stayed
+        // untagged FOREVER — `refresh` (run on every queue open) is
+        // memory-only and has nothing to say until enough decisions accrue by
+        // hand — and a sync that found no new mail, which is the common case
+        // (mail arrives a few times a day; syncs run every 15 minutes), never
+        // even tried. Read as "only new emails ever get tagged."
+        //
+        // Run AFTER duplicates/reversals are flagged and BEFORE the new rows
+        // are written, for the same reason as before: a row about to be
+        // dropped as somebody else's copy is not worth a model call, and a
+        // suggestion added after the write would be a second pass over the
+        // store with a window where the queue shows a row untagged and then
+        // changes under the reader. The backlog fetch happens here rather
+        // than earlier for the same reason — before this sync's own new rows
+        // are inserted, so they cannot appear in it twice.
+        if let tagger {
+            // Auto-dropped rows are held OUT of the batch rather than merely
+            // ignored inside it. The note above says a row about to be dropped
+            // is not worth a model call; now that such a row really is dropped,
+            // that has a price — the tagger is bounded at 8 calls a sync, and
+            // one spent on a row nobody will ever see is one the rest of the
+            // queue does not get. Keeping them out also means the tagger can
+            // never hand back a copy that has quietly lost its status.
+            let taggable = entries.filter { $0.status == .pending }
+            let backlog = (try? await provisional.pending()) ?? []
+            let taggedAll = await tagger.tag(taggable + backlog)
+            let taggedNew = Array(taggedAll.prefix(taggable.count))
+
+            // Stitched back by id, so the dropped rows keep their place in the
+            // batch that gets inserted.
+            let byID = Dictionary(uniqueKeysWithValues: taggedNew.map { ($0.id, $0) })
+            entries = entries.map { byID[$0.id] ?? $0 }
+            result.tagged = taggedNew.filter { $0.resolution.suggestedTag != nil }.count
+
+            for (before, after) in zip(backlog, taggedAll.suffix(backlog.count))
+            where after.resolution.suggestedTag != before.resolution.suggestedTag {
+                try? await provisional.update(after)
+                result.backlogTagged += 1
+            }
+        }
+
+        if !entries.isEmpty {
+            try await provisional.insert(entries)
+        }
+
+        return result
+    }
+
+    /// Learned patterns whose rows the queue has accepted often enough to stop
+    /// flagging. See `PatternTrustPolicy` and `PatternMemory`.
+    private static func vouchedPatterns(
+        among parsers: [any ReceiptParser],
+        using trust: PatternMemory?
+    ) async -> Set<String> {
+        let ids = parsers.compactMap { ($0 as? PatternDrivenParser)?.pattern.id }
+        return await PatternTrustPolicy.vouched(among: ids, using: trust)
+    }
+
+    // MARK: - Duplicates
+
+    /// One purchase, two emails: the merchant sends a receipt and the bank
+    /// sends a card notification, and both are true records of the same money.
+    ///
+    /// Measured over 137 rows from the real corpus, EVERY Grab transaction was
+    /// counted twice — once by `grab.com/…` and once by `blu-receipt` as
+    /// `Grab* A-9MVBRDUGW7GDAV`. Rp 718,016 of Rp 7,026,838, so spending read
+    /// **10% high**. Nothing was wrong with either parser; each read its own
+    /// email correctly.
+    ///
+    /// Matched on EXACT amount, deliberately, rather than on `Fingerprint`'s
+    /// ±Rp5,000 buckets. That tolerance exists to pair a statement line with a
+    /// receipt whose totals genuinely differ by a tip or a service charge. This
+    /// pairing is the opposite case — the bank charges precisely what the
+    /// merchant billed — so the tolerance catches nothing extra and floods the
+    /// queue: measured on the same rows, bucket matching would have flagged 48
+    /// of 137 against this rule's 39, all nine extra of them wrong. A flag that
+    /// fires on a third of the queue trains people to approve past it.
+    ///
+    /// The buckets still do the searching — `candidates(matching:)` is indexed
+    /// on them — and the exact test filters what comes back.
+    ///
+    /// The search reaches back `manualDateSlackDays` (see `isSameCharge`),
+    /// not just the fingerprint's own ±1-bucket neighbourhood. Cheap: the
+    /// candidate pool this widens is a local SwiftData fetch, run per entry,
+    /// against a mailbox measured at roughly a hundred messages a month —
+    /// nothing like the fetches `flaggingReversals` already pays for over a
+    /// 30-day reach. Widening the POOL doesn't loosen what actually matches;
+    /// `isSameCharge` still applies the tighter 1-day slack unless a manual
+    /// entry is one side of the pair.
+    ///
+    /// Flagged, never merged. Two rows both saying Rp 44.300 on 12 Aug might be
+    /// one Grab ride billed twice or two rides at the same fare, and only the
+    /// person who took them knows. Invariant 6.
+    private func flaggingDuplicates(
+        _ entries: [ProvisionalEntry],
+        existingLedger: [LedgerTransaction] = []
+    ) async throws -> [ProvisionalEntry] {
+        var flagged = entries
+        for index in flagged.indices {
+            let entry = flagged[index]
+
+            // 1. Cross-rail or manual-entry match in canonical Google Sheets ledger
+            if let ledgerTwin = existingLedger.first(where: { Self.isPossibleLedgerDuplicate(entry, as: $0) }) {
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .possibleDuplicate,
+                        detail: Self.duplicateDetail(
+                            twinMerchantRaw: ledgerTwin.merchantRaw,
+                            twinOrigin: ledgerTwin.source == .manual
+                                ? "manual entry"
+                                : (Self.provenanceRuleName(ledgerTwin.provenance) ?? ledgerTwin.source.rawValue),
+                            twinDate: ledgerTwin.date,
+                            where: "the ledger",
+                            merchantWasCompared: LedgerDeduplicator.isManualEntry(
+                                source: entry.transaction.source, provenance: entry.provenance
+                            ) == LedgerDeduplicator.isManualEntry(
+                                source: ledgerTwin.source, provenance: ledgerTwin.provenance
+                            )
+                        )
+                    )
+                )
+                continue
+            }
+
+            // 2. Candidate match in local ProvisionalStore
+            var stored: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
+            for bucket in entry.transaction.fingerprint.widened(byDays: Self.manualDateSlackDays) {
+                for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
+                    stored[candidate.id] = candidate
+                }
+            }
+
+            // 3. Batch twin in current sync
+            let others = Array(stored.values) + entries.filter { $0.id != entry.id }
+            guard let twin = others.first(where: { Self.isSameCharge($0, as: entry) }) else { continue }
+
+            flagged[index].flags.append(
+                ReviewFlag(
+                    reason: .possibleDuplicate,
+                    detail: Self.duplicateDetail(
+                        twinMerchantRaw: twin.transaction.merchantRaw,
+                        twinOrigin: Self.isManual(twin) ? "manual entry" : (Self.ruleName(of: twin) ?? "another source"),
+                        twinDate: twin.transaction.date,
+                        where: "the queue",
+                        merchantWasCompared: Self.isManual(twin) == Self.isManual(entry)
+                    )
+                )
+            )
+        }
+        return flagged
+    }
+
+    /// Marks possible duplicates `.autoDropped` so they never reach the queue.
+    ///
+    /// They are still INSERTED, carrying the flag whose detail names the twin.
+    /// Not inserting them would make a captured charge vanish with no record
+    /// anywhere that it was ever seen, and "spend that silently disappears" is
+    /// the failure this rail's own cache-before-log ordering exists to avoid.
+    /// The queue lists these under "Dropped as duplicates" with a Restore, so
+    /// the decision is visible and one tap from being undone.
+    ///
+    /// ⚠️ The test behind the flag is deliberately LOOSE — `isSameCharge` blocks
+    /// on a fingerprint bucket (±3 days, ±5.000) and compares amount and
+    /// merchant, never direction. It is named `possibleDuplicate` because two
+    /// Grab rides at the same fare on the same day are genuinely
+    /// indistinguishable from one ride billed twice, and this now resolves that
+    /// ambiguity by discarding the second one. That is the trade this makes: a
+    /// quiet queue, paid for with the occasional real charge landing in the
+    /// dropped list instead of the ledger.
+    ///
+    /// A row also flagged `.reversal` is never dropped. `isSameCharge` ignores
+    /// direction, so a refund matches the charge it reverses on amount and
+    /// merchant alike — and auto-dropping refunds would delete exactly the rows
+    /// Invariant 5 exists to keep.
+    static func droppingDuplicates(_ entries: [ProvisionalEntry]) -> [ProvisionalEntry] {
+        entries.map { entry in
+            guard entry.flags.contains(where: { $0.reason == .possibleDuplicate }),
+                  !entry.flags.contains(where: { $0.reason == .reversal })
+            else { return entry }
+
+            var dropped = entry
+            dropped.status = .autoDropped
+            PipelineDebugStub.recordSettlement(
+                entryID: entry.id,
+                merchant: entry.transaction.merchantRaw,
+                parserOrigin: entry.readBy?.origin,
+                verdict: "auto-dropped at capture: possible duplicate"
+            )
+            return dropped
+        }
+    }
+
+    /// The one sentence a person reads before deciding whether two rows are one
+    /// purchase — so it names the OTHER row and says what actually matched.
+    ///
+    /// It used to read "Same amount and merchant as manual entry in ledger on
+    /// 29 Aug", and after the manual-boundary exception landed that was false:
+    /// for exactly those pairs the merchant is deliberately NOT compared (see
+    /// `LedgerDeduplicator.isSemanticMatch`). Asserting a check that did not
+    /// happen, in the sentence the human gate turns on, is worse than saying
+    /// nothing.
+    ///
+    /// It also never named the twin. "Same amount and day as blu-receipt" tells
+    /// you a rule fired; **"already in the ledger as 'glazed donut'"** tells you
+    /// what you bought, which is the thing you actually know the answer to. The
+    /// amount is deliberately absent — it is identical on both rows by
+    /// definition, and the card already shows it.
+    private static func duplicateDetail(
+        twinMerchantRaw: String,
+        twinOrigin: String,
+        twinDate: Date,
+        where location: String,
+        merchantWasCompared: Bool
+    ) -> String {
+        let day = twinDate.formatted(.dateTime.day().month(.abbreviated))
+        let matched = merchantWasCompared
+            ? "Same amount, merchant and day."
+            : "Same amount and day — merchants not compared."
+        return "Already in \(location) as \"\(twinMerchantRaw)\" (\(twinOrigin), \(day)). \(matched)"
+    }
+
+    /// Checks if two entries represent the same purchase using amount, merchant, date, and timestamp.
+    ///
+    /// The differing-source test is what keeps genuine repeats out of it: two
+    /// coffees on one day, both read by `blu-receipt`, are two coffees if separated
+    /// in time. The same figure arriving once from the merchant and once from
+    /// the bank is one purchase.
+    ///
+    /// Precise timestamp comparison distinguishes multiple distinct purchases on the same
+    /// day (e.g. morning vs afternoon coffee), while flagging rapid duplicate charges.
+    static func isSameCharge(_ lhs: ProvisionalEntry, as rhs: ProvisionalEntry) -> Bool {
+        guard lhs.transaction.amount == rhs.transaction.amount else { return false }
+        let lhsRule = ruleName(of: lhs)
+        let rhsRule = ruleName(of: rhs)
+
+        // Skipped when exactly one side was typed by hand — "salad" has no
+        // reason to resemble "HOKKY SUPERMARKET SURABAYA", and requiring it to
+        // is what let every manual-vs-email twin through. See
+        // `LedgerDeduplicator.isSemanticMatch`, which makes the same exception
+        // for the same reason.
+        if isManual(lhs) == isManual(rhs) {
+            guard isMerchantMatch(
+                lhsRaw: lhs.transaction.merchantRaw,
+                rhsRaw: rhs.transaction.merchantRaw,
+                lhsRule: lhsRule,
+                rhsRule: rhsRule
+            ) else { return false }
+        }
+
+        let cal = Calendar.current
+        let start1 = cal.startOfDay(for: min(lhs.transaction.date, rhs.transaction.date))
+        let start2 = cal.startOfDay(for: max(lhs.transaction.date, rhs.transaction.date))
+        let days = cal.dateComponents([.day], from: start1, to: start2).day ?? .max
+
+        let isManualPair = isManual(lhs) || isManual(rhs)
+        if isManualPair {
+            return days <= manualDateSlackDays
+        }
+
+        // Automated rails
+        guard days <= dateSlackDays else { return false }
+
+        let timeDiff = abs(lhs.transaction.date.timeIntervalSince(rhs.transaction.date))
+
+        // Same rail (e.g. two emails from blu-receipt, or two from the same pattern):
+        if lhsRule == rhsRule {
+            // Distinct days from same rail are separate purchases
+            if days > 0 { return false }
+            // On same day, if more than 15 minutes apart, they are separate purchases
+            return timeDiff <= 900
+        }
+
+        // Different rails (e.g. merchant receipt vs bank card charge):
+        // Up to 1 day slack (captured above with days <= dateSlackDays).
+        // On same day, if more than 2 hours apart, they are separate purchases
+        if days == 0 && timeDiff > 7200 {
+            return false
+        }
+
+        return true
+    }
+
+    /// Matches merchant across spelling differences, casing, trailing payment references,
+    /// and cross-rail representations (e.g. Grab driver receipt pattern vs Grab bank charge).
+    static func isMerchantMatch(
+        lhsRaw: String,
+        rhsRaw: String,
+        lhsRule: String? = nil,
+        rhsRule: String? = nil
+    ) -> Bool {
+        LedgerDeduplicator.isMerchantMatch(lhsRaw: lhsRaw, rhsRaw: rhsRaw, lhsRule: lhsRule, rhsRule: rhsRule)
+    }
+
+    /// Exact match against a canonical transaction in Google Sheets.
+    ///
+    /// Exact amount, normalized merchant, same calendar day — and nothing
+    /// finer, because nothing finer survives the write to the sheet. See
+    /// `LedgerDeduplicator` for the measurement that settled that.
+    /// Used at the sync gate to skip re-queueing purchases already read and settled.
+    static func isExactLedgerMatch(
+        _ entry: ProvisionalEntry,
+        as tx: LedgerTransaction
+    ) -> Bool {
+        LedgerDeduplicator.isDuplicate(entry, as: tx)
+    }
+
+    /// Near match or cross-rail match against Google Sheets (e.g. an email
+    /// receipt matching an earlier manual entry).
+    ///
+    /// Looser than `isExactLedgerMatch` in the one dimension the stored row can
+    /// still support — a day of slack, five if the sheet's side was typed by
+    /// hand — because this one only ever raises a FLAG. It is the gate that
+    /// shows you a duplicate rather than the gate that acts on one, so being
+    /// early and wrong here costs a person one glance, while being silent costs
+    /// a double-counted purchase.
+    static func isPossibleLedgerDuplicate(
+        _ entry: ProvisionalEntry,
+        as tx: LedgerTransaction
+    ) -> Bool {
+        guard entry.transaction.amount == tx.amount else { return false }
+
+        let isManual = LedgerDeduplicator.isManualEntry(source: tx.source, provenance: tx.provenance)
+        let entryIsManual = LedgerDeduplicator.isManualEntry(
+            source: entry.transaction.source,
+            provenance: entry.provenance
+        )
+
+        // Skipped when exactly one side was typed by hand — see
+        // `LedgerDeduplicator.isSemanticMatch`. This is the gate that catches
+        // "I logged the salad myself and the supermarket emailed me too", and
+        // a merchant test is the one thing guaranteed to miss it.
+        if isManual == entryIsManual {
+            guard isMerchantMatch(
+                lhsRaw: entry.transaction.merchantRaw,
+                rhsRaw: tx.merchantRaw,
+                lhsRule: ruleName(of: entry),
+                rhsRule: provenanceRuleName(tx.provenance)
+            ) else { return false }
+        }
+
+        let cal = Calendar.current
+        let start1 = cal.startOfDay(for: min(entry.transaction.date, tx.date))
+        let start2 = cal.startOfDay(for: max(entry.transaction.date, tx.date))
+        let days = cal.dateComponents([.day], from: start1, to: start2).day ?? .max
+        let slack = isManual ? manualDateSlackDays : dateSlackDays
+        guard days <= slack else { return false }
+
+        // Same rail, different days is two purchases — not one billed twice.
+        // The only time-shaped question a STORED row can still answer, and it
+        // answers it with a date.
+        //
+        // There was a finer test here until 2026-09-12 and it was measuring
+        // nothing: it compared `entry.transaction.date` (a real purchase time,
+        // off the email) against `tx.capturedAt` (the time the SYNC ran), then
+        // refused the match at >15 min same-rail or >2 h cross-rail. A 19:58
+        // purchase against an 08:47 sync stamp is an 11-hour gap, so the arms
+        // fired on almost everything and this gate went quiet: measured over
+        // the real 137-row ledger, **2 rows flagged where 22 should have
+        // been**. `tx` has no purchase time to compare — `SheetsSchema` writes
+        // "yyyy-MM-dd" and the time of day does not survive the write. Same
+        // root cause, same removal, as `LedgerDeduplicator`; see `TESTING.md`.
+        //
+        // What that costs, measured rather than assumed: flagging rises to
+        // **22 of 137, 16% of the queue** — under `isSameCharge`'s own 39 and
+        // well under the 48 that was rejected as too noisy, so it stays below
+        // the bar this file already sets ("a flag that fires on a third of the
+        // queue trains people to approve past it"). 20 of the 22 are the
+        // cross-rail Grab double-count; the other 2 are three identical
+        // Rp 24.000 rows on one day, which is the case nothing can resolve and
+        // exactly what a flag — rather than a drop — is for.
+        if !isManual, ruleName(of: entry) == provenanceRuleName(tx.provenance), days > 0 {
+            return false
+        }
+
+        return true
+    }
+
+    private static func isManual(_ entry: ProvisionalEntry) -> Bool {
+        if case .manual = entry.provenance { return true }
+        return false
+    }
+
+    /// See `isSameCharge` — measured, not assumed.
+    private static let dateSlackDays = 1
+    /// See `isSameCharge`. Unmeasured, unlike `dateSlackDays` — five days covers
+    /// "logged it a few days late" while keeping unrelated purchases rare.
+    private static let manualDateSlackDays = 5
+
+    // MARK: - Reversals
+
+    /// **A refund is a dedup problem.** One purchase, two rows, arriving weeks
+    /// apart instead of a day apart — so it is found the same way a duplicate
+    /// is, by fingerprint buckets, and settled the same way: flagged for a person.
+    private func flaggingReversals(
+        _ entries: [ProvisionalEntry],
+        existingLedger: [LedgerTransaction] = []
+    ) async throws -> [ProvisionalEntry] {
+        var flagged = entries
+        for index in flagged.indices {
+            let refund = flagged[index]
+            guard refund.resolution.nonSpendType == .refund else { continue }
+
+            var candidates: [ProvisionalEntry.ID: ProvisionalEntry] = [:]
+            for bucket in refund.transaction.fingerprint.lookingBack(days: Self.reversalWindowDays) {
+                for candidate in (try? await provisional.candidates(matching: bucket)) ?? [] {
+                    candidates[candidate.id] = candidate
+                }
+            }
+            for candidate in entries where candidate.id != refund.id {
+                candidates[candidate.id] = candidate
+            }
+
+            let charge = candidates.values
+                .filter { Self.isReversed(by: refund, $0) }
+                .max { $0.transaction.date < $1.transaction.date }
+
+            if let charge {
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .reversal,
+                        detail: "Undoes \(charge.transaction.merchantRaw) on "
+                            + charge.transaction.date.formatted(.dateTime.day().month(.abbreviated))
+                    )
+                )
+                continue
+            }
+
+            // Search canonical ledger if not found in provisional/batch
+            let ledgerCharge = existingLedger
+                .filter { Self.isReversedInLedger(by: refund, $0) }
+                .max { $0.date < $1.date }
+
+            if let ledgerCharge {
+                flagged[index].flags.append(
+                    ReviewFlag(
+                        reason: .reversal,
+                        detail: "Undoes \(ledgerCharge.merchantRaw) on "
+                            + ledgerCharge.date.formatted(.dateTime.day().month(.abbreviated))
+                    )
+                )
+            }
+        }
+        return flagged
+    }
+
+    /// Thirty days covers slow card acquirer chargebacks.
+    private static let reversalWindowDays = 30
+
+    private static func isReversed(by refund: ProvisionalEntry, _ candidate: ProvisionalEntry) -> Bool {
+        guard candidate.resolution.kind == .spend,
+              candidate.transaction.amount == refund.transaction.amount,
+              isMerchantMatch(
+                  lhsRaw: candidate.transaction.merchantRaw,
+                  rhsRaw: refund.transaction.merchantRaw,
+                  lhsRule: ruleName(of: candidate),
+                  rhsRule: ruleName(of: refund)
+              )
+        else { return false }
+
+        let charged = candidate.transaction.date
+        let refunded = refund.transaction.date
+        guard charged <= refunded else { return false }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: charged),
+            to: Calendar.current.startOfDay(for: refunded)
+        ).day ?? .max
+        return days <= reversalWindowDays
+    }
+
+    private static func isReversedInLedger(by refund: ProvisionalEntry, _ candidate: LedgerTransaction) -> Bool {
+        guard candidate.kind == .spend,
+              candidate.amount == refund.transaction.amount,
+              isMerchantMatch(
+                  lhsRaw: candidate.merchantRaw,
+                  rhsRaw: refund.transaction.merchantRaw,
+                  lhsRule: provenanceRuleName(candidate.provenance),
+                  rhsRule: ruleName(of: refund)
+              )
+        else { return false }
+
+        let charged = candidate.date
+        let refunded = refund.transaction.date
+        guard charged <= refunded else { return false }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: charged),
+            to: Calendar.current.startOfDay(for: refunded)
+        ).day ?? .max
+        return days <= reversalWindowDays
+    }
+
+    private static func ruleName(of entry: ProvisionalEntry) -> String {
+        if case .rule(let id) = entry.provenance { return id.rawValue }
+        return "another source"
+    }
+
+    private static func provenanceRuleName(_ p: ProvisionalEntry.Provenance) -> String {
+        if case .rule(let id) = p { return id.rawValue }
+        return "another source"
+    }
+
+    // MARK: - Building the row
+
+    private static func entry(
+        from receipt: ParsedReceipt,
+        email: CapturedEmail,
+        parser: any ReceiptParser,
+        vouched: Set<String>
+    ) -> ProvisionalEntry {
+        let transaction = NormalizedTransaction(
+            id: UUID(),
+            documentID: UUID(),
+            source: .email,
+            date: receipt.date,
+            amount: receipt.amount,
+            // Invariant 3: exactly what the parser read, never tidied.
+            merchantRaw: receipt.merchantRaw,
+            merchant: nil,
+            lineItems: [],
+            fingerprint: Fingerprint(amount: receipt.amount, date: receipt.date)
+        )
+
+        // A pattern with no verification behind it says so on every row it
+        // produces. Coverage proved it fits the template's shape; nothing
+        // proved it read the right number, and the approval queue is where
+        // that gets decided.
+        //
+        // `vouched` is what makes that a ladder rather than a permanent label.
+        // On a mailbox with no hand-written parser NOTHING is ever verified at
+        // synthesis — `verify` has no oracle, so `verifiedAgainst` is 0 for
+        // every pattern, forever — and a flag that fires on every row of every
+        // sender is a flag nobody reads. Once the queue itself has vouched for
+        // enough of a pattern's rows (see `PatternTrustPolicy`), it stops.
+        var flags = receipt.flags
+        if let learned = parser as? PatternDrivenParser,
+           learned.pattern.verifiedAgainst == 0,
+           !vouched.contains(learned.pattern.id) {
+            flags.append(
+                ReviewFlag(
+                    reason: .unverifiedPattern,
+                    detail: "learned from \(learned.pattern.senderDomain), never verified"
+                )
+            )
+        }
+
+        return ProvisionalEntry(
+            id: UUID(),
+            transaction: transaction,
+            resolution: ProvisionalEntry.Resolution(
+                kind: receipt.kind,
+                nonSpendType: receipt.nonSpendType,
+                // The parser reads a receipt; it does not know the user's
+                // buckets. Categorising is the approver's job (or, later, model
+                // job 1) — guessing here would put spend in a bucket nobody chose.
+                categoryID: nil,
+                merchantID: nil,
+                splits: [],
+                mergedFrom: []
+            ),
+            provenance: .rule(parser.id),
+            flags: flags,
+            status: .pending,
+            createdAt: receipt.date,
+            // Kept apart from `provenance`, which a retag overwrites. These two
+            // are what let the approval queue vouch for the parser that read
+            // the email — see `PatternMemory`.
+            readBy: parser.id,
+            readAs: receipt.kind
+        )
+    }
+
+    /// `from:(a OR b)` over every parser's domain, so the fetch itself is
+    /// narrow — model calls and bandwidth are never spent on LinkedIn.
+    ///
+    /// Takes the ACTIVE parser list, not the hand-written one: a promoted
+    /// pattern that isn't in this query would never be sent an email to parse,
+    /// and the loop would look like it had learned nothing.
+    private static func senderQuery(for parsers: [any ReceiptParser]) -> String {
+        let domains = parsers.compactMap { ($0 as? DomainScopedParser)?.domain }
+        guard !domains.isEmpty else { return "" }
+        return "from:(" + domains.joined(separator: " OR ") + ")"
+    }
+}
+
+/// A parser that knows which sender it belongs to, so the rail can narrow the
+/// Gmail query instead of downloading everything and discarding most of it.
+nonisolated protocol DomainScopedParser {
+    var domain: String { get }
+}

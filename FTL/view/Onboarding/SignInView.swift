@@ -1,0 +1,137 @@
+//
+//  SignInView.swift
+//  FTL — view/Onboarding
+//
+//  The gate before anything else. The app is useless without a Google account:
+//  the ledger is a Sheet and the primary capture rail is Gmail.
+//
+//  Says plainly what the access is for and where the data goes — "read your
+//  email" is a large ask, and the honest answer (it stays on the device) is the
+//  reason the whole architecture is shaped the way it is.
+//
+
+import SwiftUI
+
+struct SignInView: View {
+    @EnvironmentObject private var auth: GoogleAuthManager
+    @State private var isWorking = false
+
+    /// DEBUG only — see RootView.bypassAuth.
+    var onDebugBypass: () -> Void = {}
+    /// DEBUG only. Same sign-in as the button below, but the mailbox lands in
+    /// an environment with no Google Sheet behind it — see
+    /// `AppEnvironment.liveWithoutSheet()`. Called synchronously, before
+    /// `auth.signIn()`, so it only decides which environment the sign-in
+    /// lands in.
+    var onDebugLocalLedger: () -> Void = {}
+
+    var body: some View {
+        VStack(spacing: FTLSpacing.xl) {
+            Spacer()
+
+            VStack(spacing: FTLSpacing.md) {
+                // The beam is on here and nowhere else on this screen: the two
+                // capability rows below spell out that the app reaches into a
+                // mailbox, and this is the same sentence in one picture.
+                FTLMark(
+                    width: FTLMarkSize.hero,
+                    tint: FTLColor.textTertiary,
+                    showsBeam: true,
+                    lineWidth: 1.4
+                )
+                .padding(.bottom, FTLSpacing.xs)
+
+                Text("FTL")
+                    .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                    .tracking(10)
+                    .foregroundStyle(FTLColor.textPrimary)
+                Text("Your ledger, kept current without the data entry.")
+                    .font(FTLTypography.bodyRegular)
+                    .foregroundStyle(FTLColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            SurfaceCard(cornerRadius: FTLRadius.card, padding: FTLSpacing.lg) {
+                VStack(alignment: .leading, spacing: FTLSpacing.md) {
+                    capability(
+                        icon: "envelope",
+                        title: "Reads receipt emails",
+                        detail: "Read-only. Parsing happens on this device."
+                    )
+                    capability(
+                        icon: "tablecells",
+                        title: "Writes to your Sheet",
+                        detail: "Only rows you approve. It stays your spreadsheet."
+                    )
+                }
+            }
+
+            Spacer()
+
+            Button {
+                Task {
+                    isWorking = true
+                    await auth.signIn()
+                    isWorking = false
+                }
+            } label: {
+                HStack(spacing: FTLSpacing.sm) {
+                    if isWorking { ProgressView().tint(FTLColor.onLight) }
+                    Text("Continue with Google")
+                }
+                .font(FTLTypography.rowTitle)
+                .foregroundStyle(FTLColor.onLight)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(FTLColor.textPrimary, in: RoundedRectangle(cornerRadius: FTLRadius.control, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isWorking)
+
+            if let error = auth.errorMessage {
+                Text(error)
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.error)
+                    .multilineTextAlignment(.center)
+            }
+
+            #if DEBUG
+            Button("Skip sign-in (debug)", action: onDebugBypass)
+                .font(FTLTypography.captionSmall)
+                .tint(FTLColor.textDisabled)
+
+            // Real Gmail, no Google Sheet — for stress-testing the capture →
+            // discovery → tag loop against a real mailbox without setting up
+            // (or writing test rows into) a real ledger.
+            Button("Sign in without a spreadsheet (debug)") {
+                onDebugLocalLedger()
+                Task {
+                    isWorking = true
+                    await auth.signIn()
+                    isWorking = false
+                }
+            }
+            .font(FTLTypography.captionSmall)
+            .tint(FTLColor.textDisabled)
+            #endif
+        }
+        .padding(FTLSpacing.screenMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(GlowBackground())
+    }
+
+    private func capability(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: FTLSpacing.md) {
+            Image(systemName: icon)
+                .foregroundStyle(FTLColor.accent)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: FTLSpacing.xxs) {
+                Text(title)
+                    .font(FTLTypography.body)
+                    .foregroundStyle(FTLColor.textPrimary)
+                Text(detail)
+                    .font(FTLTypography.captionSmall)
+                    .foregroundStyle(FTLColor.textSecondary)
+            }
+        }
+    }
+}

@@ -3,3 +3,6 @@ FTL/secrets.plist
 .DS_STORE/
 .DS_STORE
 *.xcuserdata
+*/CLAUDE.md
+test/
+FTL/test/

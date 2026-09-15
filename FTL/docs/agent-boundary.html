@@ -1,0 +1,443 @@
+<title>Where FTL's Agent Acts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* FTL is a committed dark theme — CLAUDE.md, Design tokens. This page
+     documents that app, so it commits to the same one rather than inverting
+     into a light mode the product does not have. Every colour is painted
+     explicitly so the page holds on any host ground. */
+  :root{
+    --ground:#0F0F10;
+    --panel:#191919;
+    --panel-raised:#1F1F20;
+    --hairline:rgba(255,255,255,.09);
+    --rule:rgba(255,255,255,.16);
+    --text:#F2F2F3;
+    --text-2:#A3A3A8;
+    --text-3:#75757A;
+    --text-4:#57575C;
+    /* The one signal colour in the app (#C87F5C). On this page it means
+       exactly one thing: the model is involved here. Nothing else is tinted. */
+    --agent:#C87F5C;
+    --agent-dim:rgba(200,127,92,.32);
+    --agent-wash:rgba(200,127,92,.08);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Instrument Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--ground);color:var(--text);
+    font-family:var(--sans);font-size:16px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    padding-inline:20px;padding-block:48px 72px;
+  }
+  .wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--text-4);margin:0;
+  }
+  h1{
+    font-size:clamp(30px,6vw,44px);line-height:1.08;font-weight:600;
+    letter-spacing:-.02em;margin:10px 0 0;text-wrap:balance;
+  }
+  h2{
+    font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0;text-wrap:balance;
+  }
+  .lede{font-size:17px;color:var(--text-2);margin:16px 0 0;max-width:62ch}
+  .lede b{color:var(--text);font-weight:500}
+
+  /* ── header meta ─────────────────────────────────────────────── */
+  .meta{
+    display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:22px;
+    font-family:var(--mono);font-size:12px;
+  }
+  .chip{
+    border:1px solid var(--hairline);border-radius:99px;padding:4px 11px;
+    color:var(--text-3);background:var(--panel);
+  }
+  .chip.is-agent{color:var(--agent);border-color:var(--agent-dim);background:var(--agent-wash)}
+
+  section{display:flex;flex-direction:column;gap:20px}
+  .sec-head{display:flex;flex-direction:column;gap:6px}
+  .sec-head p{margin:0;color:var(--text-2);max-width:64ch;font-size:15px}
+
+  /* ── the pipeline spine ──────────────────────────────────────── */
+  .spine{display:flex;flex-direction:column;gap:0}
+  .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.82fr);gap:14px;align-items:start}
+  @media (max-width:640px){ .row{grid-template-columns:1fr} }
+
+  .node{
+    background:var(--panel);border:1px solid var(--hairline);border-radius:10px;
+    padding:13px 15px;display:flex;flex-direction:column;gap:3px;
+  }
+  .node .k{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text-4);
+  }
+  .node .n{font-family:var(--mono);font-size:14px;font-weight:500;color:var(--text)}
+  .node .d{font-size:13.5px;color:var(--text-3);line-height:1.45}
+
+  /* the two places a model is called */
+  .node.agent{border-color:var(--agent-dim);background:var(--agent-wash)}
+  .node.agent .k{color:var(--agent)}
+  .node.agent .n{color:var(--agent)}
+  .node.agent .d{color:var(--text-2)}
+
+  .drop{height:18px;width:1px;background:var(--rule);margin-left:22px}
+
+  /* the branch that leaves the spine */
+  .aside{
+    border-left:1px solid var(--hairline);padding:11px 0 11px 15px;
+    display:flex;flex-direction:column;gap:3px;
+  }
+  .aside .k{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--text-4);
+  }
+  .aside .d{font-size:13.5px;color:var(--text-3);line-height:1.45}
+  .aside.agent{border-left-color:var(--agent-dim)}
+  .aside.agent .k{color:var(--agent)}
+
+  /* the human gate — the one hard rule on the page */
+  .gate{
+    margin:22px 0;padding:18px 16px;text-align:center;
+    border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);
+    display:flex;flex-direction:column;gap:5px;
+  }
+  .gate .n{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:.04em}
+  .gate .d{font-size:13.5px;color:var(--text-3);max-width:58ch;margin:0 auto}
+
+  /* ── figure / svg ────────────────────────────────────────────── */
+  figure{margin:0;display:flex;flex-direction:column;gap:14px}
+  .canvas{
+    background:var(--panel);border:1px solid var(--hairline);border-radius:12px;
+    padding:12px;overflow-x:auto;
+  }
+  .canvas svg{display:block;width:100%;min-width:600px;max-width:100%;height:auto;color:var(--text-3)}
+  figcaption{font-size:13.5px;color:var(--text-3);max-width:64ch}
+  figcaption b{color:var(--text-2);font-weight:500}
+
+  /* ── edge cases ──────────────────────────────────────────────── */
+  .edges{display:grid;grid-template-columns:1fr;gap:0;border-top:1px solid var(--hairline)}
+  .edge{
+    display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:8px 22px;
+    padding:15px 0;border-bottom:1px solid var(--hairline);align-items:start;
+  }
+  @media (max-width:640px){ .edge{grid-template-columns:1fr;gap:6px} }
+  .edge .when{display:flex;flex-direction:column;gap:4px}
+  .edge .when b{
+    font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);
+  }
+  .edge .when span{font-size:12.5px;color:var(--text-4);font-family:var(--mono)}
+  .edge .then{font-size:14px;color:var(--text-2);line-height:1.5}
+  .edge .then em{font-style:normal;color:var(--agent)}
+  .tag{
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    border:1px solid var(--hairline);border-radius:4px;padding:2px 6px;color:var(--text-4);
+    align-self:flex-start;
+  }
+  .tag.agent{color:var(--agent);border-color:var(--agent-dim)}
+
+  .note{
+    background:var(--panel);border:1px solid var(--hairline);border-radius:10px;
+    padding:16px 18px;font-size:14px;color:var(--text-2);line-height:1.55;
+  }
+  .note b{color:var(--text);font-weight:500}
+  .note code,code{font-family:var(--mono);font-size:.92em;color:var(--text)}
+
+  footer{
+    border-top:1px solid var(--hairline);padding-top:18px;
+    font-family:var(--mono);font-size:11.5px;color:var(--text-4);line-height:1.7;
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">FTL · runtime architecture</p>
+    <h1>Where the agent acts</h1>
+    <p class="lede">Two places in this app call a model. Everything else is deterministic code or a person.
+      This page is greyscale except the agent — the same rule the app itself follows, where
+      <b>colour is spent only on the thing that needs pointing at</b>.</p>
+    <div class="meta">
+      <span class="chip">0.7 (1)</span>
+      <span class="chip">audited 2026-09-14</span>
+      <span class="chip">trust: assist, pinned</span>
+      <span class="chip is-agent">■ model involved</span>
+    </div>
+  </header>
+
+  <!-- ── 1. the pipeline ───────────────────────────────────────── -->
+  <section>
+    <div class="sec-head">
+      <h2>The capture path</h2>
+      <p>One direction, top to bottom. Everything above the rule is automatic and recoverable;
+         nothing below it moves without a tap.</p>
+    </div>
+
+    <div class="spine">
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Capture</span>
+          <span class="n">GmailRail</span>
+          <span class="d">Email only. Statement and photo rails are specified, not built.</span>
+        </div>
+        <div class="aside">
+          <span class="k">4 triggers, none of them a tap</span>
+          <span class="d">Foreground <code>AutoSync</code> · <code>DiscoverySync</code> once per launch ·
+            <code>BackgroundRefresh</code> when iOS grants a window · <code>CheckReceiptsIntent</code> from Shortcuts.</span>
+        </div>
+      </div>
+      <div class="drop"></div>
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Extraction</span>
+          <span class="n">activeParsers — learned + presets</span>
+          <span class="d">A promoted pattern is a stored rule. It executes with no model in the loop.</span>
+        </div>
+        <div class="aside agent">
+          <span class="k">★ written by synthesis, offline</span>
+          <span class="d">The agentic loop below produced these. That work happens outside the sync,
+            and what it leaves behind is deterministic.</span>
+        </div>
+      </div>
+      <div class="drop"></div>
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Normalize</span>
+          <span class="n">DocumentNormalizer</span>
+          <span class="d">Parse, strip, fingerprint. <code>merchantRaw</code> is written once and never mutated.</span>
+        </div>
+        <div class="aside">
+          <span class="k">Fingerprint</span>
+          <span class="d">f(amount ±5.000, date ±3 days) — a blocking key, deliberately lossy. It never decides anything.</span>
+        </div>
+      </div>
+      <div class="drop"></div>
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Rules</span>
+          <span class="n">dedup · pairing · non-spend · recurring</span>
+          <span class="d">Deterministic throughout. Settled rows skip the model entirely — that path is the majority.</span>
+        </div>
+        <div class="aside">
+          <span class="k">Two rows leave here</span>
+          <span class="d">A possible duplicate is auto-dropped and restorable. A refund is paired and flagged
+            <code>.reversal</code> — never netted against the charge it reverses.</span>
+        </div>
+      </div>
+      <div class="drop"></div>
+
+      <div class="row">
+        <div class="node agent">
+          <span class="k">★ Model job — the tagger</span>
+          <span class="n">PurchaseTagger.tag</span>
+          <span class="d">Which bucket? Asked only for a merchant with no history. ≤8 model calls per sync,
+            p95 3.82s each. Skipped entirely on a background fetch.</span>
+        </div>
+        <div class="aside">
+          <span class="k">Why it can't be verified</span>
+          <span class="d">Whether <code>HOKKY SUPERMARKET</code> is groceries or shopping is a decision about your
+            budget, not a fact in the email. There is no oracle anywhere — so it proposes, you decide, it accrues.</span>
+        </div>
+      </div>
+      <div class="drop"></div>
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Cache · recoverable</span>
+          <span class="n">ProvisionalStore</span>
+          <span class="d">Nothing here is a fact. This is the layer where a false positive costs a tap.</span>
+        </div>
+        <div class="aside">
+          <span class="k">On every queue load — no model, no network</span>
+          <span class="d"><code>PurchaseTagger.refresh</code> re-derives tags from what you've already decided.
+            <code>MerchantMemory</code> fills in what you call each shop.</span>
+        </div>
+      </div>
+
+      <div class="gate">
+        <span class="n">THE HUMAN GATE</span>
+        <span class="d">ApprovalService. The only path from the cache into the ledger.
+          Correct the amount, the merchant, the bucket or the kind — then approve, or drop.</span>
+      </div>
+
+      <div class="row">
+        <div class="node">
+          <span class="k">Canonical</span>
+          <span class="n">Google Sheets — transactions · budgets</span>
+          <span class="d">Your spreadsheet. <code>update</code> and <code>delete</code> exist for corrections and are
+            human-driven; promotion has exactly one door.</span>
+        </div>
+        <div class="aside">
+          <span class="k">Every number on screen</span>
+          <span class="d"><code>CalcTool</code> or a Sheets formula — including the home-screen widget snapshot.
+            A model that emits a total is a defect.</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 2. the loop ───────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head">
+      <h2>The agentic loop</h2>
+      <p>The other model job, and the only self-extending thing in the app: it teaches itself to read
+         senders nobody wrote a parser for. It is a cycle, and it closes through you.</p>
+    </div>
+
+    <figure>
+      <div class="canvas">
+        <svg viewBox="0 0 760 520" role="img"
+             aria-label="A six-step cycle: discovery finds senders no parser claims; the model proposes an extraction pattern; a deterministic verifier scores it; it is promoted to a stored rule; rows from it arrive flagged as unverified; you settle them in the approval queue, which accrues evidence in PatternMemory and eventually vouches for the pattern, stopping the flag.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+            </marker>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#C87F5C"></path>
+            </marker>
+          </defs>
+
+          <!-- arrows first, so nodes sit on top -->
+          <line x1="486" y1="60" x2="600" y2="132" stroke="#C87F5C" stroke-width="1.5" marker-end="url(#ar-a)"></line>
+          <line x1="646" y1="200" x2="646" y2="292" stroke="#C87F5C" stroke-width="1.5" marker-end="url(#ar-a)"></line>
+          <line x1="600" y1="360" x2="486" y2="430" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"></line>
+          <line x1="274" y1="446" x2="180" y2="362" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"></line>
+          <line x1="114" y1="292" x2="114" y2="202" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"></line>
+          <line x1="180" y1="136" x2="274" y2="62" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"></line>
+
+          <!-- 1 discovery -->
+          <rect x="280" y="18" width="200" height="54" rx="8" fill="#1F1F20" stroke="rgba(255,255,255,.14)"></rect>
+          <text x="380" y="40" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#75757A">DISCOVERY</text>
+          <text x="380" y="58" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#F2F2F3">senders no parser claims</text>
+
+          <!-- 2 synthesize (agent) -->
+          <rect x="546" y="140" width="200" height="60" rx="8" fill="rgba(200,127,92,.10)" stroke="rgba(200,127,92,.42)"></rect>
+          <text x="646" y="162" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#C87F5C">★ MODEL — SYNTHESIZE</text>
+          <text x="646" y="180" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#C87F5C">propose a pattern</text>
+          <text x="646" y="194" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A3A3A8">gate: .anchorSynthesis</text>
+
+          <!-- 3 verify -->
+          <rect x="546" y="300" width="200" height="60" rx="8" fill="#1F1F20" stroke="rgba(255,255,255,.14)"></rect>
+          <text x="646" y="322" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#75757A">VERIFY — DETERMINISTIC</text>
+          <text x="646" y="340" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#F2F2F3">score vs held-out mail</text>
+          <text x="646" y="354" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A3A3A8">coverage · direction · plausibility</text>
+
+          <!-- 4 promote -->
+          <rect x="280" y="418" width="200" height="60" rx="8" fill="#1F1F20" stroke="rgba(255,255,255,.14)"></rect>
+          <text x="380" y="440" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#75757A">PROMOTE</text>
+          <text x="380" y="458" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#F2F2F3">a stored rule</text>
+          <text x="380" y="472" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A3A3A8">no model executes it</text>
+
+          <!-- 5 flagged rows -->
+          <rect x="14" y="300" width="200" height="60" rx="8" fill="#1F1F20" stroke="rgba(255,255,255,.14)"></rect>
+          <text x="114" y="322" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#75757A">ROWS ARRIVE</text>
+          <text x="114" y="340" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#F2F2F3">flagged unverified</text>
+          <text x="114" y="354" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A3A3A8">every one, until vouched</text>
+
+          <!-- 6 you -->
+          <rect x="14" y="140" width="200" height="60" rx="8" fill="#1F1F20" stroke="rgba(255,255,255,.28)"></rect>
+          <text x="114" y="162" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.4" fill="#A3A3A8">YOU — THE QUEUE</text>
+          <text x="114" y="180" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12.5" fill="#F2F2F3">keep · correct · drop</text>
+          <text x="114" y="194" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A3A3A8">→ PatternMemory</text>
+
+          <!-- centre: the gate that closes the loop -->
+          <text x="380" y="238" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1.6" fill="#75757A">THE ONLY ORACLE AN UNSEEN MAILBOX HAS</text>
+          <text x="380" y="266" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="17" fill="#F2F2F3">≥95% kept over ≥20 settled</text>
+          <text x="380" y="290" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#A3A3A8">→ vouched · the flag stops · reversible</text>
+        </svg>
+      </div>
+      <figcaption>One model step out of six. The proposal is the only thing generated; scoring, promotion and
+        execution are all code, and the evidence that finally clears the flag is
+        <b>what you did in the approval queue</b> — not a confidence the model reported about itself.</figcaption>
+    </figure>
+
+    <div class="note">
+      <b>Why the loop has to close through you.</b> The verifier needs an oracle — held-out mail with a known-good
+      answer. That exists only where a hand-written parser already covers the sender, which is exactly where the
+      learned pattern is redundant. On a mailbox nobody has written a parser for, <code>attempted == 0</code> for every
+      sender and a pattern that is 100% correct still only ever reaches <em>provisional</em>. The queue is the one
+      oracle such a mailbox generates on its own, because you look at every row anyway.
+    </div>
+  </section>
+
+  <!-- ── 3. edge cases ─────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head">
+      <h2>Edge cases — what happens when the agent can't answer</h2>
+      <p>The boundary is easiest to see where things go wrong. In every row below the failure is absorbed by
+         deterministic code or handed to a person; none of them ends in a guess reaching the ledger.</p>
+    </div>
+
+    <div class="edges">
+
+      <div class="edge">
+        <div class="when"><b>Merchant has no history</b><span>first time you see a shop</span></div>
+        <div class="then"><em>The model is asked.</em> This is the one routine case that spends a call.
+          Every later row from that merchant is a memory lookup, not a call.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>Prompt reads as Indonesian</b><span>LanguageGate · .classification</span></div>
+        <div class="then">Refused before the model sees it, and the row is <b>flagged, never dropped</b>.
+          Measured: this refuses <b>36% of money mail</b> — a hard ceiling on how much of the queue the tagger can reach.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>Call budget spent</b><span>8 calls per sync</span></div>
+        <div class="then">Remaining rows stay untagged and say so. They are picked up by the memory-only
+          <code>refresh</code> on the next queue load, or by the next sync — never by spending more calls.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>Fetch runs in the background</b><span>~30s before iOS kills it</span></div>
+        <div class="then">The tagger is <b>dropped from the rail entirely</b>. 8 calls × 3.82s is the whole budget;
+          spending it there would mean rows parsed and never written.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>No parser claims the email</b><span>an unseen sender</span></div>
+        <div class="then"><em>The loop starts.</em> Discovery notices, synthesis proposes, the verifier scores —
+          and on a mailbox with no oracle the result is provisional no matter how good it is.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>A pattern reads the wrong figure</b><span>you correct it in the queue</span></div>
+        <div class="then">Counted against that pattern as <code>correctedAmount</code> — the harshest verdict, because an
+          amount is stated outright in the email. A cosmetic rename that keys to the same merchant is
+          <b>not</b> counted; otherwise remembering the name would pin the pattern at zero forever.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>Two identical fares, one day</b><span>possibleDuplicate</span></div>
+        <div class="then">Auto-dropped at capture — the one place the system discards captured spending without asking.
+          Made survivable rather than safe: kept under its own status, listed in the queue, one tap to restore,
+          and it teaches the scoreboard nothing.</div>
+      </div>
+
+      <div class="edge">
+        <div class="when"><b>The model sounds certain</b><span>confidence 0.76 vs 0.73</span></div>
+        <div class="then">Ignored. Measured separation between right and wrong answers was <b>0.03</b>, so nothing in
+          this app routes on confidence. Routing is by rules, flags, and what you have actually approved.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    NOT BUILT — PurchaseClassifier and ResultReasoner are Phase 2 contracts, commented out in AppEnvironment,
+    zero model calls. FoundationModelClassifier and FailureExplainer call a model but reach only the evaluation
+    harness and the Debug screen.<br>
+    Auto-approval stays off: the last unattended-write measurement was 67% correct.
+  </footer>
+
+</div>

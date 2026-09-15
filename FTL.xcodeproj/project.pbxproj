@@ -6,20 +6,88 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9B99B9D1304978A700DB5E81 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 9B99B9D0304978A700DB5E81 /* GoogleSignIn */; };
+		9B99B9D3304978A700DB5E81 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */; };
+		9B99B9ED3049800000DB5E81 /* FTLWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9B99B9E13049800000DB5E81 /* FTLWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9B99B9EA3049800000DB5E81 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B99B9A8304959FF00DB5E81 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9B99B9E03049800000DB5E81;
+			remoteInfo = FTLWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9B99B9EC3049800000DB5E81 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9B99B9ED3049800000DB5E81 /* FTLWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		9B99B9B0304959FF00DB5E81 /* FTL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FTL.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B99B9E13049800000DB5E81 /* FTLWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FTLWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9B99B9C33049746E00DB5E81 /* Exceptions for "FTL" folder in "FTL" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9B99B9AF304959FF00DB5E81 /* FTL */;
+		};
+		9B99B9E33049800000DB5E81 /* Exceptions for "FTLWidgets" folder in "FTLWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9B99B9E03049800000DB5E81 /* FTLWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9B99B9B2304959FF00DB5E81 /* FTL */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B99B9C33049746E00DB5E81 /* Exceptions for "FTL" folder in "FTL" target */,
+			);
 			path = FTL;
+			sourceTree = "<group>";
+		};
+		9B99B9E23049800000DB5E81 /* FTLWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B99B9E33049800000DB5E81 /* Exceptions for "FTLWidgets" folder in "FTLWidgetsExtension" target */,
+			);
+			path = FTLWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		9B99B9AD304959FF00DB5E81 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B99B9D1304978A700DB5E81 /* GoogleSignIn in Frameworks */,
+				9B99B9D3304978A700DB5E81 /* GoogleSignInSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9B99B9E53049800000DB5E81 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -32,6 +100,7 @@
 		9B99B9A7304959FF00DB5E81 = {
 			isa = PBXGroup;
 			children = (
+				9B99B9E23049800000DB5E81 /* FTLWidgets */,
 				9B99B9B2304959FF00DB5E81 /* FTL */,
 				9B99B9B1304959FF00DB5E81 /* Products */,
 			);
@@ -40,6 +109,7 @@
 		9B99B9B1304959FF00DB5E81 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				9B99B9E13049800000DB5E81 /* FTLWidgetsExtension.appex */,
 				9B99B9B0304959FF00DB5E81 /* FTL.app */,
 			);
 			name = Products;
@@ -55,20 +125,44 @@
 				9B99B9AC304959FF00DB5E81 /* Sources */,
 				9B99B9AD304959FF00DB5E81 /* Frameworks */,
 				9B99B9AE304959FF00DB5E81 /* Resources */,
+				9B99B9EC3049800000DB5E81 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9B99B9EB3049800000DB5E81 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				9B99B9B2304959FF00DB5E81 /* FTL */,
 			);
 			name = FTL;
 			packageProductDependencies = (
+				9B99B9D0304978A700DB5E81 /* GoogleSignIn */,
+				9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */,
 			);
 			productName = FTL;
 			productReference = 9B99B9B0304959FF00DB5E81 /* FTL.app */;
 			productType = "com.apple.product-type.application";
+		};
+		9B99B9E03049800000DB5E81 /* FTLWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B99B9E73049800000DB5E81 /* Build configuration list for PBXNativeTarget "FTLWidgetsExtension" */;
+			buildPhases = (
+				9B99B9E43049800000DB5E81 /* Sources */,
+				9B99B9E53049800000DB5E81 /* Frameworks */,
+				9B99B9E63049800000DB5E81 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9B99B9E23049800000DB5E81 /* FTLWidgets */,
+			);
+			name = FTLWidgetsExtension;
+			productName = FTLWidgetsExtension;
+			productReference = 9B99B9E13049800000DB5E81 /* FTLWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +177,9 @@
 					9B99B9AF304959FF00DB5E81 = {
 						CreatedOnToolsVersion = 26.6;
 					};
+					9B99B9E03049800000DB5E81 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = 9B99B9AB304959FF00DB5E81 /* Build configuration list for PBXProject "FTL" */;
@@ -94,18 +191,29 @@
 			);
 			mainGroup = 9B99B9A7304959FF00DB5E81;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9B99B9B1304959FF00DB5E81 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				9B99B9AF304959FF00DB5E81 /* FTL */,
+				9B99B9E03049800000DB5E81 /* FTLWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		9B99B9AE304959FF00DB5E81 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9B99B9E63049800000DB5E81 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +230,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9B99B9E43049800000DB5E81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9B99B9EB3049800000DB5E81 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9B99B9E03049800000DB5E81 /* FTLWidgetsExtension */;
+			targetProxy = 9B99B9EA3049800000DB5E81 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		9B99B9B930495A0000DB5E81 /* Debug */ = {
@@ -251,11 +374,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = FTL/FTL.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8K59B5RZ46;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTL/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -265,7 +390,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = "hend-aml.FTL";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -283,11 +408,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = FTL/FTL.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8K59B5RZ46;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTL/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -297,9 +424,73 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = "hend-aml.FTL";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9B99B9E83049800000DB5E81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = FTLWidgets/FTLWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8K59B5RZ46;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTLWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FTLWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = "hend-aml.FTL.FTLWidgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9B99B9E93049800000DB5E81 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = FTLWidgets/FTLWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8K59B5RZ46;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FTLWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FTLWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = "hend-aml.FTL.FTLWidgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -331,7 +522,40 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		9B99B9E73049800000DB5E81 /* Build configuration list for PBXNativeTarget "FTLWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B99B9E83049800000DB5E81 /* Debug */,
+				9B99B9E93049800000DB5E81 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9B99B9D0304978A700DB5E81 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		9B99B9D2304978A700DB5E81 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B99B9CF304978A700DB5E81 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9B99B9A8304959FF00DB5E81 /* Project object */;
 }

@@ -1,0 +1,813 @@
+{
+  "note": "A mailbox nobody has written anything for: 100 invented emails, six senders, no preset and no hand-written parser anywhere near it. Every sender sits on one side of one gate, so a failure names which gate broke rather than 'the pipeline is off'. Nothing here is real mail — no merchant anyone visited, no names, no account numbers. Amounts are near-unique on purpose: real transaction figures almost never repeat (blu shows 50 distinct in 55 emails), and an earlier draft drew from a short price list, which made the happy-path sender fail a gate for a reason no real sender would.",
+  "senders": {
+    "nusabank.example.com": "25 purchases, one layout — the happy path. Plus 2 refunds and 2 incoming, both DELIBERATELY below the volume floor: a sender's rare layouts are invisible to the loop, and this is where that shows.",
+    "kirimin.example.com": "20 emails, one subject, TWO layouts (10 rides / 10 food orders). A sender is not one template.",
+    "promo.tokobagus.example.com": "15 emails, templated, full of Rp, the same three prices every time. Must be refused on amount variance.",
+    "warungkopi.example.com": "6 genuine receipts. Must be refused on VOLUME — waits rather than guesses. Its amounts are fine.",
+    "kabar.example.com": "20 newsletters, no currency anywhere. Must be dropped by the currency filter before anything else runs.",
+    "dompetku.example.com": "10 top-ups. Amounts move; the counterparty is the same string every time. Any pattern anchored on it reads a label, and the constant-merchant check must refuse it."
+  },
+  "emails": [
+    {
+      "id": "ee-001",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO ROTI SUMBER\nTotal Rp 34.000\nReference NB-100000\nCard 4102"
+    },
+    {
+      "id": "ee-002",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Payment Successful\nMerchant WARUNG NASI IBU TUTI\nTotal Rp 27.500\nReference NB-100001\nCard 4102"
+    },
+    {
+      "id": "ee-003",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Payment Successful\nMerchant APOTEK SEHAT JAYA\nTotal Rp 52.000\nReference NB-100002\nCard 4102"
+    },
+    {
+      "id": "ee-004",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Payment Successful\nMerchant MINIMARKET CERIA\nTotal Rp 42.500\nReference NB-100003\nCard 4102"
+    },
+    {
+      "id": "ee-005",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Payment Successful\nMerchant KEDAI KOPI LARAS\nTotal Rp 131.500\nReference NB-100004\nCard 4102"
+    },
+    {
+      "id": "ee-006",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788739200000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO BUKU CENDANA\nTotal Rp 14.000\nReference NB-100005\nCard 4102"
+    },
+    {
+      "id": "ee-007",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Payment Successful\nMerchant BENGKEL MOTOR RAPI\nTotal Rp 85.000\nReference NB-100006\nCard 4102"
+    },
+    {
+      "id": "ee-008",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788912000000",
+      "bodyPlain": "Payment Successful\nMerchant SALON MELATI\nTotal Rp 11.500\nReference NB-100007\nCard 4102"
+    },
+    {
+      "id": "ee-009",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO PLASTIK JAYA\nTotal Rp 71.500\nReference NB-100008\nCard 4102"
+    },
+    {
+      "id": "ee-010",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Payment Successful\nMerchant WARUNG SATE PAK DE\nTotal Rp 131.500\nReference NB-100009\nCard 4102"
+    },
+    {
+      "id": "ee-011",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789171200000",
+      "bodyPlain": "Payment Successful\nMerchant MINIMARKET CERIA\nTotal Rp 109.000\nReference NB-100010\nCard 4102"
+    },
+    {
+      "id": "ee-012",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789257600000",
+      "bodyPlain": "Payment Successful\nMerchant KEDAI KOPI LARAS\nTotal Rp 126.500\nReference NB-100011\nCard 4102"
+    },
+    {
+      "id": "ee-013",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789344000000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO ROTI SUMBER\nTotal Rp 61.000\nReference NB-100012\nCard 4102"
+    },
+    {
+      "id": "ee-014",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789430400000",
+      "bodyPlain": "Payment Successful\nMerchant WARUNG NASI IBU TUTI\nTotal Rp 51.500\nReference NB-100013\nCard 4102"
+    },
+    {
+      "id": "ee-015",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789516800000",
+      "bodyPlain": "Payment Successful\nMerchant APOTEK SEHAT JAYA\nTotal Rp 84.000\nReference NB-100014\nCard 4102"
+    },
+    {
+      "id": "ee-016",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789603200000",
+      "bodyPlain": "Payment Successful\nMerchant MINIMARKET CERIA\nTotal Rp 103.500\nReference NB-100015\nCard 4102"
+    },
+    {
+      "id": "ee-017",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789689600000",
+      "bodyPlain": "Payment Successful\nMerchant KEDAI KOPI LARAS\nTotal Rp 122.000\nReference NB-100016\nCard 4102"
+    },
+    {
+      "id": "ee-018",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789776000000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO BUKU CENDANA\nTotal Rp 61.000\nReference NB-100017\nCard 4102"
+    },
+    {
+      "id": "ee-019",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789862400000",
+      "bodyPlain": "Payment Successful\nMerchant BENGKEL MOTOR RAPI\nTotal Rp 14.500\nReference NB-100018\nCard 4102"
+    },
+    {
+      "id": "ee-020",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1789948800000",
+      "bodyPlain": "Payment Successful\nMerchant SALON MELATI\nTotal Rp 138.500\nReference NB-100019\nCard 4102"
+    },
+    {
+      "id": "ee-021",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO PLASTIK JAYA\nTotal Rp 124.000\nReference NB-100020\nCard 4102"
+    },
+    {
+      "id": "ee-022",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Payment Successful\nMerchant WARUNG SATE PAK DE\nTotal Rp 71.000\nReference NB-100021\nCard 4102"
+    },
+    {
+      "id": "ee-023",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Payment Successful\nMerchant MINIMARKET CERIA\nTotal Rp 103.500\nReference NB-100022\nCard 4102"
+    },
+    {
+      "id": "ee-024",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Payment Successful\nMerchant KEDAI KOPI LARAS\nTotal Rp 140.000\nReference NB-100023\nCard 4102"
+    },
+    {
+      "id": "ee-025",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Payment Successful",
+      "snippet": "Payment Successful",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Payment Successful\nMerchant TOKO ROTI SUMBER\nTotal Rp 73.000\nReference NB-100024\nCard 4102"
+    },
+    {
+      "id": "ee-026",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Refund Processed",
+      "snippet": "Refund Processed",
+      "internalDate": "1790035200000",
+      "bodyPlain": "Refund Processed\nMerchant TOKO ROTI SUMBER\nTotal Rp 50.000\nReference NB-200000\nCard 4102"
+    },
+    {
+      "id": "ee-027",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Refund Processed",
+      "snippet": "Refund Processed",
+      "internalDate": "1790121600000",
+      "bodyPlain": "Refund Processed\nMerchant WARUNG NASI IBU TUTI\nTotal Rp 54.000\nReference NB-200001\nCard 4102"
+    },
+    {
+      "id": "ee-028",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Funds Received",
+      "snippet": "Funds Received",
+      "internalDate": "1790208000000",
+      "bodyPlain": "Funds Received\nMerchant BUDI SANTOSO\nTotal Rp 1.025.000\nReference NB-300000\nCard 4102"
+    },
+    {
+      "id": "ee-029",
+      "from": "no-reply@nusabank.example.com",
+      "subject": "Funds Received",
+      "snippet": "Funds Received",
+      "internalDate": "1790294400000",
+      "bodyPlain": "Funds Received\nMerchant SITI RAHAYU\nTotal Rp 650.000\nReference NB-300001\nCard 4102"
+    },
+    {
+      "id": "ee-030",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver AGUS SETIAWAN\nTotal Rp 31.500\nKode KR-R000"
+    },
+    {
+      "id": "ee-031",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver DEWI ANGGRAINI\nTotal Rp 28.500\nKode KR-R001"
+    },
+    {
+      "id": "ee-032",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver RUDI HARTONO\nTotal Rp 15.500\nKode KR-R002"
+    },
+    {
+      "id": "ee-033",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver LINA MARLINA\nTotal Rp 9.500\nKode KR-R003"
+    },
+    {
+      "id": "ee-034",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver TONO SUPARNO\nTotal Rp 13.500\nKode KR-R004"
+    },
+    {
+      "id": "ee-035",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788739200000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver AGUS SETIAWAN\nTotal Rp 37.000\nKode KR-R005"
+    },
+    {
+      "id": "ee-036",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver DEWI ANGGRAINI\nTotal Rp 9.500\nKode KR-R006"
+    },
+    {
+      "id": "ee-037",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788912000000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver RUDI HARTONO\nTotal Rp 22.500\nKode KR-R007"
+    },
+    {
+      "id": "ee-038",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver LINA MARLINA\nTotal Rp 17.500\nKode KR-R008"
+    },
+    {
+      "id": "ee-039",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Kirimin Receipt\nPerjalanan selesai\nDriver TONO SUPARNO\nTotal Rp 27.000\nKode KR-R009"
+    },
+    {
+      "id": "ee-040",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran MIE AYAM PAK JOKO\nTotal Rp 64.000\nKode KR-F000"
+    },
+    {
+      "id": "ee-041",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran AYAM GEPREK BU SRI\nTotal Rp 60.500\nKode KR-F001"
+    },
+    {
+      "id": "ee-042",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran SATE MADURA CAK NUR\nTotal Rp 55.500\nKode KR-F002"
+    },
+    {
+      "id": "ee-043",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran BAKSO URAT MAS ARI\nTotal Rp 74.500\nKode KR-F003"
+    },
+    {
+      "id": "ee-044",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran NASI PADANG SEDERHANA\nTotal Rp 77.000\nKode KR-F004"
+    },
+    {
+      "id": "ee-045",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788739200000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran MIE AYAM PAK JOKO\nTotal Rp 72.500\nKode KR-F005"
+    },
+    {
+      "id": "ee-046",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran AYAM GEPREK BU SRI\nTotal Rp 25.500\nKode KR-F006"
+    },
+    {
+      "id": "ee-047",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788912000000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran SATE MADURA CAK NUR\nTotal Rp 27.500\nKode KR-F007"
+    },
+    {
+      "id": "ee-048",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran BAKSO URAT MAS ARI\nTotal Rp 75.000\nKode KR-F008"
+    },
+    {
+      "id": "ee-049",
+      "from": "no-reply@kirimin.example.com",
+      "subject": "Kirimin Receipt",
+      "snippet": "Kirimin Receipt",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Kirimin Receipt\nPesanan diterima\nRestoran NASI PADANG SEDERHANA\nTotal Rp 70.000\nKode KR-F009"
+    },
+    {
+      "id": "ee-050",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-051",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-052",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-053",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-054",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-055",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788739200000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-056",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-057",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788912000000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-058",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-059",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-060",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789171200000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-061",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789257600000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-062",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789344000000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-063",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789430400000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-064",
+      "from": "blast@promo.tokobagus.example.com",
+      "subject": "Diskon Spesial Akhir Pekan",
+      "snippet": "Diskon Spesial Akhir Pekan",
+      "internalDate": "1789516800000",
+      "bodyPlain": "Diskon Spesial Akhir Pekan!\nHemat sampai Rp 150.000\nHarga mulai Rp 25.000\nCashback Rp 50.000\nBelanja sekarang."
+    },
+    {
+      "id": "ee-065",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Struk Pembelian\nItem Kopi Susu\nTotal Rp 19.000\nNo WK-000"
+    },
+    {
+      "id": "ee-066",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Struk Pembelian\nItem Americano\nTotal Rp 18.000\nNo WK-001"
+    },
+    {
+      "id": "ee-067",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Struk Pembelian\nItem Latte\nTotal Rp 17.500\nNo WK-002"
+    },
+    {
+      "id": "ee-068",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Struk Pembelian\nItem Kopi Susu\nTotal Rp 19.500\nNo WK-003"
+    },
+    {
+      "id": "ee-069",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1789344000000",
+      "bodyPlain": "Struk Pembelian\nItem Americano\nTotal Rp 19.000\nNo WK-004"
+    },
+    {
+      "id": "ee-070",
+      "from": "no-reply@warungkopi.example.com",
+      "subject": "Struk Pembelian",
+      "snippet": "Struk Pembelian",
+      "internalDate": "1789603200000",
+      "bodyPlain": "Struk Pembelian\nItem Latte\nTotal Rp 25.000\nNo WK-005"
+    },
+    {
+      "id": "ee-071",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Kabar Pekan Ini edisi 1\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-072",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788393600000",
+      "bodyPlain": "Kabar Pekan Ini edisi 2\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-073",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Kabar Pekan Ini edisi 3\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-074",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788566400000",
+      "bodyPlain": "Kabar Pekan Ini edisi 4\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-075",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Kabar Pekan Ini edisi 5\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-076",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788739200000",
+      "bodyPlain": "Kabar Pekan Ini edisi 6\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-077",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Kabar Pekan Ini edisi 7\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-078",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788912000000",
+      "bodyPlain": "Kabar Pekan Ini edisi 8\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-079",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Kabar Pekan Ini edisi 9\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-080",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789084800000",
+      "bodyPlain": "Kabar Pekan Ini edisi 10\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-081",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789171200000",
+      "bodyPlain": "Kabar Pekan Ini edisi 11\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-082",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789257600000",
+      "bodyPlain": "Kabar Pekan Ini edisi 12\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-083",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789344000000",
+      "bodyPlain": "Kabar Pekan Ini edisi 13\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-084",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789430400000",
+      "bodyPlain": "Kabar Pekan Ini edisi 14\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-085",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789516800000",
+      "bodyPlain": "Kabar Pekan Ini edisi 15\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-086",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789603200000",
+      "bodyPlain": "Kabar Pekan Ini edisi 16\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-087",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789689600000",
+      "bodyPlain": "Kabar Pekan Ini edisi 17\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-088",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789776000000",
+      "bodyPlain": "Kabar Pekan Ini edisi 18\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-089",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789862400000",
+      "bodyPlain": "Kabar Pekan Ini edisi 19\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-090",
+      "from": "redaksi@kabar.example.com",
+      "subject": "Kabar Pekan Ini",
+      "snippet": "Kabar Pekan Ini",
+      "internalDate": "1789948800000",
+      "bodyPlain": "Kabar Pekan Ini edisi 20\nRingkasan berita minggu ini, wawancara, dan agenda mendatang.\nTerima kasih sudah berlangganan."
+    },
+    {
+      "id": "ee-091",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1788307200000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 350.000\nID DK-0000"
+    },
+    {
+      "id": "ee-092",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1788480000000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 115.000\nID DK-0001"
+    },
+    {
+      "id": "ee-093",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1788652800000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 320.000\nID DK-0002"
+    },
+    {
+      "id": "ee-094",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1788825600000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 385.000\nID DK-0003"
+    },
+    {
+      "id": "ee-095",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1788998400000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 460.000\nID DK-0004"
+    },
+    {
+      "id": "ee-096",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1789171200000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 435.000\nID DK-0005"
+    },
+    {
+      "id": "ee-097",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1789344000000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 275.000\nID DK-0006"
+    },
+    {
+      "id": "ee-098",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1789516800000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 360.000\nID DK-0007"
+    },
+    {
+      "id": "ee-099",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1789689600000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 80.000\nID DK-0008"
+    },
+    {
+      "id": "ee-100",
+      "from": "no-reply@dompetku.example.com",
+      "subject": "Top Up Berhasil",
+      "snippet": "Top Up Berhasil",
+      "internalDate": "1789862400000",
+      "bodyPlain": "Top Up Berhasil\nTujuan Dompetku Wallet\nTotal Rp 105.000\nID DK-0009"
+    }
+  ]
+}
