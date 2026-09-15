@@ -6,3 +6,4 @@ FTL/secrets.plist
 */CLAUDE.md
 test/
 FTL/test/
+*.pbxproj
