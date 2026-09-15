@@ -35,14 +35,40 @@ actor LedgerCalcTool: CalcTool {
         return months.map { interval in
             let spend = rows.filter { interval.containsLedgerDate($0.date) && $0.countsTowardBudget }
             let isCurrent = interval.containsLedgerDate(now)
+            let spentMoney = Money.sum(spend.map(\.amount))
+            let daysRemaining = isCurrent
+                ? max(0, calendar.dateComponents([.day], from: now, to: interval.end).day ?? 0)
+                : 0
+            
+            let perDayRemaining: Money?
+            if isCurrent, daysRemaining > 0 {
+                if let customDailyUnits = DailyBudgetManager.amount {
+                    if DailyBudgetManager.rollsOver {
+                        let daysTotal = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 1
+                        let daysPassed = max(1, daysTotal - daysRemaining)
+                        let totalAllowance = customDailyUnits * daysPassed
+                        let left = totalAllowance - spentMoney.minorUnits
+                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                    } else {
+                        let spentToday = Money.sum(spend.filter { calendar.isDate($0.date, inSameDayAs: now) }.map(\.amount))
+                        let left = customDailyUnits - spentToday.minorUnits
+                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                    }
+                } else {
+                    let left = max(0, (ceiling - spentMoney).minorUnits)
+                    perDayRemaining = Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
+                }
+            } else {
+                perDayRemaining = nil
+            }
+
             return MonthSummary(
                 interval: interval,
-                spent: Money.sum(spend.map(\.amount)),
+                spent: spentMoney,
                 ceiling: ceiling,
                 isCurrent: isCurrent,
-                daysRemaining: isCurrent
-                    ? max(0, calendar.dateComponents([.day], from: now, to: interval.end).day ?? 0)
-                    : 0
+                daysRemaining: daysRemaining,
+                perDayRemaining: perDayRemaining
             )
         }
     }
@@ -125,3 +151,28 @@ actor LedgerCalcTool: CalcTool {
     }
 }
 
+import Foundation
+
+enum DailyBudgetManager {
+    static let amountKey = "ftl_daily_budget_amount"
+    static let rollsOverKey = "ftl_daily_budget_rolls_over"
+    
+    static var amount: Int? {
+        get {
+            guard UserDefaults.standard.object(forKey: amountKey) != nil else { return nil }
+            return UserDefaults.standard.integer(forKey: amountKey)
+        }
+        set {
+            if let newValue = newValue {
+                UserDefaults.standard.set(newValue, forKey: amountKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: amountKey)
+            }
+        }
+    }
+    
+    static var rollsOver: Bool {
+        get { UserDefaults.standard.bool(forKey: rollsOverKey) }
+        set { UserDefaults.standard.set(newValue, forKey: rollsOverKey) }
+    }
+}

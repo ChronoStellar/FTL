@@ -38,6 +38,12 @@ struct SettingsView: View {
         components.minute = NotificationSchedule.minute
         return Calendar.current.date(from: components) ?? .now
     }()
+    @State private var dailyBudgetEnabled: Bool = DailyBudgetManager.amount != nil
+    @State private var dailyBudgetDigits: String = {
+        if let amount = DailyBudgetManager.amount { return String(amount) }
+        return ""
+    }()
+    @State private var dailyBudgetRollsOver: Bool = DailyBudgetManager.rollsOver
     @State private var notificationsDenied: Bool = false
     @State private var widgetRefreshMessage: String? = nil
 
@@ -66,6 +72,9 @@ struct SettingsView: View {
                         .padding(.top, FTLSpacing.xl)
                         .padding(.bottom, FTLSpacing.labelGap)
                     spreadsheetPanel
+                    
+                    dailyBudgetPanel
+                        .padding(.top, FTLSpacing.xl)
 
                     SectionLabel(text: "Budget Ceilings")
                         .padding(.top, FTLSpacing.xl)
@@ -259,6 +268,69 @@ struct SettingsView: View {
 
     // MARK: - Budget Ceilings Panel
 
+    private var dailyBudgetPanel: some View {
+        VStack(alignment: .leading, spacing: FTLSpacing.sm) {
+            SectionLabel(text: "Daily Budget")
+            
+            PanelCard {
+                PanelRow(showsDivider: dailyBudgetEnabled) {
+                    Toggle("Enable Daily Budget", isOn: Binding(
+                        get: { dailyBudgetEnabled },
+                        set: { enabled in
+                            dailyBudgetEnabled = enabled
+                            if !enabled {
+                                DailyBudgetManager.amount = nil
+                                dailyBudgetDigits = ""
+                            }
+                        }
+                    ))
+                    .font(FTLTypography.rowTitle)
+                    .foregroundStyle(FTLColor.textPrimary)
+                    .tint(FTLColor.accent)
+                }
+                
+                if dailyBudgetEnabled {
+                    PanelRow(showsDivider: true) {
+                        HStack {
+                            Text("Limit (IDR)")
+                                .font(FTLTypography.rowTitle)
+                                .foregroundStyle(FTLColor.textPrimary)
+                            Spacer()
+                            TextField("e.g. 150000", text: Binding(
+                                get: { dailyBudgetDigits },
+                                set: { newValue in
+                                    let digits = String(newValue.filter { $0.isNumber })
+                                    dailyBudgetDigits = digits
+                                    DailyBudgetManager.amount = digits.isEmpty ? nil : Int(digits)
+                                }
+                            ))
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .font(FTLTypography.amountEmphasis)
+                            .foregroundStyle(FTLColor.accent)
+                        }
+                    }
+                    
+                    PanelRow(showsDivider: false) {
+                        Toggle("Roll over unspent to next day", isOn: Binding(
+                            get: { dailyBudgetRollsOver },
+                            set: { rollsOver in
+                                dailyBudgetRollsOver = rollsOver
+                                DailyBudgetManager.rollsOver = rollsOver
+                            }
+                        ))
+                        .font(FTLTypography.body)
+                        .foregroundStyle(FTLColor.textPrimary)
+                        .tint(FTLColor.accent)
+                    }
+                }
+            }
+            
+            Text("Replaces the monthly ceiling math with a strict daily allowance.")
+                .font(FTLTypography.captionSmall)
+                .foregroundStyle(FTLColor.textQuaternary)
+        }
+    }
     private var budgetPanel: some View {
         VStack(alignment: .leading, spacing: FTLSpacing.sm) {
             PanelCard {
