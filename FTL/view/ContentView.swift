@@ -223,7 +223,7 @@ struct ContentView: View {
                 onDone: { sheet = nil },
                 onSettled: { Task { await home.load() } }
             )
-            .onDisappear { Task { await home.load(forceReload: true) } }
+            .onDisappear { Task { await home.load() } }
 
         case .add(let initialAmount):
             AddSpendScreen(
@@ -233,14 +233,14 @@ struct ContentView: View {
                 onCancel: { sheet = nil },
                 onCommit: {
                     sheet = nil
-                    Task { await home.load(forceReload: true) }
+                    Task { await home.load() }
                 }
             )
 
         case .settings:
             SettingsView(environment: environment, onDone: {
                 sheet = nil
-                Task { await home.load(forceReload: true) }
+                Task { await home.load() }
             })
 
         case .edit(let transaction):
@@ -269,7 +269,7 @@ struct ContentView: View {
                 onSaved: {
                     hasShownIncomeSplitOnboarding = true
                     sheet = nil
-                    Task { await home.load(forceReload: true) }
+                    Task { await home.load() }
                 }
             )
         }

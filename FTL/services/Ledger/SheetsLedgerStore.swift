@@ -103,7 +103,7 @@ actor SheetsLedgerStore: LedgerStore {
             values: fresh.map(SheetsSchema.row(from:)),
             inputOption: "RAW"
         )
-        cache = nil
+        cache?.append(contentsOf: fresh)
     }
 
     /// Rewrites one row in place, located by its id in column A.
