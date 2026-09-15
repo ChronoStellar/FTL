@@ -78,11 +78,6 @@ struct HomeView: View {
             }
         }
 
-        if let goal = viewModel.goal {
-            GoalCard(goal: goal, action: onOpenGoal)
-                .padding(.top, FTLSpacing.xl)
-        }
-
         SectionLabel(text: "Recent")
             .padding(.top, FTLSpacing.sectionGap)
             .padding(.bottom, FTLSpacing.labelGap)

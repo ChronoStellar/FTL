@@ -162,37 +162,6 @@ struct BucketRow: View {
     }
 }
 
-// MARK: - Goal
-
-struct GoalCard: View {
-    let goal: SavingsGoal
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            PanelCard {
-                PanelRow(showsDivider: false) {
-                    HStack(spacing: FTLSpacing.md) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(goal.name)
-                                .font(FTLTypography.rowTitle)
-                                .foregroundStyle(FTLColor.textPrimary)
-                            Text("\(MoneyFormatter.perDay(goal.dailyRate())) · \(MoneyFormatter.grouped(goal.remaining)) to go")
-                                .font(FTLTypography.captionSmall)
-                                .foregroundStyle(FTLColor.textQuaternary)
-                                .padding(.top, 3)
-                            MeterBar(fraction: goal.fraction, fill: FTLColor.textTertiary)
-                                .padding(.top, 10)
-                        }
-                        Chevron()
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Ledger
 
 /// One row of the ledger, and the way into correcting it.

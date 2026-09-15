@@ -64,32 +64,6 @@ struct BucketScreen: View {
     }
 }
 
-// MARK: - Goal
-
-struct GoalScreen: View {
-    @State private var viewModel: GoalViewModel
-
-    init(environment: AppEnvironment) {
-        _viewModel = State(wrappedValue: environment.makeGoalViewModel())
-    }
-
-    var body: some View {
-        GoalDetailView(viewModel: viewModel)
-            .background(GlowBackground())
-            .navigationTitle("Goal")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
-            .toolbar {
-                if viewModel.canUndo {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Undo") { Task { await viewModel.undo() } }
-                            .tint(FTLColor.textSecondary)
-                    }
-                }
-            }
-    }
-}
-
 // MARK: - Sheets
 
 struct ApprovalQueueScreen: View {

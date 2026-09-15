@@ -190,7 +190,7 @@ struct ContentView: View {
                 interval: home.month?.interval ?? .init(start: .now, duration: 0)
             )
         case .goal:
-            GoalScreen(environment: environment)
+            Text("Goal")
         }
     }
 

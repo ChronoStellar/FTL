@@ -48,19 +48,6 @@ enum SampleLedger {
             )
         ]
     }
-
-    // MARK: - Goal
-
-    static var goal: SavingsGoal {
-        SavingsGoal(
-            id: UUID(uuidString: "00000000-0000-0000-0000-0000000000A1")!,
-            name: "MacBook Air M4",
-            target: .idr(18_500_000),
-            saved: .idr(7_400_000),
-            deadline: Calendar.current.date(byAdding: .month, value: 4, to: .now) ?? .now
-        )
-    }
-
     // MARK: - Ledger
 
     /// Three months: two closed, the current one in progress.

@@ -32,7 +32,12 @@ struct SettingsView: View {
     @State private var isShowingIncomeSplit: Bool = false
     @State private var isBackgroundRefreshOn: Bool = BackgroundRefresh.isEnabled
     @State private var isDigestOn: Bool = NotificationSchedule.isEnabled
-    @State private var digestHour: Int = NotificationSchedule.hour
+    @State private var digestTime: Date = {
+        var components = DateComponents()
+        components.hour = NotificationSchedule.hour
+        components.minute = NotificationSchedule.minute
+        return Calendar.current.date(from: components) ?? .now
+    }()
     @State private var notificationsDenied: Bool = false
     @State private var widgetRefreshMessage: String? = nil
 
@@ -643,7 +648,7 @@ struct SettingsView: View {
                                 .font(FTLTypography.rowTitle)
                                 .foregroundStyle(FTLColor.textPrimary)
                             Spacer()
-                            Text(isDigestOn ? NotificationSchedule.label(forHour: digestHour) : "Off")
+                            Text(isDigestOn ? digestTime.formatted(.dateTime.hour().minute()) : "Off")
                                 .font(FTLTypography.body)
                                 .foregroundStyle(isDigestOn ? FTLColor.textPrimary : FTLColor.textTertiary)
                         }
@@ -654,17 +659,16 @@ struct SettingsView: View {
 
                 if isDigestOn {
                     PanelRow(showsDivider: false) {
-                        FlowLayout(spacing: FTLSpacing.sm) {
-                            ForEach(NotificationSchedule.selectableHours, id: \.self) { hour in
-                                SelectableChip(
-                                    title: NotificationSchedule.label(forHour: hour),
-                                    isSelected: hour == digestHour,
-                                    isCompact: true
-                                ) {
-                                    Task { await setDigestHour(hour) }
-                                }
+                        DatePicker("Time", selection: Binding(
+                            get: { digestTime },
+                            set: { newTime in
+                                digestTime = newTime
+                                Task { await setDigestTime(newTime) }
                             }
-                        }
+                        ), displayedComponents: .hourAndMinute)
+                        .font(FTLTypography.rowTitle)
+                        .foregroundStyle(FTLColor.textPrimary)
+                        .tint(FTLColor.accent)
                     }
                 }
             }
@@ -694,10 +698,13 @@ struct SettingsView: View {
         await refreshDigest()
     }
 
-    private func setDigestHour(_ hour: Int) async {
-        NotificationSchedule.hour = hour
-        digestHour = hour
-        await refreshDigest()
+    private func setDigestTime(_ date: Date) async {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        if let hour = components.hour, let minute = components.minute {
+            NotificationSchedule.hour = hour
+            NotificationSchedule.minute = minute
+            await refreshDigest()
+        }
     }
 
     /// The reminder quotes a count, so it is re-pointed at the live queue every

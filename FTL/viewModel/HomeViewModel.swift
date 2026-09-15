@@ -16,7 +16,6 @@ final class HomeViewModel {
     private let calc: CalcTool
     private let ledger: LedgerStore
     private let provisional: ProvisionalStore
-    private let goals: GoalStore
     private let calendar: Calendar
 
     private(set) var phase: LoadPhase = .idle
@@ -24,20 +23,17 @@ final class HomeViewModel {
     private(set) var selectedMonthID: Date?
     private(set) var buckets: [BudgetPosition] = []
     private(set) var recent: [LedgerTransaction] = []
-    private(set) var goal: SavingsGoal?
     private(set) var pending: [ProvisionalEntry] = []
 
     init(
         calc: CalcTool,
         ledger: LedgerStore,
         provisional: ProvisionalStore,
-        goals: GoalStore,
         calendar: Calendar = .current
     ) {
         self.calc = calc
         self.ledger = ledger
         self.provisional = provisional
-        self.goals = goals
         self.calendar = calendar
     }
 
@@ -106,7 +102,6 @@ final class HomeViewModel {
             months = try await calc.monthSummaries(limit: 6)
             if selectedMonthID == nil { selectedMonthID = months.last?.id }
             try await reloadSelectedMonth()
-            goal = try await goals.goal()
             phase = .loaded
         } catch {
             phase = .failed(String(describing: error))

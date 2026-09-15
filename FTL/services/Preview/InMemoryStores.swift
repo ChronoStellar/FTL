@@ -148,16 +148,3 @@ actor InMemoryMerchantMemory: MerchantMemory {
         names.filter { merchants.contains($0.key) }
     }
 }
-
-// MARK: - Goal
-
-actor InMemoryGoalStore: GoalStore {
-    private var stored: SavingsGoal?
-
-    init(empty: Bool = false) {
-        self.stored = empty ? nil : SampleLedger.goal
-    }
-
-    func goal() async throws -> SavingsGoal? { stored }
-    func save(_ goal: SavingsGoal) async throws { stored = goal }
-}

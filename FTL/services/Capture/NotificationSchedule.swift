@@ -36,6 +36,7 @@ enum NotificationSchedule {
 
     private static let enabledKey = "dailyDigestEnabled"
     private static let hourKey = "dailyDigestHour"
+    private static let minuteKey = "dailyDigestMinute"
 
     static var isEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: enabledKey) }
@@ -52,15 +53,12 @@ enum NotificationSchedule {
         set { UserDefaults.standard.set(newValue, forKey: hourKey) }
     }
 
-    /// Hours offered. A quarter-hourly picker for a daily nudge is precision
-    /// nobody needs and a longer list to scroll.
-    static let selectableHours = [7, 8, 9, 12, 17, 18, 19, 20, 21, 22]
-
-    static func label(forHour hour: Int) -> String {
-        var components = DateComponents()
-        components.hour = hour
-        let date = Calendar.current.date(from: components) ?? .now
-        return date.formatted(.dateTime.hour().minute())
+    static var minute: Int {
+        get {
+            guard UserDefaults.standard.object(forKey: minuteKey) != nil else { return 0 }
+            return UserDefaults.standard.integer(forKey: minuteKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: minuteKey) }
     }
 
     // MARK: - Scheduling
@@ -85,7 +83,7 @@ enum NotificationSchedule {
 
         var when = DateComponents()
         when.hour = hour
-        when.minute = 0
+        when.minute = minute
 
         let request = UNNotificationRequest(
             identifier: digestID,

@@ -27,7 +27,6 @@ final class AppEnvironment {
     let calc: CalcTool
     let provisional: ProvisionalStore
     let approvals: ApprovalService
-    let goals: GoalStore
 
     /// What the Gmail rail has already handled. Nil in `sample()` — fixtures
     /// have no mailbox to sync.
@@ -142,7 +141,6 @@ final class AppEnvironment {
         ledger: LedgerStore,
         budgets: BudgetStore,
         provisional: ProvisionalStore,
-        goals: GoalStore,
         isLive: Bool,
         captureLog: CaptureLog? = nil,
         patterns: PatternStore? = nil,
@@ -156,7 +154,6 @@ final class AppEnvironment {
         self.ledger = ledger
         self.budgets = budgets
         self.provisional = provisional
-        self.goals = goals
         self.isLive = isLive
         self.captureLog = captureLog
         self.patterns = patterns
@@ -197,7 +194,6 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
             provisional: SwiftDataProvisionalStore(modelContainer: store.container),
-            goals: InMemoryGoalStore(empty: true),
             isLive: true,
             captureLog: SwiftDataCaptureLog(modelContainer: store.container),
             patterns: SwiftDataPatternStore(modelContainer: store.container),
@@ -258,7 +254,6 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: budgets,
             provisional: InMemoryProvisionalStore(),
-            goals: InMemoryGoalStore(),
             isLive: false,
             merchantMemory: InMemoryMerchantMemory(),
             ledgerBackend: .sample
@@ -296,7 +291,6 @@ final class AppEnvironment {
             ledger: InMemoryLedgerStore(empty: true),
             budgets: InMemoryBudgetStore(),
             provisional: base.provisional,
-            goals: base.goals,
             isLive: true,
             captureLog: base.captureLog,
             patterns: base.patterns,
@@ -328,7 +322,7 @@ final class AppEnvironment {
     // dependency graph stays in this file.
 
     func makeHomeViewModel() -> HomeViewModel {
-        HomeViewModel(calc: calc, ledger: ledger, provisional: provisional, goals: goals)
+        HomeViewModel(calc: calc, ledger: ledger, provisional: provisional)
     }
 
     func makeBucketDetailViewModel(
@@ -377,10 +371,6 @@ final class AppEnvironment {
     /// write a transaction — the screen that owns the list does that.
     func makeEditTransactionViewModel(for transaction: LedgerTransaction) -> EditTransactionViewModel {
         EditTransactionViewModel(transaction: transaction, categories: ledger)
-    }
-
-    func makeGoalViewModel() -> GoalViewModel {
-        GoalViewModel(goals: goals)
     }
 
     /// The Gmail rail, when there is a mailbox and a place to log what it has
