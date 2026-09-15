@@ -72,13 +72,17 @@ struct IncomeSplitView: View {
         .scrollContentBackground(.hidden)
         // Dragging the page down dismisses it.
         .scrollDismissesKeyboard(.interactively)
-        .background(
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-        )
+        .background(FTLColor.sheetBackground)
+        .overlay {
+            if isIncomeFocused {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isIncomeFocused = false
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            }
+        }
     }
 
     private var incomeSection: some View {

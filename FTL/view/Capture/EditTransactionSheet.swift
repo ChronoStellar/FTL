@@ -32,6 +32,7 @@ struct EditTransactionSheet: View {
     let onDelete: () -> Void
 
     @FocusState private var isAmountFocused: Bool
+    @FocusState private var isNoteFocused: Bool
     @State private var isConfirmingDelete = false
     /// Save dismisses this sheet and starts the write on the parent, so the two
     /// are not atomic — two taps inside that window queue two writes. The
@@ -51,13 +52,18 @@ struct EditTransactionSheet: View {
                 deleteSection
             }
             .scrollContentBackground(.hidden)
-            .background(
-                FTLColor.sheetBackground
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-            )
+            .background(FTLColor.sheetBackground)
+            .overlay {
+                if isAmountFocused || isNoteFocused {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isAmountFocused = false
+                            isNoteFocused = false
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
+                }
+            }
             .tint(FTLColor.textPrimary)
             .navigationTitle(viewModel.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -177,6 +183,7 @@ struct EditTransactionSheet: View {
         Section {
             TextField("Note", text: $viewModel.note, axis: .vertical)
                 .lineLimit(1...4)
+                .focused($isNoteFocused)
                 .foregroundStyle(FTLColor.textPrimary)
         } header: {
             Text("Note")
