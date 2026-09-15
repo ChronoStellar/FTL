@@ -630,6 +630,24 @@ Ordered by how much it would hurt to be wrong.
 
 ---
 
+## Manual verification runs
+
+Lane 2 does not exist yet, so hand-driven verification is currently the only
+thing standing between a change and a regression. Each run gets its own dated
+report rather than being summarised here, so what was *not* checked survives
+alongside what was.
+
+- [`docs/session-2026-09-14-verification.md`](docs/session-2026-09-14-verification.md)
+  — build 0.7 (1). Ledger editing, queue corrections, merchant memory, forced
+  write-failure surfacing, budget allocation, the widget App Group, background
+  scheduling. Read its opening section before citing any of it: one pass,
+  fixtures only, no network, no model call, and not a regression net.
+
+⚠️ A report in here is evidence that something was *walked*, never that it is
+*covered*. The two look identical in a changelog and are not the same thing.
+
+---
+
 ## How to add a measurement here
 
 The discipline this file exists to hold, in four lines:
