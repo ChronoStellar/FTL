@@ -1,19 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "Finance_app_logo_featuring_UFO_202609041258.jpeg",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "filename" : "Group.png",
+      "filename" : "Group(1).png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
