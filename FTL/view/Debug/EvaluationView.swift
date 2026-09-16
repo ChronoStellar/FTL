@@ -83,62 +83,6 @@ struct EvaluationView: View {
                 .disabled(corpus == nil || isRunning)
             }
 
-            Section("Foundation Model (On-Device)") {
-                if FoundationModelClassifier.isAvailable {
-                    Text("SystemLanguageModel is ready. Non-Rp emails are skipped deterministically by rule.")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Button {
-                            Task { await run(FoundationModelJudge(), limit: 20, filterCurrency: true) }
-                        } label: {
-                            HStack {
-                                Image(systemName: "sparkles")
-                                Text(isRunning ? "Running…" : "Test 20 Candidate Emails (with Rp)")
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(corpus == nil || isRunning)
-
-                        HStack(spacing: 12) {
-                            Button {
-                                Task { await run(FoundationModelJudge(), limit: 5, filterCurrency: true) }
-                            } label: {
-                                Text(isRunning ? "Running…" : "Test 5 (Rp only)")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(corpus == nil || isRunning)
-
-                            Button {
-                                Task { await run(FoundationModelJudge(), limit: 5, filterCurrency: false) }
-                            } label: {
-                                Text(isRunning ? "Running…" : "Test 5 (Raw emails)")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(corpus == nil || isRunning)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                } else {
-                    Text("FoundationModels unavailable on this device/simulator. Requires Apple Intelligence on iOS 26+.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if !progressText.isEmpty {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Progress: \(progressText)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
 
             if let report {
                 Section("Result — \(report.judge)") {

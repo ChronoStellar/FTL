@@ -48,10 +48,6 @@ struct ContentView: View {
             .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
         }
-        // Fire-and-forget, alongside Home's own load rather than gating it —
-        // reconciling the tag store from the Sheet's actual categories is
-        // real network I/O and nothing on screen depends on it finishing.
-        .task { await environment.reconcileTagStore() }
         // Also fire-and-forget, and deliberately its own `.task` rather than
         // chained after `syncMail` below: discovery fetches its own 180-day
         // window independently of the ordinary sync, nothing on screen is

@@ -2,10 +2,6 @@
 //  SheetsService.swift
 //  google-api-test
 //
-//  Expense tracker backed by one spreadsheet with one tab per month
-//  (e.g. "September 2026"), each tab having columns:
-//  Date | Category | Description | Amount.
-//
 
 import Foundation
 
@@ -44,8 +40,6 @@ struct SheetsService {
         activeSpreadsheetID
     }
 
-    /// Column headers written when a new month tab is created.
-    static let headers = ["Date", "Category", "Description", "Amount"]
 
     private let auth: GoogleAuthManager
     private let client: GoogleAPIClient
@@ -56,66 +50,6 @@ struct SheetsService {
         self.auth = auth
         self.client = GoogleAPIClient(auth: auth)
         self.spreadsheetID = spreadsheetID ?? Self.activeSpreadsheetID
-    }
-
-    // MARK: - Expense API
-
-    struct Expense {
-        var date: Date = .now
-        var category: String
-        var description: String
-        var amount: Double
-    }
-
-    /// Appends an expense to the tab for its month, creating that tab if needed.
-    func addExpense(_ expense: Expense) async throws {
-        let tab = try await ensureMonthTab(for: expense.date)
-        let row = [
-            Self.dateFormatter.string(from: expense.date),
-            expense.category,
-            expense.description,
-            Self.amountString(expense.amount),
-        ]
-        try await append(range: Self.a1(tab: tab, "A:D"), values: [row])
-    }
-
-    /// Reads all data rows (excluding the header) for a given month.
-    /// Returns an empty array if that month's tab doesn't exist yet.
-    func readMonth(for date: Date = .now) async throws -> [[String]] {
-        let tab = Self.monthTabName(for: date)
-        guard try await tabTitles().contains(tab) else { return [] }
-        let rows = try await read(range: Self.a1(tab: tab, "A:D"))
-        return Array(rows.dropFirst()) // drop the header row
-    }
-
-    /// Deletes a specific row by 0-based data index (excluding header) from the month's tab.
-    func deleteMonthRow(at rowIndex: Int, for date: Date = .now) async throws {
-        let tab = Self.monthTabName(for: date)
-        guard try await tabTitles().contains(tab) else { return }
-        var allRows = try await read(range: Self.a1(tab: tab, "A:D"))
-        let targetIndex = rowIndex + 1 // skip header
-        guard targetIndex < allRows.count else { return }
-        allRows.remove(at: targetIndex)
-
-        try await clear(range: Self.a1(tab: tab, "A:D"))
-        if !allRows.isEmpty {
-            try await write(range: Self.a1(tab: tab, "A1"), values: allRows, inputOption: "RAW")
-        }
-    }
-
-    /// The tab name for a date, e.g. "September 2026".
-    nonisolated static func monthTabName(for date: Date = .now) -> String {
-        monthFormatter.string(from: date)
-    }
-
-    /// Ensures the month's tab exists (creating it with headers) and returns its name.
-    func ensureMonthTab(for date: Date = .now) async throws -> String {
-        let title = Self.monthTabName(for: date)
-        if try await tabTitles().contains(title) == false {
-            try await createTab(title: title)
-            try await write(range: Self.a1(tab: title, "A1:D1"), values: [Self.headers])
-        }
-        return title
     }
 
     // MARK: - Generic values API
@@ -252,7 +186,7 @@ struct SheetsService {
                 // Fall through to known tabs
             }
         }
-        return [Self.monthTabName(for: .now), "Sheet1", SheetsSchema.Tab.transactions, SheetsSchema.Tab.budgets]
+        return ["Sheet1", SheetsSchema.Tab.transactions, SheetsSchema.Tab.budgets]
     }
 
     /// Creates a new tab (worksheet) with the given title.
@@ -271,9 +205,8 @@ struct SheetsService {
         var bgCount = 0
 
         let txRows = try await read(range: Self.a1(tab: SheetsSchema.Tab.transactions, SheetsSchema.transactionRange))
-        let monthRows = try await read(range: Self.a1(tab: Self.monthTabName(for: .now), "A:D"))
         let sheet1Rows = try await read(range: Self.a1(tab: "Sheet1", "A:D"))
-        txCount = max(txRows.count > 1 ? txRows.count - 1 : 0, monthRows.count > 1 ? monthRows.count - 1 : 0, sheet1Rows.count > 1 ? sheet1Rows.count - 1 : 0)
+        txCount = max(txRows.count > 1 ? txRows.count - 1 : 0, sheet1Rows.count > 1 ? sheet1Rows.count - 1 : 0)
 
         let bgRows = try await read(range: Self.a1(tab: SheetsSchema.Tab.budgets, SheetsSchema.budgetRange))
         bgCount = max(0, bgRows.count - 1)
