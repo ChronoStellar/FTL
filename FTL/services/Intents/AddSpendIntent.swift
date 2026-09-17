@@ -141,5 +141,48 @@ struct FTLShortcuts: AppShortcutsProvider {
             shortTitle: "Check for Receipts",
             systemImageName: "tray.and.arrow.down"
         )
+        AppShortcut(
+            intent: CheckBudgetIntent(),
+            phrases: [
+                "How much can I spend today in \(.applicationName)?",
+                "Check \(.applicationName) budget",
+                "What is my daily budget in \(.applicationName)?"
+            ],
+            shortTitle: "Check Daily Budget",
+            systemImageName: "dollarsign.circle"
+        )
+    }
+}
+import AppIntents
+import Foundation
+
+struct CheckBudgetIntent: AppIntent {
+    static var title: LocalizedStringResource = "Check Budget"
+    static var description = IntentDescription("Ask how much money you can spend today.")
+
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let environment = AppEnvironment.shared
+
+        if !environment.auth.isSignedIn {
+            await environment.auth.restore()
+        }
+        guard environment.auth.isSignedIn else {
+            throw AddSpendIntentError.notSignedIn
+        }
+
+        let months = try await environment.calc.monthSummaries(limit: 1)
+        guard let currentMonth = months.first(where: { $0.isCurrent }) else {
+            return .result(dialog: "There is no active budget for this month.")
+        }
+
+        if let remaining = currentMonth.perDayRemaining {
+            let rp = MoneyFormatter.rp(remaining)
+            return .result(dialog: IntentDialog("You can spend up to \(rp) today."))
+        } else {
+            return .result(dialog: "The month is closed, or you have no days remaining.")
+        }
     }
 }

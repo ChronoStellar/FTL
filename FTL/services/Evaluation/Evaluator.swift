@@ -333,12 +333,3 @@ struct ParserJudge: EmailJudge {
     }
 }
 
-/// Evaluates using Apple's on-device Foundation Models with guided generation.
-struct FoundationModelJudge: EmailJudge {
-    var name: String { "foundation-models" }
-
-    func judge(_ email: CapturedEmail) async -> Verdict {
-        await FoundationModelClassifier.classify(email)
-    }
-}
-

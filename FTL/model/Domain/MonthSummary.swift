@@ -31,9 +31,5 @@ nonisolated struct MonthSummary: Sendable, Hashable, Identifiable {
     var remaining: Money { ceiling - spent }
 
     /// What is left per remaining day. Nil for a closed month.
-    var perDayRemaining: Money? {
-        guard isCurrent, daysRemaining > 0 else { return nil }
-        let left = max(0, remaining.minorUnits)
-        return Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
-    }
+    let perDayRemaining: Money?
 }

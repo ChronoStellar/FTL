@@ -302,20 +302,6 @@ final class AppEnvironment {
         )
     }
 
-    // MARK: - Tag store reconciliation
-
-    /// Syncs TagStore's spend-category taxonomy from this ledger's actual
-    /// budget categories, so the model classifier's vocabulary tracks whatever
-    /// the user really set up in Sheets rather than a placeholder name they
-    /// never chose — see TagStore.reconcile(spendCategories:). No-op in
-    /// `.sample()`, and best-effort in `.live()`: a failed read here (offline,
-    /// rate-limited) leaves TagStore exactly as it was, which still works.
-    func reconcileTagStore() async {
-        guard isLive else { return }
-        guard let categories = try? await ledger.categories() else { return }
-        try? await TagStore.shared.reconcile(spendCategories: categories)
-    }
-
     // MARK: - View model factories
     //
     // Views ask the environment for a view model rather than building one, so the
@@ -457,7 +443,4 @@ final class AppEnvironment {
 
     // MARK: - Migration
 
-    func makeLegacyMigration() -> LegacyMigration {
-        LegacyMigration(auth: auth, ledger: ledger)
-    }
 }
