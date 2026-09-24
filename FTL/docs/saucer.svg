@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#75757A" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Dome -->
+  <path d="M 7.19 7.333 A 5.5 5.5 0 0 1 16.81 7.333" />
+
+  <!-- Rim -->
+  <ellipse cx="12" cy="10" rx="10.5" ry="3" />
+
+  <!-- Rim underside panels -->
+  <line x1="4.4" y1="10" x2="4.4" y2="12.07" />
+  <line x1="8.8" y1="10" x2="8.8" y2="12.86" />
+  <line x1="15.2" y1="10" x2="15.2" y2="12.86" />
+  <line x1="19.6" y1="10" x2="19.6" y2="12.07" />
+
+  <!-- Beam sides -->
+  <line x1="8.8" y1="13.6" x2="2.4" y2="23" />
+  <line x1="15.2" y1="13.6" x2="21.6" y2="23" />
+
+  <!-- Still rungs (t = 0.42, 0.78) -->
+  <line x1="7.01" y1="17.55" x2="16.99" y2="17.55" stroke-opacity="0.55" />
+  <line x1="4.71" y1="20.93" x2="19.29" y2="20.93" stroke-opacity="0.55" />
+</svg>
