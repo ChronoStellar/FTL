@@ -56,7 +56,7 @@ struct SpendHeroCard: View {
                 Spacer(minLength: FTLSpacing.sm)
                 Text(perDayLabel)
                     .font(FTLTypography.amountSmall)
-                    .foregroundStyle(FTLColor.textPrimary)
+                    .foregroundStyle(isOverCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary)
                     .layoutPriority(1)
             }
             .lineLimit(1)

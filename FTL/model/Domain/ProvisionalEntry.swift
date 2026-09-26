@@ -52,6 +52,9 @@ nonisolated struct ProvisionalEntry: Sendable, Hashable, Identifiable, Codable {
     ///
     /// Optional so every row already in the on-disk cache decodes unchanged.
     var readAmount: Money?
+    
+    /// User-added memo/note on the approve screen.
+    var notes: String?
 
     var needsAttention: Bool { !flags.isEmpty }
 

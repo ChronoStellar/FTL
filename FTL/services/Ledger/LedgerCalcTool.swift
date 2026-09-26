@@ -42,6 +42,7 @@ actor LedgerCalcTool: CalcTool {
             
             let perDayRemaining: Money?
             if isCurrent, daysRemaining > 0 {
+                var calculatedPerDay: Money
                 if let customDailyUnits = DailyBudgetManager.amount {
                     let excludedIDs = DailyBudgetManager.excludedCategoryIDs
                     let dailyBudgetSpend = spend.filter { tx in
@@ -55,15 +56,21 @@ actor LedgerCalcTool: CalcTool {
                         let totalAllowance = customDailyUnits * daysPassed
                         let excludedSpentMoney = Money.sum(dailyBudgetSpend.map(\.amount))
                         let left = totalAllowance - excludedSpentMoney.minorUnits
-                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                        calculatedPerDay = Money(minorUnits: left, currency: ceiling.currency)
                     } else {
                         let spentToday = Money.sum(dailyBudgetSpend.filter { calendar.isDate($0.date, inSameDayAs: now) }.map(\.amount))
                         let left = customDailyUnits - spentToday.minorUnits
-                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                        calculatedPerDay = Money(minorUnits: left, currency: ceiling.currency)
                     }
                 } else {
                     let left = max(0, (ceiling - spentMoney).minorUnits)
-                    perDayRemaining = Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
+                    calculatedPerDay = Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
+                }
+                
+                if calculatedPerDay.minorUnits <= 0 {
+                    perDayRemaining = Money(minorUnits: 50_000, currency: ceiling.currency)
+                } else {
+                    perDayRemaining = calculatedPerDay
                 }
             } else {
                 perDayRemaining = nil

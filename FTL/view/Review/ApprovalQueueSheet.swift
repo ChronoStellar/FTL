@@ -282,12 +282,17 @@ private struct QueueEntryCard: View {
     /// The name typed into the correction alert. Empty when it is closed.
     @State private var merchantDraft = ""
     @State private var isCorrectingMerchant = false
+    @State private var isAddingCategory = false
+    @State private var newCategoryName = ""
+    @State private var memoDraft = ""
+    @State private var isEditingMemo = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             notes
             suggestion
+            memoField.padding(.top, 9)
             tags.padding(.top, FTLSpacing.md)
             actions.padding(.top, 13)
         }
@@ -296,6 +301,35 @@ private struct QueueEntryCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: FTLRadius.card, style: .continuous)
                 .strokeBorder(FTLColor.controlBorder, lineWidth: 0.5)
+        }
+    }
+    
+    private var memoField: some View {
+        Button {
+            memoDraft = entry.notes ?? ""
+            isEditingMemo = true
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 11, weight: .medium))
+                if let notes = entry.notes {
+                    Text(notes)
+                        .font(FTLTypography.caption)
+                        .lineLimit(2)
+                } else {
+                    Text("Add memo")
+                        .font(FTLTypography.caption)
+                }
+            }
+            .foregroundStyle(FTLColor.textTertiary)
+        }
+        .buttonStyle(.plain)
+        .alert("Memo", isPresented: $isEditingMemo) {
+            TextField("Optional memo", text: $memoDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                Task { await viewModel.setNote(entry, note: memoDraft) }
+            }
         }
     }
 
@@ -470,6 +504,27 @@ private struct QueueEntryCard: View {
                 ) {
                     Task { await viewModel.retag(entry, to: option) }
                 }
+            }
+            
+            Button {
+                newCategoryName = ""
+                isAddingCategory = true
+            } label: {
+                Text("+ New Tag")
+                    .font(FTLTypography.captionSmall)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(FTLColor.controlFill, in: Capsule())
+                    .foregroundStyle(FTLColor.textSecondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .alert("New Category", isPresented: $isAddingCategory) {
+            TextField("Category Name", text: $newCategoryName)
+                .textInputAutocapitalization(.words)
+            Button("Cancel", role: .cancel) {}
+            Button("Add") {
+                Task { await viewModel.addCategory(name: newCategoryName, for: entry) }
             }
         }
     }
