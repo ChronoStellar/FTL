@@ -38,6 +38,13 @@ actor SheetsBudgetStore: BudgetStore {
             parents[id] = row[2].isEmpty ? nil : CategoryID(rawValue: row[2])
             ceilings[id] = Money(minorUnits: Int(row[3]) ?? 0)
         }
+        
+        // Ensure the Emergency category always exists.
+        if names[.emergency] == nil {
+            names[.emergency] = "Emergency"
+            parents[.emergency] = CategoryID(rawValue: "total")
+            ceilings[.emergency] = .zero
+        }
 
         // A row only counts as a true root when it declares no parent at all.
         // A row that DOES declare a parent, but that parent isn't a row of its

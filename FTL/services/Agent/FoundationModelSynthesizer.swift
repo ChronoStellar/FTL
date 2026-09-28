@@ -46,13 +46,13 @@ struct ProposedPattern: Sendable {
     @Guide(description: "Every label that can appear immediately BEFORE the transaction amount, best first, e.g. ['Total', 'Amount']. Different receipts from one sender often label the figure differently — a purchase may say Total where a transfer says Amount. Copy each character for character. Do not include the amount itself.")
     var amountAfter: [String]
 
-    @Guide(description: "Literal text that can appear immediately AFTER the amount and ends it, e.g. ['Transaction Date', 'Admin Fee']. List every variant seen across the examples. Empty if the amount is the last thing on the line.")
+    @Guide(description: "Literal text that can appear immediately AFTER the amount and ends it, e.g. ['Transaction Date', 'Admin Fee']. List every variant seen across the examples. Empty if the amount is the last thing on the line. Do NOT include changing variables like dates or IDs in the terminator; stop at the constant text that precedes them.")
     var amountBefore: [String]
 
     @Guide(description: "Every label that can appear immediately BEFORE the merchant or counterparty name, best first, e.g. ['bluAccount'].")
     var merchantAfter: [String]
 
-    @Guide(description: "Literal text that can appear immediately AFTER the merchant name and ends it, e.g. ['Amount', 'bluVirtual', 'Admin Fee']. List EVERY variant seen — different receipts from the same sender often end the name differently, and missing one loses those emails entirely.")
+    @Guide(description: "Literal text that can appear immediately AFTER the merchant name and ends it, e.g. ['Amount', 'bluVirtual Card ', 'Admin Fee']. List EVERY variant seen — different receipts from the same sender often end the name differently, and missing one loses those emails entirely. Do NOT include changing variables like card digits, dates, or IDs in the terminator; stop at the constant text that precedes them.")
     var merchantBefore: [String]
 
     @Guide(description: "Literal text that appears ONLY in this sender's REFUND or money-back emails — a purchase being reversed. For example ['Refund', 'Dana Dikembalikan', 'Reversal']. Look at the subject lines as well as the bodies. Empty if none of the examples is a refund.")
@@ -211,7 +211,11 @@ nonisolated struct FoundationModelSynthesizer: PatternSynthesizer {
         // misses correct a small model far better than a score does.
         if let feedback, !feedback.failures.isEmpty {
             let misses = feedback.failures.prefix(6).map { failure in
-                "The field '\(failure.field)' came back as \(failure.extracted.map { "\"\($0)\"" } ?? "nothing at all"), where the correct answer was \"\(failure.expected ?? "")\". That was read from this text: \(failure.excerpt.prefix(160))"
+                let expected = failure.expected ?? ""
+                let expectationText = expected.starts(with: "a merchant name")
+                    ? "but it must be \(expected)"
+                    : "where the correct answer was \"\(expected)\""
+                return "The field '\(failure.field)' came back as \(failure.extracted.map { "\"\($0)\"" } ?? "nothing at all"), \(expectationText). That was read from this text: \(failure.excerpt.prefix(160))"
             }.joined(separator: "\n\n")
 
             sections.append("""

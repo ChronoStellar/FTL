@@ -311,6 +311,10 @@ final class AppEnvironment {
         HomeViewModel(calc: calc, ledger: ledger, provisional: provisional)
     }
 
+    func makeCalendarViewModel() -> CalendarViewModel {
+        CalendarViewModel(calc: calc)
+    }
+
     func makeBucketDetailViewModel(
         categoryID: CategoryID,
         name: String,

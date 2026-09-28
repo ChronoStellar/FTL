@@ -30,8 +30,8 @@ struct AddSpendIntent: AppIntent {
     @Parameter(title: "Amount", description: "In rupiah, e.g. 25000")
     var amount: Int
 
-    @Parameter(title: "Bucket", optionsProvider: BucketOptionsProvider())
-    var bucket: String
+    @Parameter(title: "Bucket")
+    var bucket: SpendCategoryEntity
 
     @Parameter(title: "Note", description: "Optional", default: "")
     var note: String
@@ -59,38 +59,64 @@ struct AddSpendIntent: AppIntent {
 
         // Match on the name the user picked, but fall back to the slug so a
         // typed or remembered value ("food") still lands.
-        let categories = try await environment.ledger.categories()
-        guard let category = categories.first(where: {
-            $0.name.caseInsensitiveCompare(bucket) == .orderedSame
-                || $0.id == CategoryID(rawValue: bucket)
-        }) else {
-            throw AddSpendIntentError.unknownBucket(bucket)
-        }
+        let categoryID = CategoryID(rawValue: bucket.id)
 
         let money = Money.idr(amount)
         try await ManualEntry(
             provisional: environment.provisional,
             approvals: environment.approvals
         )
-        .record(amount: money, categoryID: category.id, note: note)
+        .record(amount: money, categoryID: categoryID, note: note)
 
         return .result(
-            dialog: IntentDialog("Added \(MoneyFormatter.rp(money)) to \(category.name).")
+            dialog: IntentDialog("Added \(MoneyFormatter.rp(money)) to \(bucket.name).")
         )
     }
 }
 
-// MARK: - Bucket options
 
-/// Offers the buckets that actually exist in the user's sheet. Falls back to an
-/// empty list rather than a guess: a made-up bucket name here would write spend
-/// to a category the dashboard doesn't have.
-struct BucketOptionsProvider: DynamicOptionsProvider {
+// MARK: - App Entities
+
+struct SpendCategoryEntity: AppEntity {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Category")
+    static var defaultQuery = SpendCategoryEntityQuery()
+    
+    let id: String
+    let name: String
+    
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(stringLiteral: name)
+    }
+}
+
+struct SpendCategoryEntityQuery: EntityQuery, EntityStringQuery {
     @MainActor
-    func results() async throws -> [String] {
+    func entities(for identifiers: [String]) async throws -> [SpendCategoryEntity] {
         let environment = AppEnvironment.shared
         guard environment.auth.isSignedIn else { return [] }
-        return (try? await environment.ledger.categories())?.map(\.name) ?? []
+        let categories = try? await environment.ledger.categories()
+        return identifiers.compactMap { id in
+            guard let cat = categories?.first(where: { $0.id.rawValue == id }) else { return nil }
+            return SpendCategoryEntity(id: cat.id.rawValue, name: cat.name)
+        }
+    }
+    
+    @MainActor
+    func suggestedEntities() async throws -> [SpendCategoryEntity] {
+        let environment = AppEnvironment.shared
+        guard environment.auth.isSignedIn else { return [] }
+        let categories = try? await environment.ledger.categories()
+        return categories?.map { SpendCategoryEntity(id: $0.id.rawValue, name: $0.name) } ?? []
+    }
+    
+    @MainActor
+    func entities(matching string: String) async throws -> [SpendCategoryEntity] {
+        let environment = AppEnvironment.shared
+        guard environment.auth.isSignedIn else { return [] }
+        let categories = try? await environment.ledger.categories()
+        return categories?
+            .filter { $0.name.localizedCaseInsensitiveContains(string) }
+            .map { SpendCategoryEntity(id: $0.id.rawValue, name: $0.name) } ?? []
     }
 }
 
@@ -99,17 +125,14 @@ struct BucketOptionsProvider: DynamicOptionsProvider {
 enum AddSpendIntentError: Error, CustomLocalizedStringResourceConvertible {
     case notSignedIn
     case invalidAmount
-    case unknownBucket(String)
-
+    
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notSignedIn:
             "Open FTL and sign in with Google first."
         case .invalidAmount:
             "Enter an amount greater than zero."
-        case .unknownBucket(let name):
-            "There's no bucket called \(name) in your sheet."
-        }
+                }
     }
 }
 
