@@ -178,20 +178,7 @@ struct ContentView: View {
         }
         .sharedBackgroundVisibility(.hidden)
 
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            if #available(iOS 27.0, macOS 27.0, *) {
-                Button { sheet = .scan } label: {
-                    Image(systemName: "camera")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(FTLColor.textPrimary)
-                        .frame(width: FTLSpacing.minTapTarget, height: FTLSpacing.minTapTarget)
-                        .background(FTLColor.controlFill, in: Circle())
-                        .overlay { Circle().strokeBorder(FTLColor.controlBorder, lineWidth: 0.5) }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Scan Bill")
-            }
-            
+        ToolbarItem(placement: .topBarTrailing) {
             Button { sheet = .add() } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 17, weight: .regular))
@@ -226,20 +213,6 @@ struct ContentView: View {
     @ViewBuilder
     private func sheetContent(_ route: SheetRoute) -> some View {
         switch route {
-        case .scan:
-            if #available(iOS 27.0, macOS 27.0, *) {
-                ScanBillScreen(
-                    environment: environment,
-                    onCancel: { sheet = nil },
-                    onScanned: { _ in
-                        sheet = nil
-                        Task { await home.load(forceReload: true) }
-                    }
-                )
-            } else {
-                Text("Scan feature requires iOS 27.0 or newer.")
-            }
-
         case .months:
             MonthPickerSheet(
                 months: home.months,
@@ -349,7 +322,7 @@ struct ContentView: View {
     enum SheetRoute: Identifiable {
         case months, queue
         case add(initialAmount: Int? = nil)
-        case settings, incomeSplit, scan
+        case settings, incomeSplit
         /// Carries the row, so the editor's view model is built from it once —
         /// see `EditTransactionScreen`. This is why the enum can no longer be
         /// `String`-backed.
@@ -357,7 +330,6 @@ struct ContentView: View {
 
         var id: String {
             switch self {
-            case .scan: return "scan"
             case .months: return "months"
             case .queue: return "queue"
             case .add(let initialAmount):

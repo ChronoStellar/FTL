@@ -96,7 +96,8 @@ enum FTLTypography {
     static let bodyRegular = Font.system(size: 15)
     static let caption = Font.system(size: 12.5)
     static let captionSmall = Font.system(size: 12)
-    static let chip = Font.system(size: 15, weight: .medium)
+    static let chip
+    = Font.system(size: 15, weight: .medium)
     static let chipSmall = Font.system(size: 13.5, weight: .medium)
 
     /// Tracking for the uppercase section labels.

@@ -21,12 +21,12 @@ nonisolated struct FoundationModelScanner: Sendable {
 
     static var isAvailable: Bool { SystemLanguageModel.default.isAvailable }
 
-    func scan(_ cgImage: CGImage) async throws -> ScannedBill? {
+    func parse(ocrText: String) async throws -> ScannedBill? {
         guard Self.isAvailable else { return nil }
 
         let prompt = Prompt {
-            "Extract the merchant name, total amount, and a short description of the purchase from this receipt."
-            Attachment(cgImage)
+            "Extract the merchant name, total amount, and a short description of the purchase from this raw OCR text of a receipt:"
+            ocrText
         }
 
         let session = LanguageModelSession(instructions: Self.instructions)
@@ -40,7 +40,7 @@ nonisolated struct FoundationModelScanner: Sendable {
 
     private static let instructions = """
     You are an AI assistant that reads receipts and bills.
-    Given an image of a receipt, extract the exact merchant name and the total final amount.
+    Given raw OCR text from a receipt, extract the exact merchant name and the total final amount.
     Ensure the amount is just an integer (e.g., 50000).
     Provide a short summary in the notes field.
     """

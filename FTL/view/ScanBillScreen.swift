@@ -11,6 +11,8 @@ struct ScanBillScreen: View {
     @State private var selectedImage: UIImage?
     @State private var isScanning = false
     @State private var errorMessage: String?
+    @State private var scannedResult: ScannedBill?
+    @State private var ocrResult: String?
     
     var body: some View {
         NavigationStack {
@@ -38,6 +40,38 @@ struct ScanBillScreen: View {
                 if isScanning {
                     ProgressView("Scanning...")
                         .padding()
+                } else if let bill = scannedResult {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Scanned Result").font(FTLTypography.rowTitle)
+                        HStack { Text("Merchant:").fontWeight(.semibold); Text(bill.merchant) }
+                        HStack { Text("Amount:").fontWeight(.semibold); Text("\(bill.amount)") }
+                        HStack { Text("Notes:").fontWeight(.semibold); Text(bill.notes) }
+                        
+                        Button(action: { scannedResult = nil; ocrResult = nil }) {
+                            Text("Scan Another")
+                                .font(FTLTypography.body)
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(FTLColor.controlFill, in: Capsule())
+                        }
+                    }
+                    .padding()
+                    .background(FTLColor.glassFill, in: RoundedRectangle(cornerRadius: FTLRadius.card))
+                    
+                    if let ocrText = ocrResult {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Raw OCR (Vision Framework)").font(FTLTypography.rowTitle)
+                            ScrollView {
+                                Text(ocrText)
+                                    .font(FTLTypography.caption)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxHeight: 150)
+                            .padding(8)
+                            .background(FTLColor.controlFill, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
                 } else if selectedImage != nil {
                     Button(action: scan) {
                         Text("Scan Receipt")
@@ -70,6 +104,8 @@ struct ScanBillScreen: View {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let uiImage = UIImage(data: data) {
                         selectedImage = uiImage
+                        scannedResult = nil
+                        ocrResult = nil
                     }
                 }
             }
@@ -84,48 +120,16 @@ struct ScanBillScreen: View {
         Task {
             do {
                 let scanner = FoundationModelScanner()
-                if let bill = try await scanner.scan(cgImage) {
-                    let amount = Money.idr(bill.amount)
-                    let date = Date()
-                    let tx = NormalizedTransaction(
-                        id: UUID(),
-                        documentID: UUID(),
-                        source: .photo,
-                        date: date,
-                        amount: amount,
-                        merchantRaw: bill.merchant,
-                        merchant: nil,
-                        lineItems: [],
-                        fingerprint: Fingerprint(amount: amount, date: date)
-                    )
-                    let entry = ProvisionalEntry(
-                        id: UUID(),
-                        transaction: tx,
-                        resolution: ProvisionalEntry.Resolution(
-                            kind: .spend,
-                            nonSpendType: nil,
-                            categoryID: .unallocated,
-                            merchantID: nil,
-                            merchantName: nil,
-                            splits: [],
-                            mergedFrom: [],
-                            suggestedTag: nil
-                        ),
-                        provenance: .manual,
-                        flags: [],
-                        status: .pending,
-                        createdAt: Date(),
-                        readBy: RuleID(rawValue: "FoundationModelScanner"),
-                        readAs: .spend,
-                        readAmount: amount,
-                        notes: bill.notes
-                    )
-                    
-                    try await environment.provisional.insert([entry])
-                    
+                let ocrScanner = OCRScanner()
+                
+                let text = try await ocrScanner.scanText(from: cgImage)
+                let bill = try await scanner.parse(ocrText: text)
+                
+                if let bill = bill {
                     await MainActor.run {
                         isScanning = false
-                        onScanned(entry)
+                        scannedResult = bill
+                        ocrResult = text
                     }
                 } else {
                     await MainActor.run {

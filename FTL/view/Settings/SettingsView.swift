@@ -575,6 +575,7 @@ struct SettingsView: View {
         PanelCard {
             debugRow("Google API harness", .harness, showsDivider: true)
             debugRow("Evaluation", .evaluation, showsDivider: true)
+            debugRow("Scan Receipt (Vision Model)", .scan, showsDivider: true)
 
             // Gmail rail — Stage 1 #4
             PanelRow(showsDivider: true) {
@@ -611,6 +612,16 @@ struct SettingsView: View {
                 switch tool {
                 case .harness: DebugView()
                 case .evaluation: EvaluationView()
+                case .scan:
+                    if #available(iOS 27.0, macOS 27.0, *) {
+                        ScanBillScreen(
+                            environment: environment,
+                            onCancel: { developerTool = nil },
+                            onScanned: { _ in developerTool = nil }
+                        )
+                    } else {
+                        Text("Scan feature requires iOS 27.0 or newer.")
+                    }
                 }
             }
         }
@@ -633,7 +644,7 @@ struct SettingsView: View {
     }
 
     enum DeveloperTool: String, Identifiable {
-        case harness, evaluation
+        case harness, evaluation, scan
         var id: String { rawValue }
     }
     #endif
