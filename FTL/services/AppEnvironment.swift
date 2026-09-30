@@ -311,6 +311,10 @@ final class AppEnvironment {
         HomeViewModel(calc: calc, ledger: ledger, provisional: provisional)
     }
 
+    func makeCalendarViewModel() -> CalendarViewModel {
+        CalendarViewModel(calc: calc)
+    }
+
     func makeBucketDetailViewModel(
         categoryID: CategoryID,
         name: String,
@@ -330,6 +334,7 @@ final class AppEnvironment {
             store: provisional,
             approvals: approvals,
             ledger: ledger,
+            budgets: budgets,
             // The queue is where the tagger earns its keep: every load
             // re-derives what you have settled, so a decision made on one row
             // is visible on the next one down. See `PurchaseTagger`.

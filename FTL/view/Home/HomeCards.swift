@@ -56,7 +56,7 @@ struct SpendHeroCard: View {
                 Spacer(minLength: FTLSpacing.sm)
                 Text(perDayLabel)
                     .font(FTLTypography.amountSmall)
-                    .foregroundStyle(FTLColor.textPrimary)
+                    .foregroundStyle(isOverCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary)
                     .layoutPriority(1)
             }
             .lineLimit(1)
@@ -122,8 +122,10 @@ struct BucketRow: View {
     let action: () -> Void
 
     private var isUnallocated: Bool { position.id == .unallocated }
+    private var isEmergency: Bool { position.id == .emergency }
 
     private var fill: Color {
+        if isEmergency { return .red }
         if isUnallocated { return FTLColor.unallocated }
         return position.standing == .overCeiling ? FTLColor.budgetOverCeiling : FTLColor.textPrimary
     }
@@ -136,14 +138,15 @@ struct BucketRow: View {
                         HStack(alignment: .firstTextBaseline) {
                             Text(position.node.name)
                                 .font(FTLTypography.rowTitle)
-                                .foregroundStyle(isUnallocated ? FTLColor.textSecondary : FTLColor.textPrimary)
+                                .foregroundStyle(isEmergency ? .red : isUnallocated ? FTLColor.textSecondary : FTLColor.textPrimary)
                             Spacer(minLength: FTLSpacing.sm)
-                            Text(MoneyFormatter.standing(remaining: position.remaining))
+                            Text(isEmergency ? MoneyFormatter.grouped(position.actual) : MoneyFormatter.standing(remaining: position.remaining))
                                 .font(FTLTypography.amountSmall)
                                 .foregroundStyle(
-                                    position.standing == .overCeiling
+                                    isEmergency ? .red :
+                                    (position.standing == .overCeiling
                                         ? FTLColor.budgetOverCeiling
-                                        : FTLColor.textQuaternary
+                                        : FTLColor.textQuaternary)
                                 )
                         }
                         MeterBar(fraction: fractionOfCeiling, fill: fill)

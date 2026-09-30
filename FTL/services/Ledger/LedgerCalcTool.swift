@@ -42,21 +42,35 @@ actor LedgerCalcTool: CalcTool {
             
             let perDayRemaining: Money?
             if isCurrent, daysRemaining > 0 {
+                var calculatedPerDay: Money
                 if let customDailyUnits = DailyBudgetManager.amount {
+                    let excludedIDs = DailyBudgetManager.excludedCategoryIDs
+                    let dailyBudgetSpend = spend.filter { tx in
+                        guard let catID = tx.categoryID else { return true }
+                        return !excludedIDs.contains(catID)
+                    }
+                    
                     if DailyBudgetManager.rollsOver {
                         let daysTotal = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 1
                         let daysPassed = max(1, daysTotal - daysRemaining)
                         let totalAllowance = customDailyUnits * daysPassed
-                        let left = totalAllowance - spentMoney.minorUnits
-                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                        let excludedSpentMoney = Money.sum(dailyBudgetSpend.map(\.amount))
+                        let left = totalAllowance - excludedSpentMoney.minorUnits
+                        calculatedPerDay = Money(minorUnits: left, currency: ceiling.currency)
                     } else {
-                        let spentToday = Money.sum(spend.filter { calendar.isDate($0.date, inSameDayAs: now) }.map(\.amount))
+                        let spentToday = Money.sum(dailyBudgetSpend.filter { calendar.isDate($0.date, inSameDayAs: now) }.map(\.amount))
                         let left = customDailyUnits - spentToday.minorUnits
-                        perDayRemaining = Money(minorUnits: left, currency: ceiling.currency)
+                        calculatedPerDay = Money(minorUnits: left, currency: ceiling.currency)
                     }
                 } else {
                     let left = max(0, (ceiling - spentMoney).minorUnits)
-                    perDayRemaining = Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
+                    calculatedPerDay = Money(minorUnits: left / daysRemaining, currency: ceiling.currency)
+                }
+                
+                if calculatedPerDay.minorUnits <= 0 {
+                    perDayRemaining = Money(minorUnits: 50_000, currency: ceiling.currency)
+                } else {
+                    perDayRemaining = calculatedPerDay
                 }
             } else {
                 perDayRemaining = nil
@@ -103,8 +117,8 @@ actor LedgerCalcTool: CalcTool {
 
     func budgetPositions(for interval: DateInterval) async throws -> [BudgetPosition] {
         let tree = try await budgets.tree(for: interval)
-        // Invariant 5: only spend counts toward a ceiling.
-        let spend = try await ledger.all().filter { interval.containsLedgerDate($0.date) && $0.countsTowardBudget }
+        // Include emergency here so it can tally its own bucket, but we'll exclude it from parents in position()
+        let spend = try await ledger.all().filter { interval.containsLedgerDate($0.date) && $0.kind == .spend }
         return tree.map { position(for: $0, spend: spend) }
     }
 
@@ -115,10 +129,9 @@ actor LedgerCalcTool: CalcTool {
         let isRoot = !node.children.isEmpty
         let ownSpend = spend.filter { tx in
             guard let category = tx.categoryID else {
-                // Uncategorized spend belongs to the root's total and to nothing
-                // below it — that is exactly what "unallocated" means.
                 return isRoot
             }
+            if category == .emergency && node.id != .emergency { return false }
             return category == node.id || namedIDs.contains(category)
         }
 
@@ -174,5 +187,18 @@ enum DailyBudgetManager {
     static var rollsOver: Bool {
         get { UserDefaults.standard.bool(forKey: rollsOverKey) }
         set { UserDefaults.standard.set(newValue, forKey: rollsOverKey) }
+    }
+    
+    static let excludedCategoriesKey = "ftl_daily_budget_excluded"
+    
+    static var excludedCategoryIDs: [CategoryID] {
+        get {
+            guard let array = UserDefaults.standard.stringArray(forKey: excludedCategoriesKey) else { return [] }
+            return array.map { CategoryID(rawValue: $0) }
+        }
+        set {
+            let strings = newValue.map(\.rawValue)
+            UserDefaults.standard.set(strings, forKey: excludedCategoriesKey)
+        }
     }
 }

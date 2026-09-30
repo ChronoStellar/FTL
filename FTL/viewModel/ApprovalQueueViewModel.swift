@@ -24,6 +24,7 @@ final class ApprovalQueueViewModel {
     private let store: ProvisionalStore
     private let approvals: ApprovalService
     private let ledger: LedgerStore
+    private let budgets: BudgetStore
     /// Re-run on every load, deterministically. See `load()`.
     private let tagger: (any PurchaseTagger)?
     /// Re-checked on every load, same reasoning as `tagger` — see
@@ -80,6 +81,7 @@ final class ApprovalQueueViewModel {
         store: ProvisionalStore,
         approvals: ApprovalService,
         ledger: LedgerStore,
+        budgets: BudgetStore,
         tagger: (any PurchaseTagger)? = nil,
         trust: (any PatternMemory)? = nil,
         merchants: (any MerchantMemory)? = nil
@@ -87,6 +89,7 @@ final class ApprovalQueueViewModel {
         self.store = store
         self.approvals = approvals
         self.ledger = ledger
+        self.budgets = budgets
         self.tagger = tagger
         self.trust = trust
         self.merchants = merchants
@@ -458,6 +461,32 @@ final class ApprovalQueueViewModel {
         }
         do {
             try await approvals.amend(entry.id, to: resolution)
+            await load()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    func addCategory(name: String, for entry: ProvisionalEntry) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let slug = trimmed.replacingOccurrences(of: " ", with: "_")
+        let categoryID = CategoryID(rawValue: slug)
+        let cat = SpendCategory(id: categoryID, name: trimmed, parentID: CategoryID(rawValue: "total"))
+        do {
+            try await budgets.addCategory(cat, under: CategoryID(rawValue: "total"))
+            await retag(entry, to: TagOption(id: categoryID, name: trimmed))
+        } catch {
+            actionError = "Failed to add category: \(error.localizedDescription)"
+        }
+    }
+
+    func setNote(_ entry: ProvisionalEntry, note: String) async {
+        var copy = entry
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.notes = trimmed.isEmpty ? nil : trimmed
+        do {
+            try await store.update(copy)
             await load()
         } catch {
             actionError = error.localizedDescription

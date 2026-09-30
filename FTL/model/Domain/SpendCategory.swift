@@ -34,6 +34,9 @@ nonisolated struct CategoryID: Sendable, Hashable, Codable, RawRepresentable {
     /// The implicit child every parent ceiling carries, so mystery spend stays
     /// visible instead of silently vanishing from the tree.
     static let unallocated = CategoryID(rawValue: "unallocated")
+    
+    /// The emergency category, which by rule is excluded from budget tallies.
+    static let emergency = CategoryID(rawValue: "emergency")
 }
 
 /// Named `SpendCategory` rather than `Category` — the bare name collides with an

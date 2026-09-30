@@ -108,7 +108,11 @@ struct HomeView: View {
     /// on screen explaining the gap.
     private var bucketRows: [BudgetPosition] {
         guard let root = viewModel.buckets.first else { return [] }
-        return root.children.filter { $0.id != .unallocated || $0.actual.minorUnits > 0 }
+        return root.children.filter { bucket in
+            if bucket.id == .unallocated && bucket.actual.minorUnits == 0 { return false }
+            if bucket.id == .emergency && bucket.actual.minorUnits == 0 { return false }
+            return true
+        }
     }
 
     private var emptyRecent: some View {

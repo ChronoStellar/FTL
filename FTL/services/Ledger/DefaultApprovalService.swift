@@ -62,7 +62,7 @@ actor DefaultApprovalService: ApprovalService {
                 flags: entry.flags,
                 capturedAt: entry.createdAt,
                 approvedAt: .now,
-                notes: nil
+                notes: entry.notes
             )
             written.append(tx)
 

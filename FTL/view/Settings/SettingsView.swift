@@ -308,7 +308,7 @@ struct SettingsView: View {
                         }
                     }
                     
-                    PanelRow(showsDivider: false) {
+                    PanelRow(showsDivider: true) {
                         Toggle("Roll over unspent to next day", isOn: Binding(
                             get: { dailyBudgetRollsOver },
                             set: { rollsOver in
@@ -320,10 +320,29 @@ struct SettingsView: View {
                         .foregroundStyle(FTLColor.textPrimary)
                         .tint(FTLColor.accent)
                     }
+                    
+                    NavigationLink {
+                        ExcludedCategoriesView(budgetTree: budgetTree)
+                    } label: {
+                        PanelRow(showsDivider: false) {
+                            HStack {
+                                Text("Excluded Buckets")
+                                    .font(FTLTypography.body)
+                                    .foregroundStyle(FTLColor.textPrimary)
+                                Spacer()
+                                let count = DailyBudgetManager.excludedCategoryIDs.count
+                                Text(count > 0 ? "\(count) excluded" : "None")
+                                    .font(FTLTypography.bodyRegular)
+                                    .foregroundStyle(FTLColor.textTertiary)
+                                Chevron()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             
-            Text("Replaces the monthly ceiling math with a strict daily allowance.")
+            Text("Replaces the monthly ceiling math with a strict daily allowance. Exclude 'once a month' spending (like rent) to keep it from draining your daily budget.")
                 .font(FTLTypography.captionSmall)
                 .foregroundStyle(FTLColor.textQuaternary)
         }
@@ -1072,4 +1091,34 @@ struct SettingsView: View {
         isSyncingMail = false
     }
     #endif
+}
+
+struct ExcludedCategoriesView: View {
+    let budgetTree: [BudgetNode]
+    @State private var excludedIDs = DailyBudgetManager.excludedCategoryIDs
+
+    var body: some View {
+        Form {
+            Section(header: Text("Excluded Buckets"), footer: Text("Spending in these categories will not be deducted from your daily budget.")) {
+                if let root = budgetTree.first {
+                    ForEach(root.children) { child in
+                        Toggle(child.name, isOn: Binding(
+                            get: { excludedIDs.contains(child.id) },
+                            set: { isExcluded in
+                                if isExcluded {
+                                    excludedIDs.append(child.id)
+                                } else {
+                                    excludedIDs.removeAll { $0 == child.id }
+                                }
+                                DailyBudgetManager.excludedCategoryIDs = excludedIDs
+                            }
+                        ))
+                        .tint(FTLColor.accent)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Excluded Buckets")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }

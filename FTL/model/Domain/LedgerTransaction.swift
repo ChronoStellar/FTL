@@ -53,6 +53,9 @@ nonisolated struct LedgerTransaction: Sendable, Hashable, Identifiable, Codable 
     let approvedAt: Date
     var notes: String?
 
-    /// Only spend counts toward a ceiling. The single place this rule is expressed.
-    var countsTowardBudget: Bool { kind == .spend }
+    /// Only spend counts toward a ceiling, and the 'emergency' category is strictly excluded
+    /// from affecting the tally. The single place this rule is expressed.
+    var countsTowardBudget: Bool { 
+        kind == .spend && categoryID != CategoryID.emergency
+    }
 }

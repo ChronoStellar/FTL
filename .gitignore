@@ -7,3 +7,4 @@ FTL/secrets.plist
 test/
 FTL/test/
 *.pbxproj
+.build/

@@ -69,18 +69,20 @@ nonisolated struct PatternDrivenParser: ReceiptParser, DomainScopedParser {
         // so a receipt carrying both a bank's "Admin Fee" and its own word
         // "Refund" is read as the refund it is.
         let marker = pattern.nonSpendMarkers.first { $0.matches(text) }
+        
+        let isInferredTransfer = marker == nil && BluReceiptParser.looksLikeAccountTransfer(counterparty: merchantRaw, text: text)
 
         return .parsed(
             ParsedReceipt(
                 date: email.date,
                 amount: amount,
                 merchantRaw: merchantRaw,
-                kind: marker == nil ? .spend : .nonSpend,
+                kind: (marker != nil || isInferredTransfer) ? .nonSpend : .spend,
                 // The marker's own type, when it has one. A pattern that says
                 // "the word Refund means a refund" is making a checkable claim
                 // and `PatternVerifier` checks it; a pattern that only knows
                 // "Admin Fee means not spending" is not, and gets nil.
-                nonSpendType: marker?.type,
+                nonSpendType: isInferredTransfer ? .transfer : marker?.type,
                 // Untyped is the honest uncertainty, so it is the one that
                 // flags: the row is money that moved without being a purchase,
                 // and which sort is a question only a person can close. Naming
@@ -90,10 +92,13 @@ nonisolated struct PatternDrivenParser: ReceiptParser, DomainScopedParser {
                 // `BluReceiptParser` does not flag its refunds: the word came
                 // from the sender's own email, and a flag that fires on the
                 // sender's own statement is a flag nobody reads.
-                flags: marker.map { $0.type == nil
-                    ? [ReviewFlag(reason: .ambiguousKind, detail: "Read as non-spend from \"\($0.contains)\"")]
-                    : []
-                } ?? []
+                flags: {
+                    if isInferredTransfer { return [] }
+                    return marker.map { $0.type == nil
+                        ? [ReviewFlag(reason: .ambiguousKind, detail: "Read as non-spend from \"\($0.contains)\"")]
+                        : []
+                    } ?? []
+                }()
             )
         )
     }
