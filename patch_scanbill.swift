@@ -1,49 +1,23 @@
-import SwiftUI
-import PhotosUI
+import Foundation
 
-@available(iOS 27.0, macOS 27.0, *)
-struct ScanBillScreen: View {
-    let environment: AppEnvironment
-    let onCancel: () -> Void
-    let onScanned: (ProvisionalEntry) -> Void
-    
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
-    @State private var isScanning = false
-    @State private var errorMessage: String?
-    @State private var scannedResult: ScannedBill?
-        @State private var ocrResult: String?
+let file = "FTL/view/ScanBillScreen.swift"
+var content = try String(contentsOfFile: file)
+
+// Add edit states
+let stateSearch = "@State private var ocrResult: String?\n"
+let stateReplace = """
+    @State private var ocrResult: String?
     
     @State private var editMerchant: String = ""
     @State private var editAmount: String = ""
     @State private var editNotes: String = ""
-    @State private var isSaving = false    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: FTLSpacing.lg) {
-                if let selectedImage {
-                    Image(uiImage: selectedImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 300)
-                        .clipShape(RoundedRectangle(cornerRadius: FTLRadius.card))
-                } else {
-                    ContentUnavailableView("No Image", systemImage: "photo", description: Text("Select a receipt to scan"))
-                }
-                
-                PhotosPicker(selection: $selectedItem, matching: .images) {
-                    Text("Select Photo")
-                        .font(FTLTypography.body)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(FTLColor.controlFill, in: Capsule())
-                        .overlay { Capsule().strokeBorder(FTLColor.controlBorder) }
-                }
-                .disabled(isScanning)
-                
-                if isScanning {
-                    ProgressView("Scanning...")
-                        .padding()
+    @State private var isSaving = false
+"""
+content = content.replacingOccurrences(of: stateSearch, with: stateReplace)
+
+// Replace the UI block for scannedResult
+let uiSearchRegex = try NSRegularExpression(pattern: "                \\} else if let bill = scannedResult \\{.*?\\} else if selectedImage != nil \\{", options: [.dotMatchesLineSeparators])
+let uiReplace = """
                 } else if scannedResult != nil {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
@@ -111,82 +85,31 @@ struct ScanBillScreen: View {
                         }
                     }
                 } else if selectedImage != nil {
-                    Button(action: scan) {
-                        Text("Scan Receipt")
-                            .font(FTLTypography.body)
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(FTLColor.accent, in: Capsule())
+"""
+content = uiSearchRegex.stringByReplacingMatches(in: content, range: NSRange(content.startIndex..., in: content), withTemplate: uiReplace)
+
+// Update scan() to initialize the edit variables
+let scanSearch = """
+                    await MainActor.run {
+                        isScanning = false
+                        scannedResult = bill
+                        ocrResult = text
                     }
-                }
-                
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(FTLTypography.caption)
-                        .foregroundStyle(.red)
-                }
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Scan Bill")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-            }
-            .onChange(of: selectedItem) { _, newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                       let uiImage = UIImage(data: data) {
-                        selectedImage = uiImage
-                        scannedResult = nil
-                        ocrResult = nil
-                    }
-                }
-            }
-        }
-    }
-    
-    private func scan() {
-        guard let cgImage = selectedImage?.cgImage else { return }
-        isScanning = true
-        errorMessage = nil
-        
-        Task {
-            do {
-                let scanner = FoundationModelScanner()
-                let ocrScanner = OCRScanner()
-                
-                let text = try await ocrScanner.scanText(from: cgImage)
-                let bill = try await scanner.parse(ocrText: text)
-                
-                if let bill = bill {
+"""
+let scanReplace = """
                     await MainActor.run {
                         isScanning = false
                         scannedResult = bill
                         ocrResult = text
                         editMerchant = bill.merchant
-                        editAmount = "\(bill.amount)"
+                        editAmount = "\\(bill.amount)"
                         editNotes = bill.notes
                     }
-                } else {
-                    await MainActor.run {
-                        isScanning = false
-                        errorMessage = "Vision model is not available."
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    isScanning = false
-                    errorMessage = "Failed to scan: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
+"""
+content = content.replacingOccurrences(of: scanSearch, with: scanReplace)
 
+// Add saveToLedger function
+let saveToLedgerFunc = """
     private func saveToLedger() {
         guard let amountInt = Int(editAmount) else { return }
         isSaving = true
@@ -217,9 +140,13 @@ struct ScanBillScreen: View {
             } catch {
                 await MainActor.run {
                     isSaving = false
-                    errorMessage = "Failed to save: \(error.localizedDescription)"
+                    errorMessage = "Failed to save: \\(error.localizedDescription)"
                 }
             }
         }
     }
 }
+"""
+content = content.replacingOccurrences(of: "        }\n    }\n}\n", with: "        }\n    }\n\n" + saveToLedgerFunc)
+
+try content.write(toFile: file, atomically: true, encoding: .utf8)

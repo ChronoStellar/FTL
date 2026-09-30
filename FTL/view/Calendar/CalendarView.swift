@@ -43,6 +43,7 @@ struct CalendarView: View {
                         if let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
                             let isToday = calendar.isDateInToday(date)
                             let total = viewModel.dailyTotals[calendar.startOfDay(for: date)]
+                            let hasEmergency = viewModel.dailyEmergencyTotals[calendar.startOfDay(for: date)] != nil
                             
                             VStack(spacing: 2) {
                                 Text("\(day)")
@@ -64,7 +65,7 @@ struct CalendarView: View {
                             .background(FTLColor.glassFill, in: RoundedRectangle(cornerRadius: 6))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 6)
-                                    .strokeBorder(isToday ? FTLColor.accent.opacity(0.5) : FTLColor.controlBorder, lineWidth: isToday ? 1 : 0.5)
+                                    .strokeBorder(hasEmergency ? Color.red : (isToday ? FTLColor.accent.opacity(0.5) : FTLColor.controlBorder), lineWidth: (hasEmergency || isToday) ? 1.5 : 0.5)
                             }
                         }
                     }

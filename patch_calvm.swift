@@ -1,25 +1,28 @@
-import SwiftUI
-import Observation
+import Foundation
 
-@Observable @MainActor
-final class CalendarViewModel {
-    private let calc: CalcTool
-    private let calendar: Calendar
-    
+let file = "FTL/viewModel/CalendarViewModel.swift"
+var content = try String(contentsOfFile: file)
+
+let search = """
+    var dailyTotals: [Date: Money] = [:]
+"""
+let replace = """
     var dailyTotals: [Date: Money] = [:]
     var dailyEmergencyTotals: [Date: Money] = [:]
-    
-    init(calc: CalcTool, calendar: Calendar = .current) {
-        self.calc = calc
-        self.calendar = calendar
-    }
-    
-    func load(interval: DateInterval) async {
-        do {
-            let txs = try await calc.transactions(in: interval, categoryID: nil, limit: 10000)
-            var totals: [Date: Int] = [:]
-            var currency: CurrencyCode? = nil
-            
+"""
+content = content.replacingOccurrences(of: search, with: replace)
+
+let loopSearch = """
+            for tx in txs {
+                guard tx.countsTowardBudget else { continue }
+                let startOfDay = calendar.startOfDay(for: tx.date)
+                totals[startOfDay, default: 0] += tx.amount.minorUnits
+                if currency == nil {
+                    currency = tx.amount.currency
+                }
+            }
+"""
+let loopReplace = """
             var eTotals: [Date: Int] = [:]
             for tx in txs {
                 guard tx.countsTowardBudget || tx.categoryID == .emergency else { continue }
@@ -37,13 +40,14 @@ final class CalendarViewModel {
                     currency = tx.amount.currency
                 }
             }
-            
-            // default to IDR if no spend
-            let c = currency ?? .idr
-            var result: [Date: Money] = [:]
-            for (date, minor) in totals {
-                result[date] = Money(minorUnits: minor, currency: c)
-            }
+"""
+content = content.replacingOccurrences(of: loopSearch, with: loopReplace)
+
+let resultSearch = """
+            self.dailyTotals = result
+        } catch {
+"""
+let resultReplace = """
             self.dailyTotals = result
             
             var eResult: [Date: Money] = [:]
@@ -52,7 +56,7 @@ final class CalendarViewModel {
             }
             self.dailyEmergencyTotals = eResult
         } catch {
-            print("Calendar view load error: \(error)")
-        }
-    }
-}
+"""
+content = content.replacingOccurrences(of: resultSearch, with: resultReplace)
+
+try content.write(toFile: file, atomically: true, encoding: .utf8)
