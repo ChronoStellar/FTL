@@ -1,0 +1,745 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme FTL -destination "platform=iOS Simulator,name=iPhone 17,OS=27.0" build
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  GoogleUtilities: https://github.com/google/GoogleUtilities.git @ 8.1.3
+  AppCheck: https://github.com/google/app-check.git @ 11.3.1
+  GTMSessionFetcher: https://github.com/google/gtm-session-fetcher.git @ 3.5.0
+  AppAuth: https://github.com/openid/AppAuth-iOS.git @ 2.1.0
+  InteropForGoogle: https://github.com/google/interop-ios-for-google-sdks.git @ 101.0.0
+  GoogleSignIn: https://github.com/google/GoogleSignIn-iOS @ 9.2.0
+  GTMAppAuth: https://github.com/google/GTMAppAuth.git @ 5.0.0
+  Promises: https://github.com/google/promises.git @ 2.4.1
+
+2026-09-30 15:31:12.567 xcodebuild[19570:8733902] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (34 targets)
+    Target 'FTL' in project 'FTL'
+        ➜ Explicit dependency on target 'FTLWidgetsExtension' in project 'FTL'
+        ➜ Explicit dependency on target 'GoogleSignIn-product' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignInSwift-product' in project 'GoogleSignIn'
+    Target 'GoogleSignInSwift-product' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+    Target 'GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn_GoogleSignInSwift' in project 'GoogleSignIn' (no dependencies)
+    Target 'GoogleSignIn-product' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+    Target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+    Target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher' (no dependencies)
+    Target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth' (no dependencies)
+    Target 'AppCheckCore-product' in project 'AppCheck'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises-product' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults-product' in project 'GoogleUtilities'
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises-product' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults-product' in project 'GoogleUtilities'
+    Target 'GULUserDefaults-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+    Target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities' (no dependencies)
+    Target 'GULEnvironment-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
+    Target 'third-party-IsAppEncrypted' in project 'GoogleUtilities' (no dependencies)
+    Target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities' (no dependencies)
+    Target 'FBLPromises-product' in project 'Promises'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
+    Target 'Promises_FBLPromises' in project 'Promises' (no dependencies)
+    Target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuthCore' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
+    Target 'AppAuth_AppAuthCore' in project 'AppAuth' (no dependencies)
+    Target 'AppAuth_AppAuth' in project 'AppAuth' (no dependencies)
+    Target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn' (no dependencies)
+    Target 'FTLWidgetsExtension' in project 'FTL' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -x objective-c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/rx0/Desktop/3/FTL/FTL/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 196beb75a68888ff4008182c042ba687
+Build description path: /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/XCBuildData/196beb75a68888ff4008182c042ba687.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk /Users/rx0/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+    cd /Users/rx0/Desktop/3/FTL/FTL.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -o /Users/rx0/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/FTLWidgetsExtension.appex/Info.plist /Users/rx0/Desktop/3/FTL/FTLWidgets/Info.plist (in target 'FTLWidgetsExtension' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-infoPlistUtility /Users/rx0/Desktop/3/FTL/FTLWidgets/Info.plist -producttype com.apple.product-type.app-extension -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/FTLWidgetsExtension.appex/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises-b.build/empty-Promises_FBLPromises.plist (in target 'Promises_FBLPromises' from project 'Promises')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/promises
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/Promises.build/Debug-iphonesimulator/Promises_FBLPromises-b.build/empty-Promises_FBLPromises.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/Promises_FBLPromises.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults-b.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist (in target 'GoogleUtilities_GoogleUtilities-UserDefaults' from project 'GoogleUtilities')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults-b.build/empty-GoogleUtilities_GoogleUtilities-UserDefaults.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-UserDefaults.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment-b.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist (in target 'GoogleUtilities_GoogleUtilities-Environment' from project 'GoogleUtilities')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment-b.build/empty-GoogleUtilities_GoogleUtilities-Environment.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Environment.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger-b.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist (in target 'GoogleUtilities_GoogleUtilities-Logger' from project 'GoogleUtilities')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleUtilities.build/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger-b.build/empty-GoogleUtilities_GoogleUtilities-Logger.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleUtilities_GoogleUtilities-Logger.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift-b.build/empty-GoogleSignIn_GoogleSignInSwift.plist (in target 'GoogleSignIn_GoogleSignInSwift' from project 'GoogleSignIn')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift-b.build/empty-GoogleSignIn_GoogleSignInSwift.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignInSwift.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore-b.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist (in target 'GTMSessionFetcher_GTMSessionFetcherCore' from project 'GTMSessionFetcher')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/gtm-session-fetcher
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GTMSessionFetcher.build/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore-b.build/empty-GTMSessionFetcher_GTMSessionFetcherCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GTMSessionFetcher_GTMSessionFetcherCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn-b.build/empty-GoogleSignIn_GoogleSignIn.plist (in target 'GoogleSignIn_GoogleSignIn' from project 'GoogleSignIn')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleSignIn-iOS
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GoogleSignIn.build/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn-b.build/empty-GoogleSignIn_GoogleSignIn.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GoogleSignIn_GoogleSignIn.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth-b.build/empty-GTMAppAuth_GTMAppAuth.plist (in target 'GTMAppAuth_GTMAppAuth' from project 'GTMAppAuth')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GTMAppAuth
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GTMAppAuth.build/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth-b.build/empty-GTMAppAuth_GTMAppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/GTMAppAuth_GTMAppAuth.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore-b.build/empty-AppAuth_AppAuthCore.plist (in target 'AppAuth_AppAuthCore' from project 'AppAuth')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuthCore-b.build/empty-AppAuth_AppAuthCore.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/AppAuth_AppAuthCore.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth-b.build/empty-AppAuth_AppAuth.plist (in target 'AppAuth_AppAuth' from project 'AppAuth')
+    cd /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS
+    builtin-infoPlistUtility /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/AppAuth.build/Debug-iphonesimulator/AppAuth_AppAuth-b.build/empty-AppAuth_AppAuth.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/AppAuth_AppAuth.bundle/Info.plist
+
+SwiftDriver FTL normal arm64 com.apple.xcode.tools.swift.compiler (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name FTL -Onone @/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/promises/Sources/FBLPromises/include/module.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -target arm64-apple-ios26.5-simulator -g -module-cache-path /Users/rx0/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator -F /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache -output-file-map /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/rx0/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/rx0/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/rx0/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -emit-const-values -const-gather-protocols-list /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL_const_extract_protocols.json -Xcc -iquote -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-generated-files.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-own-target-headers.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL-633fe69c9f067a94ba80084f007f053b-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-project-headers.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources-normal/arm64 -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources/arm64 -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL-Swift.h -working-directory /Users/rx0/Desktop/3/FTL -experimental-emit-module-separately -disable-cmo
+/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources/GeneratedAssetSymbols.swift:591:14: warning: The "separator" color asset name resolves to a conflicting UIColor symbol "separator". Try renaming the asset. (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 Compiling\ CameraPicker.swift,\ ContentView.swift,\ RootView.swift,\ ScanBillScreen.swift /Users/rx0/Desktop/3/FTL/FTL/view/CameraPicker.swift /Users/rx0/Desktop/3/FTL/FTL/view/ContentView.swift /Users/rx0/Desktop/3/FTL/FTL/view/RootView.swift /Users/rx0/Desktop/3/FTL/FTL/view/ScanBillScreen.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/CameraPicker.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile CameraPicker.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/ContentView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile ContentView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/RootView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile RootView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/ScanBillScreen.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile ScanBillScreen.swift
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ FTL (in target 'FTL' from project 'FTL')
+/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources/GeneratedAssetSymbols.swift:591:14: warning: The "separator" color asset name resolves to a conflicting UIColor symbol "separator". Try renaming the asset.
+ 589 |     }
+ 590 | 
+ 591 |     #warning("The \"separator\" color asset name resolves to a conflicting UIColor symbol \"separator\". Try renaming the asset.")
+     |              `- warning: The "separator" color asset name resolves to a conflicting UIColor symbol "separator". Try renaming the asset.
+ 592 | 
+ 593 |     /// The "sheetBackground" asset catalog color.
+
+/Users/rx0/Desktop/3/FTL/FTL/model/Contracts/PatternSynthesis.swift:167:60: warning: conformance of 'ExtractionPattern.NonSpendMarker' to protocol 'Decodable' crosses into main actor-isolated code and can cause data races; this is an error in the Swift 6 language mode [#ConformanceIsolation]
+165 | 
+166 |     /// "If the text contains the word Refund, this is a refund."
+167 |     nonisolated struct NonSpendMarker: Sendable, Hashable, Codable {
+    |                                                            |- warning: conformance of 'ExtractionPattern.NonSpendMarker' to protocol 'Decodable' crosses into main actor-isolated code and can cause data races; this is an error in the Swift 6 language mode [#ConformanceIsolation]
+    |                                                            |- note: isolate this conformance to the main actor with '@MainActor'
+    |                                                            `- note: turn data races into runtime errors with '@preconcurrency'
+168 |         /// Literal text, matched case-insensitively against `flatText` — which
+169 |         /// includes the SUBJECT line, and that is where senders usually say it.
+    :
+276 | /// precisely that.
+277 | extension ExtractionPattern.NonSpendMarker {
+278 |     init(from decoder: any Decoder) throws {
+    |     |- note: main actor-isolated initializer 'init(from:)' cannot satisfy nonisolated requirement
+    |     `- note: mark initializer 'init(from:)' 'nonisolated'
+279 |         if let single = try? decoder.singleValueContainer(),
+280 |            let legacy = try? single.decode(String.self) {
+
+/Users/rx0/Desktop/3/FTL/FTL/model/Contracts/PatternSynthesis.swift:47:59: warning: conformance of 'ExtractionPattern' to protocol 'Decodable' crosses into main actor-isolated code and can cause data races; this is an error in the Swift 6 language mode [#ConformanceIsolation]
+ 45 | /// Anchors describe *where* a field sits relative to words in the text, which is
+ 46 | /// tractable under guided generation and reads like an explanation.
+ 47 | nonisolated struct ExtractionPattern: Sendable, Hashable, Codable, Identifiable {
+    |                                                           |- warning: conformance of 'ExtractionPattern' to protocol 'Decodable' crosses into main actor-isolated code and can cause data races; this is an error in the Swift 6 language mode [#ConformanceIsolation]
+    |                                                           |- note: isolate this conformance to the main actor with '@MainActor'
+    |                                                           `- note: turn data races into runtime errors with '@preconcurrency'
+ 48 |     /// Sender, layout, version. The layout is in here because one sender has
+ 49 |     /// more than one — Grab's rides and its food orders are different documents
+    :
+249 | /// which is the one thing persistence was added to prevent.
+250 | extension ExtractionPattern {
+251 |     init(from decoder: any Decoder) throws {
+    |     |- note: main actor-isolated initializer 'init(from:)' cannot satisfy nonisolated requirement
+    |     `- note: mark initializer 'init(from:)' 'nonisolated'
+252 |         let container = try decoder.container(keyedBy: CodingKeys.self)
+253 |         self.init(
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/EndToEndRunner.swift:92:49: warning: main actor-isolated static property 'categories' can not be referenced from a nonisolated context
+ 90 |     func run(
+ 91 |         bundle: Bundle = .main,
+ 92 |         buckets: [SpendCategory] = SampleLedger.categories
+    |                                                 `- warning: main actor-isolated static property 'categories' can not be referenced from a nonisolated context
+ 93 |     ) async throws -> Report {
+ 94 |         var log = Log()
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift:25:16: note: static property declared here
+ 23 |     static let total = CategoryID(rawValue: "total")
+ 24 | 
+ 25 |     static var categories: [SpendCategory] {
+    |                `- note: static property declared here
+ 26 |         [
+ 27 |             SpendCategory(id: food, name: "Food", parentID: total),
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/TemporalHoldoutRunner.swift:211:77: warning: main actor-isolated static method 'rp' cannot be called from outside of the actor; this is an error in the Swift 6 language mode
+209 |             for row in produced.sorted(by: { $0.date < $1.date }) {
+210 |                 let kindTag = row.kind == .spend ? "" : " · \(row.kind.rawValue)"
+211 |                 lines.append("    \(Self.fmt(row.date)) · \(MoneyFormatter.rp(row.amount)) · \(row.merchantRaw)\(kindTag)")
+    |                                                                            `- warning: main actor-isolated static method 'rp' cannot be called from outside of the actor; this is an error in the Swift 6 language mode
+212 |             }
+213 |         }
+
+
+SwiftCompile normal arm64 (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    
+
+SwiftCompile normal arm64 Compiling\ GmailRail.swift,\ ManualEntry.swift,\ NotificationSchedule.swift,\ PipelineDebugStub.swift,\ CorpusEmailSource.swift /Users/rx0/Desktop/3/FTL/FTL/services/Capture/GmailRail.swift /Users/rx0/Desktop/3/FTL/FTL/services/Capture/ManualEntry.swift /Users/rx0/Desktop/3/FTL/FTL/services/Capture/NotificationSchedule.swift /Users/rx0/Desktop/3/FTL/FTL/services/Diagnostics/PipelineDebugStub.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/CorpusEmailSource.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Capture/GmailRail.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile GmailRail.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Capture/ManualEntry.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile ManualEntry.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Capture/NotificationSchedule.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile NotificationSchedule.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Diagnostics/PipelineDebugStub.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile PipelineDebugStub.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/CorpusEmailSource.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile CorpusEmailSource.swift
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Capture/GmailRail.swift:450:83: warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+448 |                             twinOrigin: ledgerTwin.source == .manual
+449 |                                 ? "manual entry"
+450 |                                 : (Self.provenanceRuleName(ledgerTwin.provenance) ?? ledgerTwin.source.rawValue),
+    |                                                                                   `- warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+451 |                             twinDate: ledgerTwin.date,
+452 |                             where: "the ledger",
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Capture/GmailRail.swift:481:101: warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+479 |                     detail: Self.duplicateDetail(
+480 |                         twinMerchantRaw: twin.transaction.merchantRaw,
+481 |                         twinOrigin: Self.isManual(twin) ? "manual entry" : (Self.ruleName(of: twin) ?? "another source"),
+    |                                                                                                     `- warning: left side of nil coalescing operator '??' has non-optional type 'String', so the right side is never used
+482 |                         twinDate: twin.transaction.date,
+483 |                         where: "the queue",
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Diagnostics/PipelineDebugStub.swift:319:51: warning: call to main actor-isolated static method 'rp' in a synchronous nonisolated context [#ActorIsolatedCall]
+317 |         source: TaggerSource
+318 |     ) {
+319 |         let amtText = amount.map { MoneyFormatter.rp($0) } ?? "n/a"
+    |                                                   `- warning: call to main actor-isolated static method 'rp' in a synchronous nonisolated context [#ActorIsolatedCall]
+320 |         let badge: String
+321 |         let color: String
+
+/Users/rx0/Desktop/3/FTL/FTL/view/DesignSystem/MoneyFormatter.swift:28:17: note: calls to static method 'rp' from outside of its actor context are implicitly asynchronous
+26 | 
+27 |     /// "Rp 4.432.000".
+28 |     static func rp(_ money: Money) -> String {
+   |                 `- note: calls to static method 'rp' from outside of its actor context are implicitly asynchronous
+29 |         "\(money.currency.symbol) \(grouped(money))"
+30 |     }
+
+SwiftCompile normal arm64 Compiling\ DebugView.swift,\ HomeCards.swift,\ HomeView.swift,\ MonthPickerSheet.swift /Users/rx0/Desktop/3/FTL/FTL/view/Debug/DebugView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Home/HomeCards.swift /Users/rx0/Desktop/3/FTL/FTL/view/Home/HomeView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Months/MonthPickerSheet.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Debug/DebugView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile DebugView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Home/HomeCards.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile HomeCards.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Home/HomeView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile HomeView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Months/MonthPickerSheet.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile MonthPickerSheet.swift
+
+SwiftCompile normal arm64 Compiling\ GoogleAuthManager.swift,\ SheetsService.swift,\ AddSpendIntent.swift,\ CheckReceiptsIntent.swift,\ DefaultApprovalService.swift /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAuthManager.swift /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/SheetsService.swift /Users/rx0/Desktop/3/FTL/FTL/services/Intents/AddSpendIntent.swift /Users/rx0/Desktop/3/FTL/FTL/services/Intents/CheckReceiptsIntent.swift /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/DefaultApprovalService.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAuthManager.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile GoogleAuthManager.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/SheetsService.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SheetsService.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Intents/AddSpendIntent.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile AddSpendIntent.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Intents/CheckReceiptsIntent.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile CheckReceiptsIntent.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/DefaultApprovalService.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile DefaultApprovalService.swift
+
+SwiftCompile normal arm64 Compiling\ PipelineCaseRunner.swift,\ ScriptedSynthesizer.swift,\ TemporalHoldoutRunner.swift,\ GmailExporter.swift,\ GoogleAPIClient.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/PipelineCaseRunner.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/ScriptedSynthesizer.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/TemporalHoldoutRunner.swift /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GmailExporter.swift /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAPIClient.swift (in target 'FTL' from project 'FTL')
+/Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/TemporalHoldoutRunner.swift:211:77: warning: main actor-isolated static method 'rp' cannot be called from outside of the actor; this is an error in the Swift 6 language mode
+209 |             for row in produced.sorted(by: { $0.date < $1.date }) {
+210 |                 let kindTag = row.kind == .spend ? "" : " · \(row.kind.rawValue)"
+211 |                 lines.append("    \(Self.fmt(row.date)) · \(MoneyFormatter.rp(row.amount)) · \(row.merchantRaw)\(kindTag)")
+    |                                                                            `- warning: main actor-isolated static method 'rp' cannot be called from outside of the actor; this is an error in the Swift 6 language mode
+212 |             }
+213 |         }
+
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/PipelineCaseRunner.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile PipelineCaseRunner.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/ScriptedSynthesizer.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile ScriptedSynthesizer.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/TemporalHoldoutRunner.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile TemporalHoldoutRunner.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GmailExporter.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile GmailExporter.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAPIClient.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile GoogleAPIClient.swift
+
+SwiftCompile normal arm64 Compiling\ InMemoryStores.swift,\ SampleLedger.swift,\ WidgetDataSnapshot.swift,\ WidgetSnapshotWriter.swift,\ AppEnvironment.swift /Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift /Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetDataSnapshot.swift /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetSnapshotWriter.swift /Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift (in target 'FTL' from project 'FTL')
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift:22:52: warning: main actor-isolated static property 'budgetTree' can not be referenced on a nonisolated actor instance
+ 20 | 
+ 21 | actor InMemoryBudgetStore: BudgetStore {
+ 22 |     private var nodes: [BudgetNode] = SampleLedger.budgetTree
+    |                                                    `- warning: main actor-isolated static property 'budgetTree' can not be referenced on a nonisolated actor instance
+ 23 | 
+ 24 |     func tree(for interval: DateInterval) async throws -> [BudgetNode] { nodes }
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift:36:16: note: static property declared here
+ 34 |     /// One root ceiling partitioned into named buckets. Whatever the named
+ 35 |     /// children don't claim is the implicit unallocated child.
+ 36 |     static var budgetTree: [BudgetNode] {
+    |                `- note: static property declared here
+ 37 |         [
+ 38 |             BudgetNode(
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift:55:50: warning: main actor-isolated static property 'provisionalEntries' can not be referenced from a nonisolated context
+ 53 | 
+ 54 |     init(empty: Bool = false) {
+ 55 |         self.entries = empty ? [] : SampleLedger.provisionalEntries
+    |                                                  `- warning: main actor-isolated static property 'provisionalEntries' can not be referenced from a nonisolated context
+ 56 |     }
+ 57 | 
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift:90:16: note: static property declared here
+ 88 | 
+ 89 |     /// Rows waiting on the human gate. Not counted anywhere yet (Invariant 7).
+ 90 |     static var provisionalEntries: [ProvisionalEntry] {
+    |                `- note: static property declared here
+ 91 |         [
+ 92 |             entry(daysAgo: 0, amount: 289_000, raw: "TOKOPEDIA", category: shopping, source: .email,
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift:96:47: warning: main actor-isolated static property 'transactions' can not be referenced from a nonisolated context
+ 94 |     /// four placeholder purchases as though the app had found them.
+ 95 |     init(empty: Bool = false) {
+ 96 |         self.rows = empty ? [] : SampleLedger.transactions
+    |                                               `- warning: main actor-isolated static property 'transactions' can not be referenced from a nonisolated context
+ 97 |     }
+ 98 | 
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift:54:16: note: static property declared here
+ 52 | 
+ 53 |     /// Three months: two closed, the current one in progress.
+ 54 |     static var transactions: [LedgerTransaction] {
+    |                `- note: static property declared here
+ 55 |         currentMonth + previousMonth(offset: 1) + previousMonth(offset: 2)
+ 56 |     }
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift:130:70: warning: main actor-isolated static property 'categories' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode
+128 |     }
+129 | 
+130 |     func categories() async throws -> [SpendCategory] { SampleLedger.categories }
+    |                                                                      `- warning: main actor-isolated static property 'categories' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode
+131 | }
+132 | 
+
+/Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift:192:49: warning: main actor-isolated static property 'shared' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+190 |     /// provisional cache now survives a relaunch (SwiftData — Stage 0 #1).
+191 |     /// Approve before you quit is no longer load-bearing; it stays good practice.
+192 |     static func live(auth: GoogleAuthManager = .shared) -> AppEnvironment {
+    |                                                 `- warning: main actor-isolated static property 'shared' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+193 |         let ledger = SheetsLedgerStore(auth: auth)
+194 |         // One container, both stores. The provisional queue and the capture log
+
+/Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAuthManager.swift:16:16: note: static property declared here
+ 14 | @MainActor
+ 15 | final class GoogleAuthManager: ObservableObject {
+ 16 |     static let shared = GoogleAuthManager()
+    |                `- note: static property declared here
+ 17 | 
+ 18 |     // MARK: - Configuration
+
+/Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift:256:51: warning: main actor-isolated static property 'shared' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+254 |     /// Fixtures. Used by the DEBUG skip-sign-in path so the UI can be worked on
+255 |     /// without an account, and by previews.
+256 |     static func sample(auth: GoogleAuthManager = .shared) -> AppEnvironment {
+    |                                                   `- warning: main actor-isolated static property 'shared' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+257 |         let ledger = InMemoryLedgerStore()
+258 |         let budgets = InMemoryBudgetStore()
+
+/Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/GoogleAuthManager.swift:16:16: note: static property declared here
+ 14 | @MainActor
+ 15 | final class GoogleAuthManager: ObservableObject {
+ 16 |     static let shared = GoogleAuthManager()
+    |                `- note: static property declared here
+ 17 | 
+ 18 |     // MARK: - Configuration
+
+/Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift:301:42: error: missing argument for parameter 'analysisStore' in call
+140 |     private(set) lazy var discoverySync = DiscoverySync { [weak self] in self?.makeDiscoveryContext() }
+141 | 
+142 |     private init(
+    |             `- note: 'init(auth:ledger:budgets:provisional:analysisStore:isLive:captureLog:patterns:tagMemory:patternMemory:merchantMemory:isProvisionalStorePersistent:ledgerBackend:)' declared here
+143 |         auth: GoogleAuthManager,
+144 |         ledger: LedgerStore,
+    :
+299 |             ledger: InMemoryLedgerStore(empty: true),
+300 |             budgets: InMemoryBudgetStore(),
+301 |             provisional: base.provisional,
+    |                                          `- error: missing argument for parameter 'analysisStore' in call
+302 |             isLive: true,
+303 |             captureLog: base.captureLog,
+
+/Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift:475:14: warning: actor-isolated property 'context' can not be mutated from the main actor; this is an error in the Swift 6 language mode
+468 | actor SwiftDataAnalysisStore: AnalysisStore {
+469 |     private let container: ModelContainer
+470 |     private let context: ModelContext
+    |                 `- note: mutation of this property is only permitted within the actor
+471 | 
+472 |     init(modelContainer: ModelContainer) {
+473 |         self.container = modelContainer
+474 |         // A background actor gets a background context.
+475 |         self.context = ModelContext(modelContainer)
+    |              `- warning: actor-isolated property 'context' can not be mutated from the main actor; this is an error in the Swift 6 language mode
+476 |     }
+477 | 
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c -filelist /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/sources-1 -primary-file /Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift -primary-file /Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift -primary-file /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetDataSnapshot.swift -primary-file /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetSnapshotWriter.swift -primary-file /Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift -supplementary-output-file-map /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/supplementaryOutputs-6 -emit-localized-strings -emit-localized-strings-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64 -target arm64-apple-ios26.5-simulator -module-can-import-version DeveloperToolsSupport 24.0.24 24.0.24 -module-can-import-version SwiftUI 8.0.84.1 8.0.84 -module-can-import-version UIKit 9127.0.84.1 9127.0.84 -module-can-import-version WidgetKit 749.0.2 749.0.2 -disable-cross-import-overlay-search -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/HealthKit.swiftoverlay -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/UIKit.swiftoverlay -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/HealthKit.swiftoverlay -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import AppIntents /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/AppIntents.framework/Modules/AppIntents.swiftcrossimport/UIKit.swiftoverlay -swift-module-cross-import FoundationModels /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/FoundationModels.framework/Modules/FoundationModels.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import FoundationModels /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/FoundationModels.framework/Modules/FoundationModels.swiftcrossimport/UIKit.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import RelevanceKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/RelevanceKit.framework/Modules/RelevanceKit.swiftcrossimport/MapKit.swiftoverlay -swift-module-cross-import RelevanceKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/RelevanceKit.framework/Modules/RelevanceKit.swiftcrossimport/MapKit.swiftoverlay -swift-module-cross-import SwiftData /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/SwiftData.framework/Modules/SwiftData.swiftcrossimport/CoreData.swiftoverlay -swift-module-cross-import SwiftData /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk/System/Library/Frameworks/SwiftData.framework/Modules/SwiftData.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import UserNotifications /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/UserNotifications.framework/Modules/UserNotifications.swiftcrossimport/AppIntents.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libAppIntentsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#AppIntentsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationModelsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationModelsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftDataMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftDataMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -I /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator -F /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator -module-cache-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=5 -swift-version 5 -Onone -D DEBUG -serialize-debugging-options -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -default-isolation\=MainActor -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/rx0/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/rx0/Desktop/3/FTL -enable-anonymous-context-mangled-names -file-compilation-dir /Users/rx0/Desktop/3/FTL -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/promises/Sources/FBLPromises/include/module.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/GoogleSignIn.modulemap -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -Xcc -iquote -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-generated-files.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-own-target-headers.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL-633fe69c9f067a94ba80084f007f053b-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/FTL-project-headers.hmap -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/SourcePackages/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources-normal/arm64 -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources/arm64 -Xcc -I/Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name FTL -const-gather-protocols-file /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL_const_extract_protocols.json -disable-clang-spi -clang-target arm64-apple-ios27.0-simulator -target-sdk-version 27.0 -target-sdk-name iphonesimulator27.0 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/InMemoryStores.o -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/SampleLedger.o -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/WidgetDataSnapshot.o -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/WidgetSnapshotWriter.o -o /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/AppEnvironment.o -debug-module-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/FTL.swiftmodule -index-unit-output-path /FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/InMemoryStores.o -index-unit-output-path /FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/SampleLedger.o -index-unit-output-path /FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/WidgetDataSnapshot.o -index-unit-output-path /FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/WidgetSnapshotWriter.o -index-unit-output-path /FTL.build/Debug-iphonesimulator/FTL.build/Objects-normal/arm64/AppEnvironment.o -index-store-path /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Index.noindex/DataStore -index-system-modules
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile InMemoryStores.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SampleLedger.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetDataSnapshot.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile WidgetDataSnapshot.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetSnapshotWriter.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile WidgetSnapshotWriter.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile AppEnvironment.swift
+
+SwiftCompile normal arm64 Compiling\ LedgerCalcTool.swift,\ LedgerDeduplicator.swift,\ SheetsBudgetStore.swift,\ SheetsLedgerStore.swift,\ SenderTriage.swift /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerCalcTool.swift /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerDeduplicator.swift /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsBudgetStore.swift /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsLedgerStore.swift /Users/rx0/Desktop/3/FTL/FTL/services/Pipeline/SenderTriage.swift (in target 'FTL' from project 'FTL')
+/Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerCalcTool.swift:46:62: warning: main actor-isolated static property 'amount' can not be referenced from a nonisolated context
+ 44 |             if isCurrent, daysRemaining > 0 {
+ 45 |                 var calculatedPerDay: Money
+ 46 |                 if let customDailyUnits = DailyBudgetManager.amount {
+    |                                                              `- warning: main actor-isolated static property 'amount' can not be referenced from a nonisolated context
+ 47 |                     let excludedIDs = DailyBudgetManager.excludedCategoryIDs
+ 48 |                     let dailyBudgetSpend = spend.filter { tx in
+    :
+171 |     static let rollsOverKey = "ftl_daily_budget_rolls_over"
+172 |     
+173 |     static var amount: Int? {
+    |                `- note: static property declared here
+174 |         get {
+175 |             guard UserDefaults.standard.object(forKey: amountKey) != nil else { return nil }
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerCalcTool.swift:47:58: warning: main actor-isolated static property 'excludedCategoryIDs' can not be referenced from a nonisolated context
+ 45 |                 var calculatedPerDay: Money
+ 46 |                 if let customDailyUnits = DailyBudgetManager.amount {
+ 47 |                     let excludedIDs = DailyBudgetManager.excludedCategoryIDs
+    |                                                          `- warning: main actor-isolated static property 'excludedCategoryIDs' can not be referenced from a nonisolated context
+ 48 |                     let dailyBudgetSpend = spend.filter { tx in
+ 49 |                         guard let catID = tx.categoryID else { return true }
+    :
+192 |     static let excludedCategoriesKey = "ftl_daily_budget_excluded"
+193 |     
+194 |     static var excludedCategoryIDs: [CategoryID] {
+    |                `- note: static property declared here
+195 |         get {
+196 |             guard let array = UserDefaults.standard.stringArray(forKey: excludedCategoriesKey) else { return [] }
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerCalcTool.swift:53:43: warning: main actor-isolated static property 'rollsOver' can not be referenced from a nonisolated context
+ 51 |                     }
+ 52 |                     
+ 53 |                     if DailyBudgetManager.rollsOver {
+    |                                           `- warning: main actor-isolated static property 'rollsOver' can not be referenced from a nonisolated context
+ 54 |                         let daysTotal = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 1
+ 55 |                         let daysPassed = max(1, daysTotal - daysRemaining)
+    :
+185 |     }
+186 |     
+187 |     static var rollsOver: Bool {
+    |                `- note: static property declared here
+188 |         get { UserDefaults.standard.bool(forKey: rollsOverKey) }
+189 |         set { UserDefaults.standard.set(newValue, forKey: rollsOverKey) }
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsLedgerStore.swift:24:9: warning: call to main actor-isolated initializer 'init(auth:spreadsheetID:)' in a synchronous actor-isolated context [#ActorIsolatedCall]
+ 22 | 
+ 23 |     private var sheets: SheetsService {
+ 24 |         SheetsService(auth: auth, spreadsheetID: customSpreadsheetID ?? SheetsService.activeSpreadsheetID)
+    |         `- warning: call to main actor-isolated initializer 'init(auth:spreadsheetID:)' in a synchronous actor-isolated context [#ActorIsolatedCall]
+ 25 |     }
+ 26 | 
+
+/Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/SheetsService.swift:49:5: note: calls to initializer 'init(auth:spreadsheetID:)' from outside of its actor context are implicitly asynchronous
+ 47 |     private let base = URL(string: "https://sheets.googleapis.com/v4/spreadsheets/")!
+ 48 | 
+ 49 |     init(auth: GoogleAuthManager, spreadsheetID: String? = nil) {
+    |     `- note: calls to initializer 'init(auth:spreadsheetID:)' from outside of its actor context are implicitly asynchronous
+ 50 |         self.auth = auth
+ 51 |         self.client = GoogleAPIClient(auth: auth)
+
+/Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsLedgerStore.swift:24:87: warning: main actor-isolated static property 'activeSpreadsheetID' can not be referenced from a nonisolated autoclosure
+ 22 | 
+ 23 |     private var sheets: SheetsService {
+ 24 |         SheetsService(auth: auth, spreadsheetID: customSpreadsheetID ?? SheetsService.activeSpreadsheetID)
+    |                                                                                       `- warning: main actor-isolated static property 'activeSpreadsheetID' can not be referenced from a nonisolated autoclosure
+ 25 |     }
+ 26 | 
+
+/Users/rx0/Desktop/3/FTL/FTL/services/GoogleAPI/SheetsService.swift:13:16: note: static property declared here
+ 11 | 
+ 12 |     /// The active spreadsheet ID, persisted in UserDefaults.
+ 13 |     static var activeSpreadsheetID: String {
+    |                `- note: static property declared here
+ 14 |         get {
+ 15 |             let custom = UserDefaults.standard.string(forKey: "ftl_custom_spreadsheet_id")?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerCalcTool.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile LedgerCalcTool.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/LedgerDeduplicator.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile LedgerDeduplicator.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsBudgetStore.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SheetsBudgetStore.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Ledger/SheetsLedgerStore.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SheetsLedgerStore.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Pipeline/SenderTriage.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SenderTriage.swift
+
+SwiftCompile normal arm64 Compiling\ IncomeSplitView.swift,\ SignInView.swift,\ ApprovalQueueSheet.swift,\ SettingsView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Onboarding/IncomeSplitView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Onboarding/SignInView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Review/ApprovalQueueSheet.swift /Users/rx0/Desktop/3/FTL/FTL/view/Settings/SettingsView.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Onboarding/IncomeSplitView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile IncomeSplitView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Onboarding/SignInView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SignInView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Review/ApprovalQueueSheet.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile ApprovalQueueSheet.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Settings/SettingsView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile SettingsView.swift
+
+SwiftCompile normal arm64 Compiling\ AnalyzeView.swift,\ BucketDetailView.swift,\ CalendarView.swift,\ AddSpendSheet.swift,\ EditTransactionSheet.swift /Users/rx0/Desktop/3/FTL/FTL/view/Analyze/AnalyzeView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Bucket/BucketDetailView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Calendar/CalendarView.swift /Users/rx0/Desktop/3/FTL/FTL/view/Capture/AddSpendSheet.swift /Users/rx0/Desktop/3/FTL/FTL/view/Capture/EditTransactionSheet.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Analyze/AnalyzeView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile AnalyzeView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Bucket/BucketDetailView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile BucketDetailView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Calendar/CalendarView.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile CalendarView.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Capture/AddSpendSheet.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile AddSpendSheet.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/view/Capture/EditTransactionSheet.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile EditTransactionSheet.swift
+
+SwiftCompile normal arm64 Compiling\ EmailCorpus.swift,\ EndToEndRunner.swift,\ Evaluator.swift,\ HarnessStores.swift,\ PipelineCase.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/EmailCorpus.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/EndToEndRunner.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/Evaluator.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/HarnessStores.swift /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/PipelineCase.swift (in target 'FTL' from project 'FTL')
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/EmailCorpus.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile EmailCorpus.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/EndToEndRunner.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile EndToEndRunner.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/Evaluator.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile Evaluator.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/HarnessStores.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile HarnessStores.swift
+
+SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/Evaluation/PipelineCase.swift (in target 'FTL' from project 'FTL')
+    cd /Users/rx0/Desktop/3/FTL
+    builtin-SwiftPerFileCompile PipelineCase.swift
+
+PruneExplicitPrecompiledModules /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/rx0/Library/Developer/Xcode/DerivedData/FTL-dkivqcyblwjingfirrbbaearvqfp/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/rx0/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 Compiling\ InMemoryStores.swift,\ SampleLedger.swift,\ WidgetDataSnapshot.swift,\ WidgetSnapshotWriter.swift,\ AppEnvironment.swift /Users/rx0/Desktop/3/FTL/FTL/services/Preview/InMemoryStores.swift /Users/rx0/Desktop/3/FTL/FTL/services/Preview/SampleLedger.swift /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetDataSnapshot.swift /Users/rx0/Desktop/3/FTL/FTL/services/Widget/WidgetSnapshotWriter.swift /Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift (in target 'FTL' from project 'FTL')
+	SwiftCompile normal arm64 /Users/rx0/Desktop/3/FTL/FTL/services/AppEnvironment.swift (in target 'FTL' from project 'FTL')
+	Building project FTL with scheme FTL
+(3 failures)

@@ -74,7 +74,6 @@ struct CalendarView: View {
             .padding(FTLSpacing.screenMargin)
         }
         .background(FTLColor.ground)
-        .navigationTitle("Calendar")
         .task(id: interval) {
             await viewModel.load(interval: interval)
         }

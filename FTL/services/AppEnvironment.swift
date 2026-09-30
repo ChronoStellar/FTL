@@ -47,6 +47,9 @@ final class AppEnvironment {
     let patternMemory: PatternMemory?
     /// What you call each shop. See `MerchantMemory`.
     let merchantMemory: MerchantMemory?
+    
+    /// Stored analysis reports per month.
+    let analysisStore: AnalysisStore
 
     /// False when the on-disk store couldn't be opened and the queue is running
     /// in memory for this session. Surfaced in Settings: a cache that silently
@@ -141,6 +144,7 @@ final class AppEnvironment {
         ledger: LedgerStore,
         budgets: BudgetStore,
         provisional: ProvisionalStore,
+        analysisStore: AnalysisStore,
         isLive: Bool,
         captureLog: CaptureLog? = nil,
         patterns: PatternStore? = nil,
@@ -154,6 +158,7 @@ final class AppEnvironment {
         self.ledger = ledger
         self.budgets = budgets
         self.provisional = provisional
+        self.analysisStore = analysisStore
         self.isLive = isLive
         self.captureLog = captureLog
         self.patterns = patterns
@@ -194,6 +199,7 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: SheetsBudgetStore(ledger: ledger),
             provisional: SwiftDataProvisionalStore(modelContainer: store.container),
+            analysisStore: SwiftDataAnalysisStore(modelContainer: store.container),
             isLive: true,
             captureLog: SwiftDataCaptureLog(modelContainer: store.container),
             patterns: SwiftDataPatternStore(modelContainer: store.container),
@@ -229,6 +235,7 @@ final class AppEnvironment {
             TagDecisionRecord.self,
             MerchantNameRecord.self,
             PatternObservationRecord.self,
+            AnalysisReportRecord.self,
         ])
         do {
             return (try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)]), true)
@@ -254,6 +261,7 @@ final class AppEnvironment {
             ledger: ledger,
             budgets: budgets,
             provisional: InMemoryProvisionalStore(),
+            analysisStore: InMemoryAnalysisStore(),
             isLive: false,
             merchantMemory: InMemoryMerchantMemory(),
             ledgerBackend: .sample
@@ -291,6 +299,7 @@ final class AppEnvironment {
             ledger: InMemoryLedgerStore(empty: true),
             budgets: InMemoryBudgetStore(),
             provisional: base.provisional,
+            analysisStore: base.analysisStore,
             isLive: true,
             captureLog: base.captureLog,
             patterns: base.patterns,
@@ -448,4 +457,89 @@ final class AppEnvironment {
 
     // MARK: - Migration
 
+}
+import Foundation
+import SwiftData
+
+protocol AnalysisStore: Sendable {
+    func fetchReport(for monthKey: String) async throws -> SpendingRecap?
+    func saveReport(_ recap: SpendingRecap, for monthKey: String) async throws
+}
+
+actor SwiftDataAnalysisStore: AnalysisStore {
+    private let container: ModelContainer
+    private let context: ModelContext
+
+    init(modelContainer: ModelContainer) {
+        self.container = modelContainer
+        // A background actor gets a background context.
+        self.context = ModelContext(modelContainer)
+    }
+
+    func fetchReport(for monthKey: String) throws -> SpendingRecap? {
+        let fetchDescriptor = FetchDescriptor<AnalysisReportRecord>(
+            predicate: #Predicate { $0.monthKey == monthKey }
+        )
+        guard let record = try context.fetch(fetchDescriptor).first else { return nil }
+        return SpendingRecap(
+            title: record.title,
+            patterns: record.patterns,
+            keyInsight: record.keyInsight,
+            recommendations: record.recommendations
+        )
+    }
+
+    func saveReport(_ recap: SpendingRecap, for monthKey: String) throws {
+        // Delete any existing report for this month.
+        let fetchDescriptor = FetchDescriptor<AnalysisReportRecord>(
+            predicate: #Predicate { $0.monthKey == monthKey }
+        )
+        let existing = try context.fetch(fetchDescriptor)
+        for record in existing {
+            context.delete(record)
+        }
+        
+        let newRecord = AnalysisReportRecord(
+            monthKey: monthKey,
+            title: recap.title,
+            patterns: recap.patterns,
+            keyInsight: recap.keyInsight,
+            recommendations: recap.recommendations
+        )
+        context.insert(newRecord)
+        try context.save()
+    }
+}
+
+actor InMemoryAnalysisStore: AnalysisStore {
+    private var storage: [String: SpendingRecap] = [:]
+    
+    func fetchReport(for monthKey: String) -> SpendingRecap? {
+        storage[monthKey]
+    }
+    
+    func saveReport(_ recap: SpendingRecap, for monthKey: String) {
+        storage[monthKey] = recap
+    }
+}
+import Foundation
+import SwiftData
+
+@Model
+final class AnalysisReportRecord {
+    @Attribute(.unique) var monthKey: String
+    var title: String
+    var patterns: String
+    var keyInsight: String
+    var recommendations: String
+    var generatedAt: Date
+
+    init(monthKey: String, title: String, patterns: String, keyInsight: String, recommendations: String, generatedAt: Date = .now) {
+        self.monthKey = monthKey
+        self.title = title
+        self.patterns = patterns
+        self.keyInsight = keyInsight
+        self.recommendations = recommendations
+        self.generatedAt = generatedAt
+    }
 }

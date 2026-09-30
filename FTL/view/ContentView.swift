@@ -34,7 +34,7 @@ struct ContentView: View {
     }
 
     enum Tab {
-        case home, calendar
+        case home, calendar, analyze
     }
     @State private var selectedTab: Tab = .home
     @State private var calendarPath: [Route] = []
@@ -61,12 +61,28 @@ struct ContentView: View {
             NavigationStack(path: $calendarPath) {
                 if let interval = home.month?.interval {
                     CalendarView(environment: environment, interval: interval)
+                        .toolbar { homeToolbar }
+                        .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
+                        .navigationBarTitleDisplayMode(.inline)
                 } else {
                     ProgressView()
                 }
             }
             .tabItem { Label("Calendar", systemImage: "calendar") }
             .tag(Tab.calendar)
+            
+            NavigationStack {
+                if #available(iOS 27.0, macOS 27.0, *) {
+                    AnalyzeView(environment: environment, interval: home.month?.interval ?? DateInterval(start: .now, end: .now))
+                        .toolbar { homeToolbar }
+                        .toolbarBackground(FTLColor.navBackground, for: .navigationBar)
+                        .navigationBarTitleDisplayMode(.inline)
+                } else {
+                    Text("Analyze requires iOS 27")
+                }
+            }
+            .tabItem { Label("Analyze", systemImage: "sparkles") }
+            .tag(Tab.analyze)
         }
         // Also fire-and-forget, and deliberately its own `.task` rather than
         // chained after `syncMail` below: discovery fetches its own 180-day
