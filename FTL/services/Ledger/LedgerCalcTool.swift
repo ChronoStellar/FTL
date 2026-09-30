@@ -117,8 +117,8 @@ actor LedgerCalcTool: CalcTool {
 
     func budgetPositions(for interval: DateInterval) async throws -> [BudgetPosition] {
         let tree = try await budgets.tree(for: interval)
-        // Invariant 5: only spend counts toward a ceiling.
-        let spend = try await ledger.all().filter { interval.containsLedgerDate($0.date) && $0.countsTowardBudget }
+        // Include emergency here so it can tally its own bucket, but we'll exclude it from parents in position()
+        let spend = try await ledger.all().filter { interval.containsLedgerDate($0.date) && $0.kind == .spend }
         return tree.map { position(for: $0, spend: spend) }
     }
 
@@ -129,10 +129,9 @@ actor LedgerCalcTool: CalcTool {
         let isRoot = !node.children.isEmpty
         let ownSpend = spend.filter { tx in
             guard let category = tx.categoryID else {
-                // Uncategorized spend belongs to the root's total and to nothing
-                // below it — that is exactly what "unallocated" means.
                 return isRoot
             }
+            if category == .emergency && node.id != .emergency { return false }
             return category == node.id || namedIDs.contains(category)
         }
 

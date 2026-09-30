@@ -140,12 +140,13 @@ struct BucketRow: View {
                                 .font(FTLTypography.rowTitle)
                                 .foregroundStyle(isEmergency ? .red : isUnallocated ? FTLColor.textSecondary : FTLColor.textPrimary)
                             Spacer(minLength: FTLSpacing.sm)
-                            Text(MoneyFormatter.standing(remaining: position.remaining))
+                            Text(isEmergency ? MoneyFormatter.grouped(position.actual) : MoneyFormatter.standing(remaining: position.remaining))
                                 .font(FTLTypography.amountSmall)
                                 .foregroundStyle(
-                                    position.standing == .overCeiling
+                                    isEmergency ? .red :
+                                    (position.standing == .overCeiling
                                         ? FTLColor.budgetOverCeiling
-                                        : FTLColor.textQuaternary
+                                        : FTLColor.textQuaternary)
                                 )
                         }
                         MeterBar(fraction: fractionOfCeiling, fill: fill)
