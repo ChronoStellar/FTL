@@ -13,6 +13,12 @@ struct ScannedBill: Sendable {
     
     @Guide(description: "A short sentence describing what this bill was for, if apparent.")
     var notes: String
+    
+    @Guide(description: "The date on the receipt in yyyy-MM-dd format, if present.")
+    var date: String?
+    
+    @Guide(description: "The most likely spending category (e.g., food, transport, shopping, utilities) in lowercase.")
+    var category: String?
 }
 
 @available(iOS 27.0, macOS 27.0, *)
@@ -40,7 +46,7 @@ nonisolated struct FoundationModelScanner: Sendable {
 
     private static let instructions = """
     You are an AI assistant that reads receipts and bills.
-    Given raw OCR text from a receipt, extract the exact merchant name and the total final amount.
+    Given raw OCR text from a receipt, extract the exact merchant name, the total final amount, the date, and infer the most likely category.
     Ensure the amount is just an integer (e.g., 50000).
     Provide a short summary in the notes field.
     """

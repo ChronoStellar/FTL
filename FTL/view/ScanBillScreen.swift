@@ -18,7 +18,11 @@ struct ScanBillScreen: View {
     @State private var editMerchant: String = ""
     @State private var editAmount: String = ""
     @State private var editNotes: String = ""
-    @State private var isSaving = false    
+    @State private var editDate: Date = .now
+    @State private var editCategory: String = ""
+    @State private var isSaving = false
+    @State private var isShowingTransactionPicker = false
+    @State private var recentTransactions: [LedgerTransaction] = []    
     var body: some View {
         NavigationStack {
             VStack(spacing: FTLSpacing.lg) {
@@ -87,6 +91,21 @@ struct ScanBillScreen: View {
                                     .textFieldStyle(.roundedBorder)
                             }
                             
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Date").font(FTLTypography.caption)
+                                    DatePicker("", selection: $editDate, displayedComponents: .date)
+                                        .labelsHidden()
+                                }
+                                Spacer()
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Category").font(FTLTypography.caption)
+                                    TextField("Category", text: $editCategory)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 120)
+                                }
+                            }
+                            
                             HStack(spacing: 12) {
                                 Button(action: { scannedResult = nil; ocrResult = nil }) {
                                     Text("Discard")
@@ -103,7 +122,7 @@ struct ScanBillScreen: View {
                                             .padding(.vertical, 12)
                                             .background(FTLColor.accent, in: Capsule())
                                     } else {
-                                        Text("Save to Ledger")
+                                        Text("Save as New")
                                             .font(FTLTypography.body)
                                             .foregroundStyle(.black)
                                             .frame(maxWidth: .infinity)
@@ -113,6 +132,17 @@ struct ScanBillScreen: View {
                                 }
                                 .disabled(isSaving)
                             }
+                            
+                            Button(action: showTransactionPicker) {
+                                Text("Link to Existing Spend")
+                                    .font(FTLTypography.body)
+                                    .foregroundStyle(FTLColor.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(FTLColor.controlFill, in: Capsule())
+                                    .overlay { Capsule().strokeBorder(FTLColor.controlBorder) }
+                            }
+                            .disabled(isSaving)
                         }
                         .padding()
                         .background(FTLColor.glassFill, in: RoundedRectangle(cornerRadius: FTLRadius.card))
@@ -167,6 +197,39 @@ struct ScanBillScreen: View {
                 }
             }
         }
+        .sheet(isPresented: $isShowingTransactionPicker) {
+            NavigationStack {
+                List(recentTransactions) { tx in
+                    Button(action: {
+                        isShowingTransactionPicker = false
+                        linkTo(transaction: tx)
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(tx.merchant ?? tx.merchantRaw)
+                                    .font(FTLTypography.body)
+                                    .foregroundStyle(FTLColor.textPrimary)
+                                Text(tx.date.formatted(date: .abbreviated, time: .omitted))
+                                    .font(FTLTypography.captionSmall)
+                                    .foregroundStyle(FTLColor.textSecondary)
+                            }
+                            Spacer()
+                            Text(MoneyFormatter.rp(tx.amount))
+                                .font(FTLTypography.body)
+                                .foregroundStyle(FTLColor.textPrimary)
+                        }
+                    }
+                }
+                .navigationTitle("Select Spending")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { isShowingTransactionPicker = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .fullScreenCover(isPresented: $isShowingCamera) {
             CameraPicker(image: $selectedImage)
                 .ignoresSafeArea()
@@ -198,6 +261,17 @@ struct ScanBillScreen: View {
                         editMerchant = bill.merchant
                         editAmount = "\(bill.amount)"
                         editNotes = bill.notes
+                        
+                        if let dateStr = bill.date {
+                            let formatter = DateFormatter()
+                            formatter.dateFormat = "yyyy-MM-dd"
+                            if let d = formatter.date(from: dateStr) {
+                                editDate = d
+                            }
+                        }
+                        if let cat = bill.category {
+                            editCategory = cat
+                        }
                     }
                 } else {
                     await MainActor.run {
@@ -209,6 +283,64 @@ struct ScanBillScreen: View {
                 await MainActor.run {
                     isScanning = false
                     errorMessage = "Failed to scan: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func showTransactionPicker() {
+        Task {
+            // Fetch transactions around the editDate (-30 days to +5 days) to ensure we find it
+            let start = Calendar.current.date(byAdding: .day, value: -30, to: editDate) ?? editDate
+            let end = Calendar.current.date(byAdding: .day, value: 5, to: editDate) ?? editDate
+            let interval = DateInterval(start: start, end: end)
+            
+            // Try with category if provided
+            let categoryFilter = editCategory.isEmpty ? nil : CategoryID(rawValue: editCategory.lowercased())
+            var txs = (try? await environment.calc.transactions(in: interval, categoryID: categoryFilter, limit: 30)) ?? []
+            
+            // If empty, fallback to no category filter
+            if txs.isEmpty {
+                txs = (try? await environment.calc.transactions(in: interval, categoryID: nil, limit: 30)) ?? []
+            }
+            
+            // Sort by proximity to editDate
+            let sorted = txs.sorted { abs($0.date.timeIntervalSince(editDate)) < abs($1.date.timeIntervalSince(editDate)) }
+            
+            await MainActor.run {
+                recentTransactions = sorted
+                isShowingTransactionPicker = true
+            }
+        }
+    }
+    
+    private func linkTo(transaction: LedgerTransaction) {
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                var updated = transaction
+                // Append the scanned note to the existing note, or replace it if empty.
+                let combinedNote = [editMerchant, editNotes].filter { !$0.isEmpty }.joined(separator: " - ")
+                
+                if let existing = updated.notes, !existing.isEmpty {
+                    updated.notes = existing + " | " + combinedNote
+                } else {
+                    updated.notes = combinedNote
+                }
+                
+                try await environment.ledger.update(updated)
+                
+                await MainActor.run {
+                    isSaving = false
+                    // Instead of a provisional entry, we'll just return an empty one or a placeholder to dismiss
+                    // Actually, onScanned dismisses the sheet and reloads. We can just call onCancel to dismiss.
+                    onCancel()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = "Failed to link: \(error.localizedDescription)"
                 }
             }
         }
