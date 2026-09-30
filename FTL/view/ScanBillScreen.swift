@@ -7,6 +7,7 @@ struct ScanBillScreen: View {
     let onCancel: () -> Void
     let onScanned: (ProvisionalEntry) -> Void
     
+    @State private var isShowingCamera = false
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var isScanning = false
@@ -31,15 +32,33 @@ struct ScanBillScreen: View {
                     ContentUnavailableView("No Image", systemImage: "photo", description: Text("Select a receipt to scan"))
                 }
                 
-                PhotosPicker(selection: $selectedItem, matching: .images) {
-                    Text("Select Photo")
+                HStack(spacing: FTLSpacing.md) {
+                    Button(action: { isShowingCamera = true }) {
+                        HStack {
+                            Image(systemName: "camera")
+                            Text("Take Photo")
+                        }
                         .font(FTLTypography.body)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(FTLColor.controlFill, in: Capsule())
                         .overlay { Capsule().strokeBorder(FTLColor.controlBorder) }
+                    }
+                    .disabled(isScanning)
+                    
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        HStack {
+                            Image(systemName: "photo")
+                            Text("Library")
+                        }
+                        .font(FTLTypography.body)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(FTLColor.controlFill, in: Capsule())
+                        .overlay { Capsule().strokeBorder(FTLColor.controlBorder) }
+                    }
+                    .disabled(isScanning)
                 }
-                .disabled(isScanning)
                 
                 if isScanning {
                     ProgressView("Scanning...")
@@ -147,6 +166,14 @@ struct ScanBillScreen: View {
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $isShowingCamera) {
+            CameraPicker(image: $selectedImage)
+                .ignoresSafeArea()
+        }
+        .onChange(of: selectedImage) { _, _ in
+            scannedResult = nil
+            ocrResult = nil
         }
     }
     
